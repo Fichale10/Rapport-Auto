@@ -5,3 +5,5 @@ pandas
 openpyxl
 weasyprint
 Pillow
+psycopg[binary]
+python-dotenv

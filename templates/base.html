@@ -1,0 +1,129 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Rapport Auto — Yas{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --yas-blue: #003087; --yas-yellow: #FFC72C; --yas-light: #f0f4ff; }
+    body { font-family: 'DM Sans', sans-serif; background: #f5f7fb; color: #111; min-height: 100vh; }
+
+    .navbar {
+      background: var(--yas-blue); padding: 0 40px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px; position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 20px rgba(0,48,135,0.3);
+    }
+    .nav-brand { display: flex; align-items: center; gap: 14px; text-decoration: none; }
+    .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--yas-yellow); letter-spacing: 3px; }
+    .nav-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.2); }
+    .nav-app { color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 500; }
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-links a {
+      color: rgba(255,255,255,0.7); text-decoration: none;
+      font-size: 14px; font-weight: 500; padding: 8px 16px;
+      border-radius: 8px; transition: color .2s, background .2s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .nav-links a.active { color: var(--yas-yellow); }
+    .nav-user { display: flex; align-items: center; gap: 12px; }
+    .user-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255,199,44,0.15); border: 1px solid rgba(255,199,44,0.3);
+      border-radius: 8px; padding: 6px 14px;
+      color: var(--yas-yellow); font-size: 13px; font-weight: 600;
+    }
+    .user-avatar {
+      width: 24px; height: 24px; background: var(--yas-yellow);
+      color: var(--yas-blue); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+    }
+    .btn-logout {
+      background: none; border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.6); padding: 6px 14px; border-radius: 8px;
+      font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+      text-decoration: none; display: inline-block; transition: all .2s;
+    }
+    .btn-logout:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
+
+    .topbar {
+      background: #fff; border-bottom: 1px solid #e8edf5;
+      padding: 10px 40px; font-size: 13px; color: #888;
+    }
+    .topbar span { color: var(--yas-blue); font-weight: 600; }
+
+    .main-content { padding: 32px 40px; max-width: 1280px; margin: 0 auto; }
+
+    .card {
+      background: #fff; border-radius: 16px; padding: 28px;
+      box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5;
+    }
+
+    .messages-container { margin-bottom: 24px; }
+    .message { padding: 12px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 8px; border-left: 4px solid; }
+    .message.success { background: #f0fff4; border-color: #22c55e; color: #166534; }
+    .message.error { background: #fff3cd; border-color: var(--yas-yellow); color: #7a5a00; }
+
+    .btn-primary {
+      background: var(--yas-yellow); color: var(--yas-blue); border: none;
+      padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 700;
+      font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,199,44,0.35); }
+
+    @media (max-width: 768px) {
+      .navbar { padding: 0 20px; }
+      .nav-app { display: none; }
+      .main-content { padding: 20px; }
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<nav class="navbar">
+  <a href="{% url 'home' %}" class="nav-brand">
+    <span class="nav-logo">YAS</span>
+    <div class="nav-divider"></div>
+    <span class="nav-app">Rapport Automatique</span>
+  </a>
+  <div class="nav-links">
+    <a href="{% url 'home' %}"    class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
+    <a href="{% url 'upload' %}"  class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
+    <a href="{% url 'history' %}" class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
+  </div>
+  <div class="nav-user">
+    {% if user.is_authenticated %}
+      <div class="user-badge">
+        <div class="user-avatar">{{ user.username|first|upper }}</div>
+        {{ user.username }}
+      </div>
+      <a href="{% url 'accounts:logout' %}" class="btn-logout">Déconnexion</a>
+    {% endif %}
+  </div>
+</nav>
+
+<div class="topbar">
+  Yas Togo &rsaquo; NOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
+</div>
+
+<div class="main-content">
+  {% if messages %}
+    <div class="messages-container">
+      {% for message in messages %}
+        <div class="message {{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</div>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>
