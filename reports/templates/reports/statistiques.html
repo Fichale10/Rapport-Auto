@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Statistiques — Yas NOC{% endblock %}
+{% block breadcrumb %}Statistiques{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+  .period-bar { display:flex; align-items:center; gap:10px; margin-bottom:28px; flex-wrap:wrap; }
+  .period-bar span { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-right:4px; }
+  .period-btn { padding:7px 18px; border-radius:8px; font-size:13px; font-weight:600; border:1.5px solid #e8edf5; background:#fff; color:#555; text-decoration:none; transition:all .15s; }
+  .period-btn:hover { border-color:#003087; color:#003087; }
+  .period-btn.active { background:#003087; color:#fff; border-color:#003087; }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
+  .kpi { background:#fff; border-radius:14px; padding:20px 22px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; }
+  .kpi-icon { width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; }
+  .kpi-icon.blue   { background:#e8f0ff; }
+  .kpi-icon.yellow { background:#fff8e1; }
+  .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:30px; color:#003087; letter-spacing:1px; line-height:1; }
+  .kpi-lbl { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
+
+  .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .stat-card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05); }
+  .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #f0f4ff; }
+  .card-title { font-size:15px; font-weight:700; color:#003087; display:flex; align-items:center; gap:8px; }
+  .card-badge { background:#f0f4ff; color:#003087; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+
+  .bar-list { display:flex; flex-direction:column; gap:12px; }
+  .bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
+  .bar-name { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:65%; }
+  .bar-val  { font-size:13px; font-weight:700; color:#003087; }
+  .bar-track { height:8px; background:#f0f4ff; border-radius:4px; overflow:hidden; }
+  .bar-fill        { height:100%; border-radius:4px; background:linear-gradient(90deg,#003087,#0047cc); }
+  .bar-fill.yellow { background:linear-gradient(90deg,#FFC72C,#ffdd6b); }
+  .bar-fill.red    { background:linear-gradient(90deg,#e53e3e,#fc8181); }
+
+  /* Donut SVG */
+  .pie-outer { display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
+  .pie-svg-wrap { flex-shrink:0; }
+  .pie-svg-wrap svg { display:block; }
+  .pie-leg { flex:1; display:flex; flex-direction:column; gap:7px; min-width:150px; max-height:210px; overflow-y:auto; }
+  .leg-row { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:6px; }
+  .leg-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+  .leg-name { flex:1; font-size:12px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .leg-pct  { font-size:12px; font-weight:700; color:#003087; }
+  .leg-h    { font-size:11px; color:#999; margin-left:3px; }
+
+  .empty-msg { text-align:center; padding:40px 20px; color:#bbb; font-size:14px; }
+
+  @media(max-width:900px){
+    .stats-grid { grid-template-columns:1fr; }
+    .kpi-row    { grid-template-columns:1fr 1fr; }
+    .pie-outer  { flex-direction:column; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filtres période -->
+<div class="period-bar">
+  <span>Période :</span>
+  <a href="?period=day"   class="period-btn {% if period_filter == 'day' %}active{% endif %}">Aujourd'hui</a>
+  <a href="?period=week"  class="period-btn {% if period_filter == 'week' %}active{% endif %}">7 jours</a>
+  <a href="?period=month" class="period-btn {% if period_filter == 'month' %}active{% endif %}">30 jours</a>
+  <a href="?period=year"  class="period-btn {% if period_filter == 'year' %}active{% endif %}">Année</a>
+  <a href="?period=all"   class="period-btn {% if period_filter == 'all' %}active{% endif %}">Tout</a>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-icon blue">📋</div>
+    <div><div class="kpi-val">{{ total_reports }}</div><div class="kpi-lbl">Rapports analysés</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon yellow">⏱</div>
+    <div><div class="kpi-val">{{ total_outage_h }}h</div><div class="kpi-lbl">Outage total</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon blue">🏆</div>
+    <div><div class="kpi-val">{{ escalades_chart|length }}</div><div class="kpi-lbl">Escalades actives</div></div>
+  </div>
+</div>
+
+<!-- 4 Rectangles -->
+<div class="stats-grid">
+
+  <!-- 1. Classement Escalades -->
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">📊 Classement Escalades</div>
+      <span class="card-badge">{{ escalades_chart|length }} types</span>
+    </div>
+    {% if escalades_chart %}
+      <div class="bar-list">
+        {% for e in escalades_chart %}
+        <div>
+          <div class="bar-meta">
+            <span class="bar-name">{{ e.name }}</span>
+            <span class="bar-val">{{ e.count }} inc.</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:{{ e.pct }}%"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-msg">Aucune donnée pour cette période</div>
+    {% endif %}
+  </div>
+
+  <!-- 2. Récurrence des Sites -->
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">📡 Récurrence des Sites</div>
+      <span class="card-badge">Top 10</span>
+    </div>
+    {% if sites_chart %}
+      <div class="bar-list">
+        {% for s in sites_chart %}
+        <div>
+          <div class="bar-meta">
+            <span class="bar-name">{{ s.name }}</span>
+            <span class="bar-val">{{ s.count }}x</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill yellow" style="width:{{ s.pct }}%"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-msg">Aucune donnée pour cette période</div>
+    {% endif %}
+  </div>
+
+  <!-- 3. Poids & Outage / Métier — SVG Donut -->
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">🥧 Poids &amp; Outage / Métier</div>
+      <span class="card-badge">{{ total_outage_h }}h total</span>
+    </div>
+    {% if outage_chart %}
+      <div class="pie-outer">
+        <div class="pie-svg-wrap">
+          {{ donut_svg|safe }}
+        </div>
+        <div class="pie-leg">
+          {% for o in outage_chart %}
+          <div class="leg-row">
+            <div class="leg-dot" style="background:{{ o.color }}"></div>
+            <span class="leg-name" title="{{ o.name }}">{{ o.name }}</span>
+            <span class="leg-pct">{{ o.pct }}%</span>
+            <span class="leg-h">{{ o.outage_h }}h</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <div class="empty-msg">Aucune donnée pour cette période</div>
+    {% endif %}
+  </div>
+
+  <!-- 4. Sites les Plus Dégradés -->
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">🔴 Sites les Plus Dégradés</div>
+      <span class="card-badge">Top 10</span>
+    </div>
+    {% if degraded_chart %}
+      <div class="bar-list">
+        {% for d in degraded_chart %}
+        <div>
+          <div class="bar-meta">
+            <span class="bar-name">{{ d.name }}</span>
+            <span class="bar-val">{{ d.duration_h }}h</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill red" style="width:{{ d.pct }}%"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-msg">Aucune donnée pour cette période</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

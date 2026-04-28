@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% load static %}
+{% load report_extras %}
+
+{% block title %}Résultats — {{ report.original_filename }}{% endblock %}
+{% block breadcrumb %}Résultats{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  .results-hero {
+    background: linear-gradient(135deg, #003087 0%, #0047cc 100%);
+    border-radius: 20px; padding: 32px 36px; margin-bottom: 24px;
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  }
+  .results-hero::after {
+    content: 'YAS'; font-family: 'Bebas Neue', sans-serif;
+    font-size: 140px; color: rgba(255,255,255,0.04);
+    position: absolute; right: 20px; bottom: -20px;
+    letter-spacing: 8px; pointer-events: none;
+  }
+  .hero-left { z-index: 1; }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,199,44,.15); border: 1px solid rgba(255,199,44,.3);
+    color: #FFC72C; font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 4px 12px; border-radius: 20px; margin-bottom: 12px;
+  }
+  .hero-filename { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; word-break: break-all; }
+  .hero-period   { font-size: 14px; color: rgba(255,255,255,.6); }
+  .hero-actions  { display: flex; gap: 10px; flex-shrink: 0; z-index: 1; flex-wrap: wrap; }
+
+  .btn-hero-outline {
+    background: rgba(255,255,255,.1); border: 1.5px solid rgba(255,255,255,.25);
+    color: rgba(255,255,255,.85); padding: 10px 20px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+  }
+  .btn-hero-outline:hover { border-color: rgba(255,255,255,.6); color: #fff; }
+
+  .btn-hero-primary {
+    background: #FFC72C; color: #003087; border: none;
+    padding: 10px 20px; border-radius: 9px; font-size: 13px; font-weight: 700;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s; cursor: pointer; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-hero-primary:hover { box-shadow: 0 4px 16px rgba(255,199,44,.4); transform: translateY(-1px); }
+
+  .btn-hero-danger {
+    background: rgba(229,62,62,.15); border: 1.5px solid rgba(229,62,62,.4);
+    color: #fc8181; padding: 10px 20px; border-radius: 9px;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-hero-danger:hover { background: rgba(229,62,62,.3); color: #fff; }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:24px; }
+  .kpi { background:#fff; border-radius:14px; padding:18px 16px; border:1px solid #e8edf5; text-align:center; transition:box-shadow .2s,transform .2s; }
+  .kpi:hover { box-shadow:0 4px 20px rgba(0,48,135,.1); transform:translateY(-2px); }
+  .kpi-icon { font-size:24px; margin-bottom:10px; }
+  .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:32px; color:#003087; letter-spacing:1px; line-height:1; margin-bottom:4px; }
+  .kpi-val.warning { color:#e53e3e; }
+  .kpi-val.success { color:#22c55e; }
+  .kpi-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; }
+
+  .section-card { background:#fff; border-radius:16px; padding:0; border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05); margin-bottom:20px; overflow:hidden; }
+  .section-header { display:flex; align-items:center; justify-content:space-between; padding:20px 24px; border-bottom:1px solid #f0f4ff; }
+  .section-title { font-size:15px; font-weight:700; color:#003087; display:flex; align-items:center; gap:8px; }
+  .section-badge { background:#f0f4ff; color:#003087; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+
+  table.synth { width:100%; border-collapse:collapse; }
+  table.synth th { text-align:left; font-size:11px; font-weight:700; color:#999; text-transform:uppercase; letter-spacing:.5px; padding:12px 20px; background:#fafbff; border-bottom:1px solid #e8edf5; }
+  table.synth td { padding:13px 20px; font-size:14px; color:#333; border-bottom:1px solid #f5f7fb; }
+  table.synth tr:last-child td { border-bottom:none; }
+  table.synth tr:hover td { background:#fafbff; }
+  table.synth tr.row-total td { background:#f0f4ff; font-weight:700; color:#003087; border-top:2px solid #e8edf5; }
+  table.synth tr.row-total:hover td { background:#e8f0ff; }
+
+  .esc-name  { font-weight:600; color:#111; }
+  .esc-total { font-weight:800; color:#003087; font-family:'Bebas Neue',sans-serif; font-size:16px; letter-spacing:.5px; }
+  .inc-count { font-family:'Bebas Neue',sans-serif; font-size:20px; color:#003087; letter-spacing:1px; }
+  .inc-zero  { color:#ccc; }
+
+  .badge      { display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge-ok   { background:#f0fff4; color:#166534; }
+  .badge-warn { background:#fff8e1; color:#7a5a00; }
+  .badge-na   { background:#f5f7fb; color:#aaa; }
+
+  .downloads-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:20px 24px; }
+  .dl-card { display:flex; align-items:center; gap:16px; padding:18px 20px; border-radius:12px; border:1.5px solid #e8edf5; text-decoration:none; transition:border-color .15s,box-shadow .15s,transform .15s; background:#fafbff; }
+  .dl-card:hover { border-color:#003087; box-shadow:0 4px 16px rgba(0,48,135,.1); transform:translateY(-2px); }
+  .dl-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+  .dl-icon.blue   { background:#e8f0ff; }
+  .dl-icon.yellow { background:#fff8e1; }
+  .dl-info { flex:1; }
+  .dl-title { font-size:14px; font-weight:700; color:#111; margin-bottom:3px; }
+  .dl-sub   { font-size:12px; color:#888; }
+  .dl-btn   { background:#003087; color:#fff; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:600; white-space:nowrap; flex-shrink:0; }
+  .dl-card:hover .dl-btn { background:#FFC72C; color:#003087; }
+
+  /* Modal */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:9999; opacity:0; pointer-events:none; transition:opacity .2s; }
+  .modal-overlay.show { opacity:1; pointer-events:all; }
+  .modal-box { background:#fff; border-radius:20px; padding:36px; max-width:420px; width:90%; box-shadow:0 24px 60px rgba(0,0,0,.2); transform:scale(.95); transition:transform .2s; text-align:center; }
+  .modal-overlay.show .modal-box { transform:scale(1); }
+  .modal-icon { font-size:48px; margin-bottom:16px; }
+  .modal-title { font-size:20px; font-weight:700; color:#111; margin-bottom:8px; }
+  .modal-sub { font-size:14px; color:#888; margin-bottom:8px; }
+  .modal-filename { font-size:13px; font-weight:600; color:#e53e3e; background:#fff0f0; padding:8px 14px; border-radius:8px; margin-bottom:16px; word-break:break-all; }
+  .modal-warn { font-size:12px; color:#aaa; margin-bottom:24px; }
+  .modal-actions { display:flex; gap:12px; justify-content:center; }
+  .btn-cancel { padding:11px 24px; border-radius:10px; border:1.5px solid #e8edf5; background:#fff; color:#555; font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all .15s; }
+  .btn-cancel:hover { border-color:#003087; color:#003087; }
+  .btn-confirm-delete { padding:11px 24px; border-radius:10px; border:none; background:#e53e3e; color:#fff; font-size:14px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all .15s; }
+  .btn-confirm-delete:hover { background:#c53030; transform:translateY(-1px); }
+  .btn-confirm-delete:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+
+  @media(max-width:900px){ .kpi-row{grid-template-columns:repeat(3,1fr);} .downloads-grid{grid-template-columns:1fr;} .results-hero{flex-direction:column;} }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<div class="results-hero">
+  <div class="hero-left">
+    <div class="hero-tag">✓ Traitement terminé</div>
+    <div class="hero-filename">{{ report.original_filename }}</div>
+    <div class="hero-period">📅 {{ period_label }}</div>
+  </div>
+  <div class="hero-actions">
+    <a href="{% url 'history' %}" class="btn-hero-outline">← Historique</a>
+   <a href="{% url 'export_pdf' report.pk %}" class="btn-hero-outline" target="_blank">
+  📄 Exporter PDF
+</a> 
+    <a href="{% url 'upload' %}" class="btn-hero-primary">↑ Nouveau traitement</a>
+    <button class="btn-hero-danger" onclick="openDeleteModal()">🗑 Supprimer</button>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-icon">📄</div>
+    <div class="kpi-val">{{ report.total_rows|default:"0" }}</div>
+    <div class="kpi-lbl">Lignes fichier</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon">🔍</div>
+    <div class="kpi-val">{{ report.filtered_rows|default:"0" }}</div>
+    <div class="kpi-lbl">Alarmes filtrées</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon">📊</div>
+    <div class="kpi-val">{{ report.total_incidents|default:"0" }}</div>
+    <div class="kpi-lbl">Incidents</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon">⚠️</div>
+    <div class="kpi-val {% if report.unresolved_count > 0 %}warning{% else %}success{% endif %}">{{ report.unresolved_count|default:"0" }}</div>
+    <div class="kpi-lbl">Non résolus</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon">⏱</div>
+    <div class="kpi-val">{{ report.processing_time_sec }}s</div>
+    <div class="kpi-lbl">Temps traitement</div>
+  </div>
+</div>
+
+<!-- Synthèse -->
+{% if report.synthesis_json %}
+<div class="section-card">
+  <div class="section-header">
+    <div class="section-title">📋 Synthèse par Escalade</div>
+    <span class="section-badge">{{ report.total_incidents }} incidents total</span>
+  </div>
+  <table class="synth">
+    <thead>
+      <tr>
+        <th>Escalade</th><th>Incidents</th><th>Durée</th><th>MTTR</th><th>Outage</th><th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.synthesis_json %}
+      <tr class="{% if row.Escalade == 'TOTAL' %}row-total{% endif %}">
+        <td>{% if row.Escalade == 'TOTAL' %}<span class="esc-total">TOTAL</span>{% else %}<span class="esc-name">{{ row.Escalade }}</span>{% endif %}</td>
+        <td>
+          {% if row.Escalade == 'TOTAL' %}<span class="esc-total">{{ row|access:"Inc count" }}</span>
+          {% elif row|access:"Inc count" > 0 %}<span class="inc-count">{{ row|access:"Inc count" }}</span>
+          {% else %}<span class="inc-zero">—</span>{% endif %}
+        </td>
+        <td style="font-size:13px;color:#555;">{{ row.DUREE }}</td>
+        <td style="font-size:13px;color:#555;">{{ row.MTTR }}</td>
+        <td style="font-size:13px;font-weight:600;color:#003087;">{{ row.OUTAGE }}</td>
+        <td>
+          {% if "Non resolu" in row.Status %}<span class="badge badge-warn">⚠ {{ row.Status }}</span>
+          {% elif row.Status == "Résolu" %}<span class="badge badge-ok">✓ Résolu</span>
+          {% elif row.Status == "N/A" %}<span class="badge badge-na">N/A</span>
+          {% else %}<span style="color:#aaa;font-size:13px;">{{ row.Status }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Téléchargements -->
+<div class="section-card">
+  <div class="section-header">
+    <div class="section-title">📥 Fichiers générés</div>
+    <span class="section-badge">Prêts à télécharger</span>
+  </div>
+  <div class="downloads-grid">
+    {% if report.detailed_file %}
+    <a href="{% url 'download_file' report.pk 'detailed' %}" class="dl-card">
+      <div class="dl-icon blue">📊</div>
+      <div class="dl-info"><div class="dl-title">Rapport Détaillé</div><div class="dl-sub">Toutes les alarmes filtrées avec durées</div></div>
+      <div class="dl-btn">↓ Excel</div>
+    </a>
+    {% endif %}
+    {% if report.synthesis_file %}
+    <a href="{% url 'download_file' report.pk 'synthesis' %}" class="dl-card">
+      <div class="dl-icon yellow">📋</div>
+      <div class="dl-info"><div class="dl-title">Rapport Synthèse</div><div class="dl-sub">Tableau récapitulatif par escalade</div></div>
+      <div class="dl-btn">↓ Excel</div>
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal suppression -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box">
+    <div class="modal-icon">🗑️</div>
+    <div class="modal-title">Supprimer ce rapport ?</div>
+    <div class="modal-sub">Vous êtes sur le point de supprimer :</div>
+    <div class="modal-filename">{{ report.original_filename }}</div>
+    <div class="modal-warn">⚠ Cette action est irréversible. Le rapport et tous ses fichiers Excel seront définitivement supprimés.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDeleteModal()">Annuler</button>
+      <button class="btn-confirm-delete" id="confirmBtn" onclick="confirmDelete()">🗑 Supprimer définitivement</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var modal = document.getElementById('deleteModal');
+
+  window.openDeleteModal = function() { modal.classList.add('show'); };
+  window.closeDeleteModal = function() { modal.classList.remove('show'); };
+
+  modal.addEventListener('click', function(e){ if(e.target === modal) closeDeleteModal(); });
+
+  window.confirmDelete = function() {
+    var btn = document.getElementById('confirmBtn');
+    btn.disabled = true; btn.textContent = 'Suppression...';
+    var csrf = document.cookie.match(/csrftoken=([^;]+)/);
+    csrf = csrf ? csrf[1] : '';
+    fetch('/delete/{{ report.pk }}/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(d.success) window.location.href = d.redirect; })
+    .catch(function(){ btn.disabled = false; btn.textContent = '🗑 Supprimer définitivement'; });
+  };
+})();
+</script>
+{% endblock %}

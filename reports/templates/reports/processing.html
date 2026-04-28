@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Traitement en cours...{% endblock %}
+{% block breadcrumb %}Traitement{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  .processing-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+  }
+
+  /* Cercle animé */
+  .loader-ring {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin-bottom: 32px;
+  }
+
+  .loader-ring svg {
+    animation: rotate 2s linear infinite;
+  }
+
+  @keyframes rotate {
+    100% { transform: rotate(360deg); }
+  }
+
+  .loader-ring .track {
+    fill: none;
+    stroke: #e8edf5;
+    stroke-width: 8;
+  }
+
+  .loader-ring .fill {
+    fill: none;
+    stroke: var(--yas-yellow);
+    stroke-width: 8;
+    stroke-linecap: round;
+    stroke-dasharray: 220;
+    stroke-dashoffset: 60;
+    animation: dash 1.5s ease-in-out infinite;
+  }
+
+  @keyframes dash {
+    0%   { stroke-dashoffset: 200; }
+    50%  { stroke-dashoffset: 40; }
+    100% { stroke-dashoffset: 200; }
+  }
+
+  .loader-icon {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50%       { transform: translate(-50%, -50%) scale(1.1); opacity: .8; }
+  }
+
+  .processing-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--yas-blue);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .processing-file {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 32px;
+    max-width: 400px;
+    word-break: break-all;
+  }
+
+  /* Barre de progression */
+  .progress-wrap {
+    width: 100%;
+    max-width: 440px;
+    margin-bottom: 24px;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+
+  .progress-track {
+    height: 8px;
+    background: #e8edf5;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--yas-blue), var(--yas-yellow));
+    width: 0%;
+    transition: width .4s ease;
+    animation: progress-anim 3s ease-in-out infinite;
+  }
+
+  @keyframes progress-anim {
+    0%   { width: 5%; }
+    30%  { width: 45%; }
+    60%  { width: 70%; }
+    85%  { width: 88%; }
+    100% { width: 92%; }
+  }
+
+  /* Étapes */
+  .steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 360px;
+    width: 100%;
+    margin-bottom: 32px;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e8edf5;
+    font-size: 13px;
+    color: #888;
+    transition: all .3s;
+  }
+
+  .step-item.active {
+    border-color: var(--yas-yellow);
+    color: var(--yas-blue);
+    font-weight: 600;
+    background: #fff8e1;
+  }
+
+  .step-item.done {
+    border-color: #22c55e;
+    color: #166534;
+    background: #f0fff4;
+    font-weight: 600;
+  }
+
+  .step-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; flex-shrink: 0;
+    background: #f0f4ff;
+    color: #aaa;
+    font-weight: 700;
+    transition: all .3s;
+  }
+
+  .step-item.active .step-dot {
+    background: var(--yas-yellow);
+    color: var(--yas-blue);
+    animation: spin-dot .8s linear infinite;
+  }
+
+  .step-item.done .step-dot {
+    background: #22c55e;
+    color: #fff;
+  }
+
+  @keyframes spin-dot {
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.15); }
+  }
+
+  .cancel-link {
+    font-size: 13px;
+    color: #aaa;
+    text-decoration: none;
+    margin-top: 8px;
+  }
+  .cancel-link:hover { color: #e53e3e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="processing-wrap">
+
+  <!-- Loader animé -->
+  <div class="loader-ring">
+    <svg viewBox="0 0 120 120" width="120" height="120">
+      <circle class="track" cx="60" cy="60" r="50"/>
+      <circle class="fill"  cx="60" cy="60" r="50"/>
+    </svg>
+    <div class="loader-icon">📡</div>
+  </div>
+
+  <div class="processing-title">Traitement en cours</div>
+  <div class="processing-file">{{ report.original_filename }}</div>
+
+  <!-- Barre de progression -->
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span id="stepLabel">Chargement du fichier...</span>
+      <span id="pctLabel">—</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Étapes -->
+  <div class="steps-list">
+    <div class="step-item active" id="step1">
+      <div class="step-dot">⚙</div>
+      Chargement et filtrage des alarmes
+    </div>
+    <div class="step-item" id="step2">
+      <div class="step-dot">2</div>
+      Déduplication des incidents
+    </div>
+    <div class="step-item" id="step3">
+      <div class="step-dot">3</div>
+      Calcul MTTR &amp; OUTAGE
+    </div>
+    <div class="step-item" id="step4">
+      <div class="step-dot">4</div>
+      Génération des fichiers Excel
+    </div>
+  </div>
+
+  <a href="{% url 'upload' %}" class="cancel-link">✕ Annuler et recommencer</a>
+</div>
+
+<script>
+(function() {
+  var pk = "{{ report.pk }}";
+  var statusUrl  = "/process/" + pk + "/status/";
+  var processUrl = "/process/" + pk + "/";
+
+  var steps = [
+    { el: document.getElementById('step1'), label: 'Chargement et filtrage...', pct: '25%' },
+    { el: document.getElementById('step2'), label: 'Déduplication des incidents...', pct: '50%' },
+    { el: document.getElementById('step3'), label: 'Calcul MTTR & OUTAGE...', pct: '75%' },
+    { el: document.getElementById('step4'), label: 'Génération des fichiers...', pct: '90%' },
+  ];
+
+  var stepLabel  = document.getElementById('stepLabel');
+  var pctLabel   = document.getElementById('pctLabel');
+  var fill       = document.getElementById('progressFill');
+  var currentStep = 0;
+
+  // Animation des étapes
+  function advanceStep() {
+    if (currentStep < steps.length) {
+      // Marque l'étape précédente comme done
+      if (currentStep > 0) {
+        steps[currentStep - 1].el.className = 'step-item done';
+        steps[currentStep - 1].el.querySelector('.step-dot').textContent = '✓';
+      }
+      var s = steps[currentStep];
+      s.el.className = 'step-item active';
+      s.el.querySelector('.step-dot').textContent = '⚙';
+      if (stepLabel) stepLabel.textContent = s.label;
+      if (pctLabel)  pctLabel.textContent  = s.pct;
+      currentStep++;
+    }
+  }
+
+  // Lance le traitement via POST
+  function startProcessing() {
+    var csrfToken = document.cookie.match(/csrftoken=([^;]+)/);
+    csrfToken = csrfToken ? csrfToken[1] : '';
+
+    fetch(processUrl, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json',
+      },
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.done) {
+        // Marque toutes les étapes comme done
+        steps.forEach(function(s) {
+          s.el.className = 'step-item done';
+          s.el.querySelector('.step-dot').textContent = '✓';
+        });
+        if (stepLabel) stepLabel.textContent = 'Terminé !';
+        if (pctLabel)  pctLabel.textContent  = '100%';
+        if (fill) { fill.style.animation = 'none'; fill.style.width = '100%'; }
+        setTimeout(function() { window.location.href = data.redirect; }, 600);
+      } else if (data.error) {
+        window.location.href = "/upload/?error=1";
+      }
+    })
+    .catch(function() {
+      // Fallback: polling si le POST échoue
+      pollStatus();
+    });
+  }
+
+  // Polling de secours
+  function pollStatus() {
+    fetch(statusUrl)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.done) {
+        window.location.href = data.redirect;
+      } else {
+        setTimeout(pollStatus, 1500);
+      }
+    })
+    .catch(function() {
+      setTimeout(pollStatus, 2000);
+    });
+  }
+
+  // Animation des étapes toutes les 1.5s
+  advanceStep();
+  var stepInterval = setInterval(function() {
+    if (currentStep < steps.length) {
+      advanceStep();
+    } else {
+      clearInterval(stepInterval);
+    }
+  }, 1500);
+
+  // Lance le traitement
+  startProcessing();
+})();
+</script>
+{% endblock %}

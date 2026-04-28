@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Erreur — Rapport Automatique{% endblock %}
+
+{% block content %}
+<section class="section">
+    <div class="container container-sm">
+        <div class="card" style="text-align:center;padding:3rem;">
+            <div style="font-size:3rem;margin-bottom:1rem;">&#9888;</div>
+            <h1 class="page-title" style="color:#e74c3c;">Erreur de traitement</h1>
+            <p style="margin-bottom:1rem;">Une erreur est survenue lors du traitement de votre fichier :</p>
+            <div class="alert alert-error">{{ error }}</div>
+            <p style="margin-top:1.5rem;color:#666;">Vérifiez que votre fichier contient bien les colonnes attendues (Alarm text, Alarm Time, Cancel Time, Escalade, etc.)</p>
+            <a href="{% url 'upload' %}" class="btn btn-primary" style="margin-top:1.5rem;">Réessayer</a>
+        </div>
+    </div>
+</section>
+{% endblock %}
