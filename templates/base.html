@@ -5,12 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Rapport Auto — Yas{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'reports/favicon.svg' %}">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --yas-blue: #003087; --yas-yellow: #FFC72C; --yas-light: #f0f4ff; }
     body { font-family: 'DM Sans', sans-serif; background: #f5f7fb; color: #111; min-height: 100vh; }
 
+    /* ── NAVBAR ── */
     .navbar {
       background: var(--yas-blue); padding: 0 40px;
       display: flex; align-items: center; justify-content: space-between;
@@ -27,9 +29,11 @@
       font-size: 14px; font-weight: 500; padding: 8px 16px;
       border-radius: 8px; transition: color .2s, background .2s;
     }
-    .nav-links a:hover, .nav-links a.active { color: #fff; background: rgba(255,255,255,0.1); }
-    .nav-links a.active { color: var(--yas-yellow); }
-    .nav-user { display: flex; align-items: center; gap: 12px; }
+    .nav-links a:hover { color: #fff; background: rgba(255,255,255,0.1); }
+    .nav-links a.active { color: var(--yas-yellow); background: rgba(255,255,255,0.08); }
+
+    .nav-user { display: flex; align-items: center; gap: 10px; }
+
     .user-badge {
       display: flex; align-items: center; gap: 8px;
       background: rgba(255,199,44,0.15); border: 1px solid rgba(255,199,44,0.3);
@@ -42,6 +46,7 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 11px; font-weight: 700;
     }
+
     .btn-logout {
       background: none; border: 1px solid rgba(255,255,255,0.2);
       color: rgba(255,255,255,0.6); padding: 6px 14px; border-radius: 8px;
@@ -50,12 +55,123 @@
     }
     .btn-logout:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
 
+    /* ── NOTIFICATIONS ── */
+    .notif-wrap {
+      position: relative;
+    }
+
+    .notif-btn {
+      width: 38px; height: 38px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px;
+      transition: background .2s;
+      position: relative;
+    }
+    .notif-btn:hover { background: rgba(255,255,255,0.15); }
+
+    .notif-badge {
+      position: absolute; top: -5px; right: -5px;
+      background: #e53e3e; color: #fff;
+      font-size: 10px; font-weight: 700;
+      min-width: 18px; height: 18px;
+      border-radius: 9px; padding: 0 4px;
+      display: flex; align-items: center; justify-content: center;
+      border: 2px solid var(--yas-blue);
+      display: none;
+    }
+    .notif-badge.show { display: flex; }
+
+    .notif-dropdown {
+      position: absolute; top: calc(100% + 10px); right: 0;
+      width: 320px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+      border: 1px solid #e8edf5;
+      overflow: hidden;
+      display: none;
+      z-index: 999;
+    }
+    .notif-dropdown.show { display: block; }
+
+    .notif-header {
+      background: #003087;
+      padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .notif-header-title {
+      font-size: 13px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .notif-header-count {
+      background: #e53e3e; color: #fff;
+      font-size: 11px; font-weight: 700;
+      padding: 2px 8px; border-radius: 10px;
+    }
+
+    .notif-list { max-height: 300px; overflow-y: auto; }
+
+    .notif-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid #f5f7fb;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item:hover { background: #f8faff; }
+
+    .notif-dot {
+      width: 8px; height: 8px;
+      background: #e53e3e;
+      border-radius: 50%; flex-shrink: 0;
+    }
+
+    .notif-item-body { flex: 1; }
+    .notif-item-file {
+      font-size: 13px; font-weight: 600; color: #111;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 200px;
+    }
+    .notif-item-date { font-size: 11px; color: #888; margin-top: 2px; }
+
+    .notif-item-count {
+      background: #fff0f0; color: #e53e3e;
+      font-size: 11px; font-weight: 700;
+      padding: 3px 8px; border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .notif-empty {
+      padding: 24px;
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+    }
+
+    .notif-footer {
+      padding: 10px 18px;
+      border-top: 1px solid #f0f4ff;
+      background: #fafbff;
+      text-align: center;
+    }
+    .notif-footer a {
+      font-size: 12px; font-weight: 600; color: #003087;
+      text-decoration: none;
+    }
+    .notif-footer a:hover { color: #0047cc; }
+
+    /* ── TOPBAR ── */
     .topbar {
       background: #fff; border-bottom: 1px solid #e8edf5;
       padding: 10px 40px; font-size: 13px; color: #888;
     }
     .topbar span { color: var(--yas-blue); font-weight: 600; }
 
+    /* ── MAIN ── */
     .main-content { padding: 32px 40px; max-width: 1280px; margin: 0 auto; }
 
     .card {
@@ -93,16 +209,43 @@
     <div class="nav-divider"></div>
     <span class="nav-app">Rapport Automatique</span>
   </a>
+
   <div class="nav-links">
-    <a href="{% url 'home' %}"    class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
-    <a href="{% url 'upload' %}"  class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
-    <a href="{% url 'history' %}" class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
+    <a href="{% url 'home' %}"         class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
+    <a href="{% url 'upload' %}"       class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
+    <a href="{% url 'history' %}"      class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
+    <a href="{% url 'statistiques' %}" class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
   </div>
+
   <div class="nav-user">
     {% if user.is_authenticated %}
+
+      <!-- Cloche notifications -->
+      <div class="notif-wrap" id="notifWrap">
+        <div class="notif-btn" id="notifBtn" title="Incidents non résolus">
+          🔔
+          <span class="notif-badge" id="notifBadge">0</span>
+        </div>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-header">
+            <div class="notif-header-title">
+              ⚠️ Incidents non résolus
+            </div>
+            <span class="notif-header-count" id="notifCount">0</span>
+          </div>
+          <div class="notif-list" id="notifList">
+            <div class="notif-empty">Chargement...</div>
+          </div>
+          <div class="notif-footer">
+            <a href="{% url 'history' %}?period=all">Voir tout l'historique →</a>
+          </div>
+        </div>
+      </div>
+
       <div class="user-badge">
         <div class="user-avatar">{{ user.username|first|upper }}</div>
         {{ user.username }}
+        {% if user.is_superuser %}<span style="font-size:10px;opacity:.7;">(Admin)</span>{% endif %}
       </div>
       <a href="{% url 'accounts:logout' %}" class="btn-logout">Déconnexion</a>
     {% endif %}
@@ -110,7 +253,7 @@
 </nav>
 
 <div class="topbar">
-  Yas Togo &rsaquo; NOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
+  Yas Togo &rsaquo; ISOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
 </div>
 
 <div class="main-content">
@@ -123,6 +266,77 @@
   {% endif %}
   {% block content %}{% endblock %}
 </div>
+
+{% if user.is_authenticated %}
+<script>
+(function(){
+  var btn      = document.getElementById('notifBtn');
+  var dropdown = document.getElementById('notifDropdown');
+  var badge    = document.getElementById('notifBadge');
+  var count    = document.getElementById('notifCount');
+  var list     = document.getElementById('notifList');
+
+  function loadNotifications() {
+    fetch('/notifications/')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      var total = data.total;
+
+      // Badge
+      if (total > 0) {
+        badge.textContent = total > 99 ? '99+' : total;
+        badge.classList.add('show');
+        count.textContent = total;
+      } else {
+        badge.classList.remove('show');
+        count.textContent = '0';
+      }
+
+      // Liste
+      if (data.items.length === 0) {
+        list.innerHTML = '<div class="notif-empty">✅ Aucun incident non résolu</div>';
+      } else {
+        list.innerHTML = data.items.map(function(item) {
+          return '<a href="/results/' + item.pk + '/" class="notif-item">' +
+            '<div class="notif-dot"></div>' +
+            '<div class="notif-item-body">' +
+              '<div class="notif-item-file">' + item.filename + '</div>' +
+              '<div class="notif-item-date">📅 ' + item.date + '</div>' +
+            '</div>' +
+            '<div class="notif-item-count">⚠ ' + item.count + ' ouvert' + (item.count > 1 ? 's' : '') + '</div>' +
+          '</a>';
+        }).join('');
+      }
+    })
+    .catch(function(){
+      list.innerHTML = '<div class="notif-empty">Erreur de chargement</div>';
+    });
+  }
+
+  // Toggle dropdown
+  btn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    dropdown.classList.toggle('show');
+    if (dropdown.classList.contains('show')) {
+      loadNotifications();
+    }
+  });
+
+  // Fermer en cliquant ailleurs
+  document.addEventListener('click', function(e) {
+    if (!document.getElementById('notifWrap').contains(e.target)) {
+      dropdown.classList.remove('show');
+    }
+  });
+
+  // Charge au démarrage (badge uniquement)
+  loadNotifications();
+
+  // Rafraîchit toutes les 2 minutes
+  setInterval(loadNotifications, 120000);
+})();
+</script>
+{% endif %}
 
 {% block extra_js %}{% endblock %}
 </body>
