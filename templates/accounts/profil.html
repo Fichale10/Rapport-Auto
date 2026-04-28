@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}Mon Profil — Yas ISOC{% endblock %}
+{% block breadcrumb %}Mon Profil{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  .profil-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── Carte profil gauche ── */
+  .profil-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px 24px;
+    border: 1px solid #e8edf5;
+    box-shadow: 0 1px 4px rgba(0,48,135,.05);
+    text-align: center;
+  }
+
+  .avatar-circle {
+    width: 80px; height: 80px;
+    background: linear-gradient(135deg, var(--yas-blue), #0047cc);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px; color: var(--yas-yellow);
+    margin: 0 auto 16px;
+    letter-spacing: 2px;
+  }
+
+  .profil-name {
+    font-size: 18px; font-weight: 700; color: #111;
+    margin-bottom: 4px;
+  }
+
+  .profil-username {
+    font-size: 13px; color: #888;
+    margin-bottom: 16px;
+  }
+
+  .profil-role {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+    margin-bottom: 24px;
+  }
+
+  .role-admin  { background: #fff8e1; color: #7a5a00; border: 1px solid #FFC72C; }
+  .role-agent  { background: #e8f0ff; color: #003087; border: 1px solid #c5d8ff; }
+
+  .profil-stats {
+    display: flex; flex-direction: column; gap: 10px;
+    margin-top: 8px;
+  }
+
+  .pstat {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: #f8faff;
+    border-radius: 10px;
+    border: 1px solid #e8edf5;
+  }
+
+  .pstat-label { font-size: 12px; color: #888; display: flex; align-items: center; gap: 6px; }
+  .pstat-val   { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--yas-blue); letter-spacing: 1px; }
+  .pstat-val.red { color: #e53e3e; }
+
+  /* ── Formulaires droite ── */
+  .forms-col { display: flex; flex-direction: column; gap: 20px; }
+
+  .form-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px;
+    border: 1px solid #e8edf5;
+    box-shadow: 0 1px 4px rgba(0,48,135,.05);
+  }
+
+  .form-card-title {
+    font-size: 15px; font-weight: 700; color: var(--yas-blue);
+    margin-bottom: 20px; padding-bottom: 14px;
+    border-bottom: 1px solid #f0f4ff;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .form-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 16px;
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+
+  .form-label {
+    font-size: 12px; font-weight: 700;
+    color: var(--yas-blue);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+
+  .form-input {
+    padding: 11px 14px;
+    background: #f0f4ff;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    color: #111; outline: none;
+    transition: border-color .2s, background .2s;
+    width: 100%;
+  }
+
+  .form-input:focus {
+    border-color: var(--yas-blue);
+    background: #fff;
+  }
+
+  .form-input:disabled {
+    background: #f5f7fb;
+    color: #aaa;
+    cursor: not-allowed;
+  }
+
+  .form-hint { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  .btn-save {
+    background: var(--yas-yellow); color: var(--yas-blue);
+    border: none; padding: 12px 24px; border-radius: 10px;
+    font-size: 14px; font-weight: 700;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: transform .15s, box-shadow .15s;
+    margin-top: 8px;
+  }
+  .btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,199,44,.35); }
+
+  .btn-danger {
+    background: #fff0f0; color: #e53e3e;
+    border: 1.5px solid #fecaca; padding: 12px 24px; border-radius: 10px;
+    font-size: 14px; font-weight: 700;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all .15s; margin-top: 8px;
+  }
+  .btn-danger:hover { background: #e53e3e; color: #fff; border-color: #e53e3e; }
+
+  /* Alerts */
+  .alert {
+    padding: 12px 16px; border-radius: 10px;
+    font-size: 13px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+    border-left: 4px solid;
+  }
+  .alert-success { background: #f0fff4; border-color: #22c55e; color: #166534; }
+  .alert-error   { background: #fff0f0; border-color: #e53e3e; color: #c53030; }
+
+  /* Password strength */
+  .pwd-strength { margin-top: 6px; }
+  .pwd-bar {
+    height: 4px; background: #e8edf5;
+    border-radius: 2px; overflow: hidden; margin-bottom: 4px;
+  }
+  .pwd-fill { height: 100%; border-radius: 2px; width: 0%; transition: width .3s, background .3s; }
+  .pwd-label { font-size: 11px; color: #888; }
+
+  @media(max-width: 900px) {
+    .profil-grid { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert alert-{{ message.tags }}">
+      {% if message.tags == 'success' %}✅{% else %}⚠{% endif %}
+      {{ message }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div class="profil-grid">
+
+  <!-- Carte profil -->
+  <div class="profil-card">
+    <div class="avatar-circle">
+      {{ user.username|first|upper }}{% if user.last_name %}{{ user.last_name|first|upper }}{% endif %}
+    </div>
+    <div class="profil-name">
+      {% if user.get_full_name %}{{ user.get_full_name }}{% else %}{{ user.username }}{% endif %}
+    </div>
+    <div class="profil-username">@{{ user.username }}</div>
+
+    {% if user.is_superuser %}
+      <span class="profil-role role-admin">⭐ Administrateur</span>
+    {% else %}
+      <span class="profil-role role-agent">👤 Agent ISOC</span>
+    {% endif %}
+
+    <div class="profil-stats">
+      <div class="pstat">
+        <span class="pstat-label">📋 Rapports traités</span>
+        <span class="pstat-val">{{ total_reports }}</span>
+      </div>
+      <div class="pstat">
+        <span class="pstat-label">⚡ Incidents détectés</span>
+        <span class="pstat-val">{{ total_incidents }}</span>
+      </div>
+      <div class="pstat">
+        <span class="pstat-label">⚠️ Incidents ouverts</span>
+        <span class="pstat-val {% if total_unresolved > 0 %}red{% endif %}">{{ total_unresolved }}</span>
+      </div>
+      <div class="pstat">
+        <span class="pstat-label">📅 Membre depuis</span>
+        <span style="font-size:12px; font-weight:600; color:#003087;">{{ user.date_joined|date:"d/m/Y" }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formulaires -->
+  <div class="forms-col">
+
+    <!-- Informations personnelles -->
+    <div class="form-card">
+      <div class="form-card-title">👤 Informations personnelles</div>
+      <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update_info">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Prénom</label>
+            <input type="text" name="first_name" class="form-input"
+              value="{{ user.first_name }}" placeholder="Votre prénom">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nom</label>
+            <input type="text" name="last_name" class="form-input"
+              value="{{ user.last_name }}" placeholder="Votre nom">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Identifiant</label>
+            <input type="text" class="form-input" value="{{ user.username }}" disabled>
+            <span class="form-hint">L'identifiant ne peut pas être modifié</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Adresse email</label>
+            <input type="email" name="email" class="form-input"
+              value="{{ user.email }}" placeholder="votre@email.com">
+          </div>
+        </div>
+        <button type="submit" class="btn-save">💾 Enregistrer les modifications</button>
+      </form>
+    </div>
+
+    <!-- Changer mot de passe -->
+    <div class="form-card">
+      <div class="form-card-title">🔒 Changer le mot de passe</div>
+      <form method="POST" id="pwdForm">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="change_password">
+        <div class="form-row">
+          <div class="form-group full">
+            <label class="form-label">Mot de passe actuel</label>
+            <input type="password" name="old_password" class="form-input"
+              placeholder="••••••••" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nouveau mot de passe</label>
+            <input type="password" name="new_password1" class="form-input"
+              id="newPwd" placeholder="••••••••" required>
+            <div class="pwd-strength">
+              <div class="pwd-bar"><div class="pwd-fill" id="pwdFill"></div></div>
+              <div class="pwd-label" id="pwdLabel">Entrez un mot de passe</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirmer le mot de passe</label>
+            <input type="password" name="new_password2" class="form-input"
+              id="confirmPwd" placeholder="••••••••" required>
+            <div class="form-hint" id="pwdMatch"></div>
+          </div>
+        </div>
+        <button type="submit" class="btn-danger">🔒 Changer le mot de passe</button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  // Force du mot de passe
+  var newPwd   = document.getElementById('newPwd');
+  var fill     = document.getElementById('pwdFill');
+  var lbl      = document.getElementById('pwdLabel');
+  var confirm  = document.getElementById('confirmPwd');
+  var matchLbl = document.getElementById('pwdMatch');
+
+  if (newPwd) {
+    newPwd.addEventListener('input', function() {
+      var v = this.value;
+      var score = 0;
+      if (v.length >= 8)  score++;
+      if (/[A-Z]/.test(v)) score++;
+      if (/[0-9]/.test(v)) score++;
+      if (/[^A-Za-z0-9]/.test(v)) score++;
+
+      var configs = [
+        { w: '0%',   bg: '#e8edf5', txt: 'Entrez un mot de passe' },
+        { w: '25%',  bg: '#e53e3e', txt: 'Trop faible' },
+        { w: '50%',  bg: '#FF9800', txt: 'Faible' },
+        { w: '75%',  bg: '#FFC72C', txt: 'Moyen' },
+        { w: '100%', bg: '#22c55e', txt: 'Fort ✓' },
+      ];
+      var c = configs[v.length === 0 ? 0 : score];
+      fill.style.width = c.w;
+      fill.style.background = c.bg;
+      lbl.textContent = c.txt;
+      lbl.style.color = c.bg;
+      checkMatch();
+    });
+  }
+
+  function checkMatch() {
+    if (!confirm.value) { matchLbl.textContent = ''; return; }
+    if (newPwd.value === confirm.value) {
+      matchLbl.textContent = '✓ Les mots de passe correspondent';
+      matchLbl.style.color = '#22c55e';
+    } else {
+      matchLbl.textContent = '✗ Les mots de passe ne correspondent pas';
+      matchLbl.style.color = '#e53e3e';
+    }
+  }
+
+  if (confirm) confirm.addEventListener('input', checkMatch);
+})();
+</script>
+
+{% endblock %}
