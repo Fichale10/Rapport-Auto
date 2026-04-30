@@ -41,6 +41,23 @@
   }
   .btn-hero-outline:hover { border-color: rgba(255,255,255,.6); color: #fff; }
 
+  /* ── Bouton Statistiques (accent jaune) ── */
+  .btn-hero-stats {
+    background: rgba(255,199,44,.18);
+    border: 1.5px solid rgba(255,199,44,.45);
+    color: #FFC72C;
+    padding: 10px 20px; border-radius: 9px;
+    font-size: 13px; font-weight: 700; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+  }
+  .btn-hero-stats:hover {
+    background: rgba(255,199,44,.30);
+    border-color: #FFC72C;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(255,199,44,.25);
+    transform: translateY(-1px);
+  }
+
   .btn-hero-primary {
     background: #FFC72C; color: #003087; border: none;
     padding: 10px 20px; border-radius: 9px; font-size: 13px; font-weight: 700;
@@ -134,9 +151,13 @@
   </div>
   <div class="hero-actions">
     <a href="{% url 'history' %}" class="btn-hero-outline">← Historique</a>
-   <a href="{% url 'export_pdf' report.pk %}" class="btn-hero-outline" target="_blank">
-  📄 Exporter PDF
-</a> 
+    <a href="{% url 'export_pdf' report.pk %}" class="btn-hero-outline" target="_blank">
+      📄 Exporter PDF
+    </a>
+    <!-- ✦ Bouton Voir les statistiques ✦ -->
+    <a href="{% url 'statistiques' %}?report={{ report.pk }}" class="btn-hero-stats">
+      📊 Voir les statistiques
+    </a>
     <a href="{% url 'upload' %}" class="btn-hero-primary">↑ Nouveau traitement</a>
     <button class="btn-hero-danger" onclick="openDeleteModal()">🗑 Supprimer</button>
   </div>

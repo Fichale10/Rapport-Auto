@@ -5,20 +5,71 @@
 {% block extra_css %}
 <style>
   :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  /* ── Bannière rapport unique ── */
+  .report-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    background: linear-gradient(135deg, #003087 0%, #0047cc 100%);
+    border-radius: 14px;
+    padding: 16px 22px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .report-banner-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .report-banner-icon {
+    width: 40px; height: 40px;
+    background: rgba(255,199,44,.18);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .report-banner-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: #FFC72C; margin-bottom: 3px;
+  }
+  .report-banner-name {
+    font-size: 14px; font-weight: 700; color: #fff;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 500px;
+  }
+  .report-banner-date { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 2px; }
+  .btn-back-results {
+    background: rgba(255,255,255,.1);
+    border: 1.5px solid rgba(255,255,255,.25);
+    color: rgba(255,255,255,.85);
+    padding: 9px 18px; border-radius: 9px;
+    font-size: 13px; font-weight: 600;
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-back-results:hover { border-color: rgba(255,255,255,.6); color: #fff; }
+
+  /* ── Barre période ── */
   .period-bar { display:flex; align-items:center; gap:10px; margin-bottom:28px; flex-wrap:wrap; }
   .period-bar span { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-right:4px; }
-  .period-btn { padding:7px 18px; border-radius:8px; font-size:13px; font-weight:600; border:1.5px solid #e8edf5; background:#fff; color:#555; text-decoration:none; transition:all .15s; }
+  .period-btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; border:1.5px solid #e8edf5; background:#fff; color:#555; text-decoration:none; transition:all .15s; }
   .period-btn:hover { border-color:#003087; color:#003087; }
   .period-btn.active { background:#003087; color:#fff; border-color:#003087; }
 
+  /* ── KPIs ── */
   .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
-  .kpi { background:#fff; border-radius:14px; padding:20px 22px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; }
+  .kpi { background:#fff; border-radius:14px; padding:20px 22px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; transition:box-shadow .2s,transform .2s; }
+  .kpi:hover { box-shadow:0 4px 20px rgba(0,48,135,.1); transform:translateY(-2px); }
   .kpi-icon { width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; }
   .kpi-icon.blue   { background:#e8f0ff; }
   .kpi-icon.yellow { background:#fff8e1; }
   .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:30px; color:#003087; letter-spacing:1px; line-height:1; }
   .kpi-lbl { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
 
+  /* ── Grille stats ── */
   .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   .stat-card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05); }
   .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #f0f4ff; }
@@ -34,40 +85,76 @@
   .bar-fill.yellow { background:linear-gradient(90deg,#FFC72C,#ffdd6b); }
   .bar-fill.red    { background:linear-gradient(90deg,#e53e3e,#fc8181); }
 
-  /* Donut SVG */
-  .pie-outer { display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
-  .pie-svg-wrap { flex-shrink:0; }
-  .pie-svg-wrap svg { display:block; }
-  .pie-leg { flex:1; display:flex; flex-direction:column; gap:7px; min-width:150px; max-height:210px; overflow-y:auto; }
-  .leg-row { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:6px; }
+  /* ── 3D Pie ── */
+  .pie3d-outer { display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
+  .pie3d-stage { perspective:600px; perspective-origin:50% 20%; flex-shrink:0; }
+  .pie3d-canvas-wrap { transform:rotateX(48deg) scaleY(0.62); transform-origin:center center; display:block; filter:drop-shadow(0 12px 18px rgba(0,48,135,0.25)); }
+  .pie3d-canvas-wrap canvas { display:block; border-radius:50%; }
+  .pie3d-legend { flex:1; display:flex; flex-direction:column; gap:7px; min-width:150px; max-height:220px; overflow-y:auto; }
+  .leg-row { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:8px; transition:background .15s; cursor:default; }
+  .leg-row:hover { background:#f5f7fb; }
   .leg-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
   .leg-name { flex:1; font-size:12px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .leg-pct  { font-size:12px; font-weight:700; color:#003087; }
   .leg-h    { font-size:11px; color:#999; margin-left:3px; }
+  .total-center { text-align:center; margin-bottom:12px; }
+  .total-val { font-family:'Bebas Neue',sans-serif; font-size:28px; color:#003087; letter-spacing:2px; line-height:1; }
+  .total-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px; }
 
   .empty-msg { text-align:center; padding:40px 20px; color:#bbb; font-size:14px; }
 
   @media(max-width:900px){
     .stats-grid { grid-template-columns:1fr; }
     .kpi-row    { grid-template-columns:1fr 1fr; }
-    .pie-outer  { flex-direction:column; }
+    .pie3d-outer { flex-direction:column; align-items:center; }
+    .report-banner-name { max-width: 240px; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<!-- Filtres période -->
+<!-- ══ Bannière rapport unique (si ?report=pk ou mode latest) ══════════════ -->
+{% if single_report %}
+<div class="report-banner">
+  <div class="report-banner-left">
+    <div class="report-banner-icon">📊</div>
+    <div>
+      <div class="report-banner-tag">
+        {% if period_filter == 'report' %}Rapport sélectionné{% else %}Dernier rapport traité{% endif %}
+      </div>
+      <div class="report-banner-name">{{ single_report.original_filename }}</div>
+      <div class="report-banner-date">
+        📅
+        {% if single_report.date_fin and single_report.date_fin != single_report.date_rapport %}
+          Du {{ single_report.date_rapport|date:"d/m/Y" }} au {{ single_report.date_fin|date:"d/m/Y" }}
+        {% else %}
+          {{ single_report.date_rapport|date:"d/m/Y" }}
+        {% endif %}
+        &nbsp;·&nbsp; {{ single_report.total_incidents }} incidents
+      </div>
+    </div>
+  </div>
+  <a href="{% url 'results' single_report.pk %}" class="btn-back-results">
+    ← Retour aux résultats
+  </a>
+</div>
+{% endif %}
+
+<!-- ══ Filtres période (masqués si mode rapport unique depuis results) ═══════ -->
+{% if period_filter != 'report' %}
 <div class="period-bar">
   <span>Période :</span>
-  <a href="?period=day"   class="period-btn {% if period_filter == 'day' %}active{% endif %}">Aujourd'hui</a>
-  <a href="?period=week"  class="period-btn {% if period_filter == 'week' %}active{% endif %}">7 jours</a>
-  <a href="?period=month" class="period-btn {% if period_filter == 'month' %}active{% endif %}">30 jours</a>
-  <a href="?period=year"  class="period-btn {% if period_filter == 'year' %}active{% endif %}">Année</a>
-  <a href="?period=all"   class="period-btn {% if period_filter == 'all' %}active{% endif %}">Tout</a>
+  <a href="?period=latest" class="period-btn {% if period_filter == 'latest' %}active{% endif %}">Dernier rapport</a>
+  <a href="?period=day"    class="period-btn {% if period_filter == 'day' %}active{% endif %}">Aujourd'hui</a>
+  <a href="?period=week"   class="period-btn {% if period_filter == 'week' %}active{% endif %}">7 jours</a>
+  <a href="?period=month"  class="period-btn {% if period_filter == 'month' %}active{% endif %}">30 jours</a>
+  <a href="?period=year"   class="period-btn {% if period_filter == 'year' %}active{% endif %}">Année</a>
+  <a href="?period=all"    class="period-btn {% if period_filter == 'all' %}active{% endif %}">Tout</a>
 </div>
+{% endif %}
 
-<!-- KPIs -->
+<!-- ══ KPIs ══════════════════════════════════════════════════════════════════ -->
 <div class="kpi-row">
   <div class="kpi">
     <div class="kpi-icon blue">📋</div>
@@ -83,7 +170,7 @@
   </div>
 </div>
 
-<!-- 4 Rectangles -->
+<!-- ══ 4 Cartes ═══════════════════════════════════════════════════════════════ -->
 <div class="stats-grid">
 
   <!-- 1. Classement Escalades -->
@@ -132,18 +219,24 @@
     {% endif %}
   </div>
 
-  <!-- 3. Poids & Outage / Métier — SVG Donut -->
+  <!-- 3. Poids & Outage / Métier -->
   <div class="stat-card">
     <div class="card-header">
       <div class="card-title">🥧 Poids &amp; Outage / Métier</div>
       <span class="card-badge">{{ total_outage_h }}h total</span>
     </div>
     {% if outage_chart %}
-      <div class="pie-outer">
-        <div class="pie-svg-wrap">
-          {{ donut_svg|safe }}
+      <div class="total-center">
+        <div class="total-val">{{ total_outage_h }}h</div>
+        <div class="total-lbl">Outage cumulé total</div>
+      </div>
+      <div class="pie3d-outer">
+        <div class="pie3d-stage">
+          <div class="pie3d-canvas-wrap">
+            {{ donut_svg|safe }}
+          </div>
         </div>
-        <div class="pie-leg">
+        <div class="pie3d-legend">
           {% for o in outage_chart %}
           <div class="leg-row">
             <div class="leg-dot" style="background:{{ o.color }}"></div>

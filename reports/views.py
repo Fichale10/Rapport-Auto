@@ -35,7 +35,7 @@ def upload(request):
         if form.is_valid():
             report = form.save(commit=False)
             report.original_filename = request.FILES['file'].name
-            report.user = request.user  # ← associe l'utilisateur
+            report.user = request.user
             report.save()
             return redirect('process_report', pk=report.pk)
     else:
@@ -158,7 +158,6 @@ def process_status(request, pk):
 def delete_report(request, pk):
     report = get_object_or_404(UploadedReport, pk=pk)
 
-    # Seul le propriétaire ou l'admin peut supprimer
     if report.user != request.user and not request.user.is_superuser:
         return JsonResponse({'error': 'Non autorisé'}, status=403)
 
@@ -188,7 +187,6 @@ def delete_report(request, pk):
 
 def results(request, pk):
     report = get_object_or_404(UploadedReport, pk=pk, processed=True)
-    # Vérifie que l'utilisateur est propriétaire ou admin
     if report.user != request.user and not request.user.is_superuser:
         return redirect('history')
     return render(request, 'reports/results.html', {'report': report, 'period_label': _period_label(report)})
@@ -303,6 +301,7 @@ def _make_donut_svg(data, total_h):
                f'font-size="9" font-family="Arial,sans-serif">TOTAL</text>')
     return f'<svg width="200" height="200" viewBox="0 0 200 200">{"".join(paths)}{center}</svg>'
 
+
 def export_pdf(request, pk):
     import datetime
     from django.http import HttpResponse
@@ -323,7 +322,7 @@ def export_pdf(request, pk):
     LIGHT_GRAY = colors.HexColor('#f8faff')
 
     buffer = BytesIO()
-    W = A4[0] - 40*mm  # largeur utile
+    W = A4[0] - 40*mm
 
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -341,7 +340,6 @@ def export_pdf(request, pk):
             ParagraphStyle('_', fontName=fn, alignment={'LEFT':0,'CENTER':1,'RIGHT':2}[align])
         )
 
-   # ── HEADER ──────────────────────────────────────────────────
     ht = Table([[
         p('<b>YAS</b>', size=24, color='#003087'),
         Table([
@@ -360,7 +358,6 @@ def export_pdf(request, pk):
     elements.append(ht)
     elements.append(Spacer(1, 5*mm))
 
-    # ── META ────────────────────────────────────────────────────
     fname = report.original_filename
     if len(fname) > 40: fname = fname[:37] + '...'
     mt = Table([[
@@ -379,7 +376,6 @@ def export_pdf(request, pk):
     elements.append(mt)
     elements.append(Spacer(1, 5*mm))
 
-    # ── KPIs ────────────────────────────────────────────────────
     elements.append(p('RÉSUMÉ DU TRAITEMENT', size=9, color='#003087', bold=True))
     elements.append(HRFlowable(width='100%', thickness=2, color=YAS_YELLOW, spaceAfter=4))
     elements.append(Spacer(1, 2*mm))
@@ -405,13 +401,11 @@ def export_pdf(request, pk):
     elements.append(kt)
     elements.append(Spacer(1, 5*mm))
 
-    # ── SYNTHÈSE ─────────────────────────────────────────────────
     if report.synthesis_json:
         elements.append(p('SYNTHÈSE PAR ESCALADE', size=9, color='#003087', bold=True))
         elements.append(HRFlowable(width='100%', thickness=2, color=YAS_YELLOW, spaceAfter=4))
         elements.append(Spacer(1, 2*mm))
 
-        # Largeurs colonnes optimisées
         cw = [W*0.30, W*0.12, W*0.16, W*0.16, W*0.16, W*0.10]
 
         def cell(txt, size=9, color='#333333', bold=False, align='CENTER'):
@@ -482,7 +476,6 @@ def export_pdf(request, pk):
         elements.append(st)
         elements.append(Spacer(1, 6*mm))
 
-    # ── FOOTER ──────────────────────────────────────────────────
     ft = Table([[
         p('YAS Togo — Rapport généré automatiquement par le système NOC', size=8, color='#ffffff'),
         p(f'ISOC • Confidentiel • {now}', size=8, color='#ffffff', align='RIGHT'),
@@ -501,46 +494,75 @@ def export_pdf(request, pk):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+
 def notifications(request):
-    """Retourne les incidents non résolus pour l'utilisateur."""
     if request.user.is_superuser:
         reports = UploadedReport.objects.filter(processed=True, unresolved_count__gt=0).order_by('-date_rapport')
     else:
         reports = UploadedReport.objects.filter(processed=True, user=request.user, unresolved_count__gt=0).order_by('-date_rapport')
-    
+
     data = [{
         'pk':       str(r.pk),
         'filename': r.original_filename[:40],
         'date':     r.date_rapport.strftime('%d/%m/%Y'),
         'count':    r.unresolved_count,
     } for r in reports[:10]]
-    
+
     return JsonResponse({
         'total': reports.count(),
         'items': data,
     })
 
+
 def statistiques(request):
+    """
+    Modes :
+      1. ?report=<pk>  → stats du rapport spécifique
+      2. ?period=...   → stats agrégées de la période
+      3. (défaut)      → stats du dernier rapport traité
+    """
     from collections import defaultdict
     from datetime import timedelta
 
+    # ── Récupère les rapports accessibles à l'utilisateur ──────────────────
     if request.user.is_superuser:
-        reports = UploadedReport.objects.filter(processed=True).order_by('-date_rapport')
+        base_qs = UploadedReport.objects.filter(processed=True).order_by('-date_rapport')
     else:
-        reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-date_rapport')
+        base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-date_rapport')
 
-    period_filter = request.GET.get('period', 'all')
-    today = date.today()
+    # ── Mode rapport unique (?report=pk) ───────────────────────────────────
+    report_pk    = request.GET.get('report')
+    single_report = None
+    period_filter = request.GET.get('period', 'latest')   # 'latest' = défaut
 
-    if period_filter == 'day':
-        reports = reports.filter(date_rapport=today)
-    elif period_filter == 'week':
-        reports = reports.filter(date_rapport__gte=today - timedelta(days=7))
-    elif period_filter == 'month':
-        reports = reports.filter(date_rapport__gte=today - timedelta(days=30))
-    elif period_filter == 'year':
-        reports = reports.filter(date_rapport__year=today.year)
+    if report_pk:
+        # Redirection depuis la page Résultats
+        single_report = get_object_or_404(base_qs, pk=report_pk)
+        reports = base_qs.filter(pk=report_pk)
+        period_filter = 'report'   # mode spécial, on masque les boutons période
+    elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
+        # Défaut → dernier rapport traité
+        single_report = base_qs.first()
+        if single_report:
+            reports = base_qs.filter(pk=single_report.pk)
+        else:
+            reports = base_qs.none()
+        period_filter = 'latest'
+    else:
+        # Filtre période
+        today = date.today()
+        if period_filter == 'day':
+            reports = base_qs.filter(uploaded_at__date=today)
+        elif period_filter == 'week':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        elif period_filter == 'month':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
+        elif period_filter == 'year':
+            reports = base_qs.filter(uploaded_at__year=today.year)
+        else:  # 'all'
+            reports = base_qs
 
+    # ── Helpers ─────────────────────────────────────────────────────────────
     def parse_hms(s):
         try:
             parts = str(s).split(':')
@@ -550,6 +572,7 @@ def statistiques(request):
             pass
         return 0
 
+    # ── Classement Escalades ────────────────────────────────────────────────
     escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
     for r in reports:
         if not r.synthesis_json:
@@ -569,6 +592,7 @@ def statistiques(request):
         for k, v in escalades_sorted if v['count'] > 0
     ]
 
+    # ── Récurrence des Sites ────────────────────────────────────────────────
     site_data = defaultdict(int)
     for r in reports:
         if r.top_sites_json:
@@ -578,6 +602,7 @@ def statistiques(request):
     max_site = sites_top10[0][1] if sites_top10 else 1
     sites_chart = [{'name': k, 'count': v, 'pct': round(v / max_site * 100)} for k, v in sites_top10]
 
+    # ── Poids & Outage / Métier ─────────────────────────────────────────────
     total_outage_sec = sum(v['outage_sec'] for v in escalade_data.values())
     outage_chart = []
     for k, v in escalades_sorted:
@@ -586,6 +611,7 @@ def statistiques(request):
             outage_chart.append({'name': k, 'outage_h': round(v['outage_sec'] / 3600, 1), 'pct': pct})
     total_outage_h = round(total_outage_sec / 3600, 1)
 
+    # ── Sites les Plus Dégradés ─────────────────────────────────────────────
     site_duration = defaultdict(float)
     for r in reports:
         if not r.detailed_file:
@@ -613,19 +639,23 @@ def statistiques(request):
         for k, v in degraded_top10
     ]
 
+    # ── Donut SVG ───────────────────────────────────────────────────────────
     donut_svg = _make_donut_svg(outage_chart, total_outage_h)
     outage_chart_colored = [
         {**d, 'color': DONUT_COLORS[i % len(DONUT_COLORS)]}
         for i, d in enumerate(outage_chart)
     ]
 
+    total_reports = reports.count()
+
     return render(request, 'reports/statistiques.html', {
         'period_filter':   period_filter,
+        'single_report':   single_report,
         'escalades_chart': escalades_chart,
         'sites_chart':     sites_chart,
         'outage_chart':    outage_chart_colored,
         'degraded_chart':  degraded_chart,
         'total_outage_h':  total_outage_h,
-        'total_reports':   reports.count(),
+        'total_reports':   total_reports,
         'donut_svg':       donut_svg,
     })
