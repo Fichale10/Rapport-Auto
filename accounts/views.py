@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
+from django.contrib.auth.models import User
 
 
 def login_view(request):
@@ -28,6 +29,41 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('accounts:login')
+
+
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect('/')
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        email = request.POST.get('email', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        password1 = request.POST.get('password1', '')
+        password2 = request.POST.get('password2', '')
+
+        if not username:
+            messages.error(request, "L'identifiant est obligatoire.")
+        elif User.objects.filter(username__iexact=username).exists():
+            messages.error(request, 'Cet identifiant est deja utilise.')
+        elif password1 != password2:
+            messages.error(request, 'Les mots de passe ne correspondent pas.')
+        elif len(password1) < 8:
+            messages.error(request, 'Le mot de passe doit contenir au moins 8 caracteres.')
+        else:
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password1,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            login(request, user)
+            messages.success(request, 'Compte cree avec succes.')
+            return redirect('/')
+
+    return render(request, 'accounts/register.html')
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import update_session_auth_hash

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inscription — Rapport Auto | Yas</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --yas-blue:   #003087;
+      --yas-yellow: #FFC72C;
+      --yas-dark:   #001a4d;
+      --yas-light:  #e8f0ff;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--yas-blue);
+    }
+
+    /* Panneau gauche */
+    .brand-panel {
+      background: var(--yas-blue);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-panel::before {
+      content: '';
+      position: absolute; top: -120px; right: -120px;
+      width: 400px; height: 400px;
+      background: var(--yas-yellow);
+      border-radius: 50%; opacity: 0.08;
+    }
+    .brand-panel::after {
+      content: '';
+      position: absolute; bottom: -80px; left: -80px;
+      width: 300px; height: 300px;
+      background: var(--yas-yellow);
+      border-radius: 50%; opacity: 0.06;
+    }
+
+    .yas-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 72px; color: var(--yas-yellow);
+      letter-spacing: 4px; line-height: 1; margin-bottom: 8px;
+    }
+
+    .yas-tagline {
+      color: rgba(255,255,255,0.5);
+      font-size: 13px; letter-spacing: 3px;
+      text-transform: uppercase; margin-bottom: 60px;
+    }
+
+    .brand-title {
+      color: #fff; font-size: 32px; font-weight: 600;
+      line-height: 1.2; margin-bottom: 16px;
+    }
+    .brand-title span { color: var(--yas-yellow); }
+
+    .brand-desc {
+      color: rgba(255,255,255,0.55);
+      font-size: 15px; line-height: 1.7; max-width: 340px;
+    }
+
+    .steps-mini { margin-top: 48px; display: flex; flex-direction: column; gap: 14px; }
+    .step-mini  { display: flex; align-items: center; gap: 12px; }
+    .step-mini-num {
+      width: 28px; height: 28px; border-radius: 7px;
+      background: var(--yas-yellow); color: var(--yas-blue);
+      font-weight: 800; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .step-mini-txt { font-size: 13px; color: rgba(255,255,255,0.7); }
+
+    /* Panneau droit */
+    .form-panel {
+      background: #fff;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 50px 64px;
+      border-radius: 32px 0 0 32px;
+      overflow-y: auto;
+    }
+
+    .form-header { margin-bottom: 28px; }
+    .form-header h2 { font-size: 26px; font-weight: 700; color: var(--yas-blue); margin-bottom: 6px; }
+    .form-header p  { color: #888; font-size: 14px; }
+
+    .alert {
+      border-radius: 8px; padding: 11px 14px;
+      font-size: 13.5px; margin-bottom: 18px; border-left: 4px solid;
+    }
+    .alert-error   { background: #fff0f0; border-color: #e53e3e; color: #c53030; }
+    .alert-success { background: #f0fff4; border-color: #22c55e; color: #166534; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    .field { margin-bottom: 16px; }
+
+    label {
+      display: block; font-size: 12px; font-weight: 700;
+      color: var(--yas-blue); letter-spacing: .5px;
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"] {
+      width: 100%; padding: 12px 14px;
+      background: var(--yas-light);
+      border: 2px solid transparent;
+      border-radius: 10px; color: #111;
+      font-size: 14px; font-family: 'DM Sans', sans-serif;
+      outline: none; transition: border-color .2s, background .2s;
+    }
+    input:focus { border-color: var(--yas-blue); background: #fff; }
+    input::placeholder { color: #aab; }
+
+    /* Force mot de passe */
+    .pwd-bar { height: 4px; background: #e8edf5; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+    .pwd-fill { height: 100%; border-radius: 2px; width: 0; transition: width .3s, background .3s; }
+    .pwd-hint { font-size: 11px; color: #aaa; margin-top: 3px; }
+
+    button[type="submit"] {
+      width: 100%; padding: 14px;
+      background: var(--yas-yellow); border: none;
+      border-radius: 10px; color: var(--yas-blue);
+      font-size: 15px; font-weight: 700;
+      font-family: 'DM Sans', sans-serif; cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      margin-top: 4px;
+    }
+    button[type="submit"]:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(255,199,44,.4);
+    }
+
+    .form-footer {
+      margin-top: 24px; padding-top: 20px;
+      border-top: 1px solid #eee;
+      text-align: center;
+      font-size: 14px; color: #888;
+    }
+    .form-footer a { color: var(--yas-blue); font-weight: 700; text-decoration: none; }
+    .form-footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 768px) {
+      body { grid-template-columns: 1fr; }
+      .brand-panel { display: none; }
+      .form-panel { border-radius: 0; padding: 36px 24px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Panneau gauche -->
+  <div class="brand-panel">
+    <div class="yas-logo">YAS</div>
+    <div class="yas-tagline">Mobile Network</div>
+    <div class="brand-title">
+      Rejoignez<br>l'équipe <span>ISOC</span>
+    </div>
+    <p class="brand-desc">
+      Créez votre compte pour accéder à la plateforme de traitement
+      automatisé des rapports réseau Yas.
+    </p>
+    <div class="steps-mini">
+      <div class="step-mini">
+        <div class="step-mini-num">1</div>
+        <div class="step-mini-txt">Créez votre compte en quelques secondes</div>
+      </div>
+      <div class="step-mini">
+        <div class="step-mini-num">2</div>
+        <div class="step-mini-txt">Connectez-vous avec vos identifiants</div>
+      </div>
+      <div class="step-mini">
+        <div class="step-mini-num">3</div>
+        <div class="step-mini-txt">Traitez vos rapports réseau instantanément</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panneau droit -->
+  <div class="form-panel">
+    <div class="form-header">
+      <h2>Créer un compte</h2>
+      <p>Remplissez le formulaire pour rejoindre la plateforme</p>
+    </div>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+          {% if message.tags == 'success' %}✅{% else %}⚠{% endif %}
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="POST">
+      {% csrf_token %}
+
+      <!-- Prénom / Nom -->
+      <div class="form-row">
+        <div class="field">
+          <label for="first_name">Prénom</label>
+          <input type="text" id="first_name" name="first_name"
+            placeholder="Votre prénom"
+            value="{{ request.POST.first_name|default:'' }}">
+        </div>
+        <div class="field">
+          <label for="last_name">Nom</label>
+          <input type="text" id="last_name" name="last_name"
+            placeholder="Votre nom"
+            value="{{ request.POST.last_name|default:'' }}">
+        </div>
+      </div>
+
+      <!-- Identifiant -->
+      <div class="field">
+        <label for="username">Identifiant *</label>
+        <input type="text" id="username" name="username"
+          placeholder="Choisissez un identifiant unique"
+          value="{{ request.POST.username|default:'' }}"
+          autofocus required>
+      </div>
+
+      <!-- Email -->
+      <div class="field">
+        <label for="email">Adresse email</label>
+        <input type="email" id="email" name="email"
+          placeholder="votre@email.com"
+          value="{{ request.POST.email|default:'' }}">
+      </div>
+
+      <!-- Mot de passe -->
+      <div class="field">
+        <label for="password1">Mot de passe *</label>
+        <input type="password" id="password1" name="password1"
+          placeholder="Min. 8 caractères" required>
+        <div class="pwd-bar"><div class="pwd-fill" id="pwdFill"></div></div>
+        <div class="pwd-hint" id="pwdHint">Entrez un mot de passe</div>
+      </div>
+
+      <div class="field">
+        <label for="password2">Confirmer le mot de passe *</label>
+        <input type="password" id="password2" name="password2"
+          placeholder="Répétez le mot de passe" required>
+        <div class="pwd-hint" id="pwdMatch"></div>
+      </div>
+
+      <button type="submit">✓ Créer mon compte</button>
+    </form>
+
+    <div class="form-footer">
+      Déjà un compte ? <a href="{% url 'accounts:login' %}">Se connecter →</a>
+    </div>
+  </div>
+
+</body>
+<script>
+(function(){
+  var pwd1  = document.getElementById('password1');
+  var pwd2  = document.getElementById('password2');
+  var fill  = document.getElementById('pwdFill');
+  var hint  = document.getElementById('pwdHint');
+  var match = document.getElementById('pwdMatch');
+
+  var levels = [
+    { w:'0%',   bg:'#e8edf5', txt:'Entrez un mot de passe', c:'#aaa' },
+    { w:'25%',  bg:'#e53e3e', txt:'Trop faible',            c:'#e53e3e' },
+    { w:'50%',  bg:'#FF9800', txt:'Faible',                 c:'#FF9800' },
+    { w:'75%',  bg:'#FFC72C', txt:'Moyen',                  c:'#FFC72C' },
+    { w:'100%', bg:'#22c55e', txt:'Fort ✓',                 c:'#22c55e' },
+  ];
+
+  pwd1.addEventListener('input', function(){
+    var v = this.value, s = 0;
+    if (v.length >= 8)          s++;
+    if (/[A-Z]/.test(v))        s++;
+    if (/[0-9]/.test(v))        s++;
+    if (/[^A-Za-z0-9]/.test(v)) s++;
+    var l = v.length === 0 ? levels[0] : levels[s];
+    fill.style.width = l.w; fill.style.background = l.bg;
+    hint.textContent = l.txt; hint.style.color = l.c;
+    checkMatch();
+  });
+
+  function checkMatch(){
+    if (!pwd2.value){ match.textContent = ''; return; }
+    if (pwd1.value === pwd2.value){
+      match.textContent = '✓ Les mots de passe correspondent';
+      match.style.color = '#22c55e';
+    } else {
+      match.textContent = '✗ Les mots de passe ne correspondent pas';
+      match.style.color = '#e53e3e';
+    }
+  }
+  pwd2.addEventListener('input', checkMatch);
+})();
+</script>
+</html>
