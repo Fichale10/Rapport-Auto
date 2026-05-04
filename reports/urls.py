@@ -14,4 +14,5 @@ urlpatterns = [
     path('history/',                              login_required(views.history),         name='history'),
     path('statistiques/',                         login_required(views.statistiques),    name='statistiques'),
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
+    path('comparer/',                             login_required(views.comparer),        name='comparer'),
 ]

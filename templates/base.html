@@ -214,7 +214,9 @@
     <a href="{% url 'home' %}"         class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
     <a href="{% url 'upload' %}"       class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
     <a href="{% url 'history' %}"      class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
+
     <a href="{% url 'statistiques' %}" class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
+    <a href="{% url 'comparer' %}" class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
   </div>
 
   <div class="nav-user">

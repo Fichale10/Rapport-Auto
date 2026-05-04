@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}Comparaison — Yas NOC{% endblock %}
+{% block breadcrumb %}Comparaison{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
+
+  /* ── Sélecteur ── */
+  .selector-card {
+    background: #fff; border-radius: 16px; padding: 28px;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05);
+    margin-bottom: 24px;
+  }
+  .selector-title {
+    font-size: 15px; font-weight: 700; color: #003087;
+    margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+  }
+  .selector-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: end; }
+  .sel-group label { font-size: 12px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; display: block; margin-bottom: 8px; }
+  .sel-group select {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #e8edf5;
+    border-radius: 10px; font-size: 14px; color: #333;
+    font-family: 'DM Sans', sans-serif; outline: none;
+    transition: border-color .2s; background: #fafbff;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+    padding-right: 36px;
+  }
+  .sel-group select:focus { border-color: #003087; }
+  .vs-badge {
+    width: 44px; height: 44px; background: linear-gradient(135deg,#003087,#0047cc);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    color: #FFC72C; font-weight: 900; font-size: 14px; letter-spacing: 1px;
+    flex-shrink: 0; margin-bottom: 2px;
+  }
+  .btn-compare {
+    background: #003087; color: #fff; padding: 12px 28px;
+    border-radius: 10px; font-size: 14px; font-weight: 700;
+    border: none; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: background .15s, transform .15s; display: flex; align-items: center; gap: 8px;
+    margin-top: 20px;
+  }
+  .btn-compare:hover { background: #0047cc; transform: translateY(-1px); }
+
+  /* ── Headers rapports ── */
+  .compare-header {
+    display: grid; grid-template-columns: 1fr 60px 1fr;
+    gap: 16px; margin-bottom: 20px; align-items: stretch;
+  }
+  .r-header {
+    border-radius: 14px; padding: 20px 22px;
+    position: relative; overflow: hidden;
+  }
+  .r-header.r1 { background: linear-gradient(135deg, #003087, #0047cc); }
+  .r-header.r2 { background: linear-gradient(135deg, #1a1a2e, #16213e); }
+  .r-header::after {
+    content: 'R1'; font-family: 'Bebas Neue', sans-serif;
+    font-size: 80px; color: rgba(255,255,255,.05);
+    position: absolute; right: 10px; bottom: -10px; pointer-events: none;
+  }
+  .r-header.r2::after { content: 'R2'; }
+  .r-tag { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #FFC72C; text-transform: uppercase; margin-bottom: 6px; }
+  .r-name { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .r-date { font-size: 12px; color: rgba(255,255,255,.5); }
+  .vs-center {
+    display: flex; align-items: center; justify-content: center;
+    background: #f0f4ff; border-radius: 12px;
+    font-weight: 900; font-size: 16px; color: #003087; letter-spacing: 1px;
+  }
+
+  /* ── KPI Comparaison ── */
+  .kpi-compare { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+  .kpi-c {
+    background: #fff; border-radius: 14px; padding: 18px 16px;
+    border: 1px solid #e8edf5; text-align: center;
+    transition: box-shadow .2s, transform .2s;
+  }
+  .kpi-c:hover { box-shadow: 0 4px 20px rgba(0,48,135,.1); transform: translateY(-2px); }
+  .kpi-c-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+  .kpi-c-vals { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px; }
+  .kpi-c-v { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 1px; line-height: 1; }
+  .kpi-c-v.blue { color: #003087; }
+  .kpi-c-v.dark { color: #1a1a2e; }
+  .kpi-c-sep { font-size: 12px; color: #ccc; font-weight: 700; }
+  .delta { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .delta.better { background: #f0fff4; color: #166534; }
+  .delta.worse  { background: #fff0f0; color: #c53030; }
+  .delta.neutral{ background: #f0f4ff; color: #003087; }
+
+  /* ── Sections comparaison ── */
+  .compare-section { margin-bottom: 20px; }
+  .cs-title {
+    font-size: 15px; font-weight: 700; color: #003087;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .cs-title::after { content: ''; flex: 1; height: 1px; background: #e8edf5; }
+
+  /* Table escalades */
+  .esc-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; border: 1px solid #e8edf5; }
+  .esc-table th {
+    font-size: 11px; font-weight: 700; color: #999; text-transform: uppercase;
+    letter-spacing: .5px; padding: 10px 16px; border-bottom: 1px solid #e8edf5;
+    background: #fafbff; text-align: center;
+  }
+  .esc-table th:first-child { text-align: left; }
+  .esc-table td { padding: 12px 16px; font-size: 13px; color: #333; border-bottom: 1px solid #f5f7fb; text-align: center; vertical-align: middle; }
+  .esc-table td:first-child { text-align: left; font-weight: 600; }
+  .esc-table tr:last-child td { border-bottom: none; }
+  .esc-table tr:hover td { background: #fafbff; }
+
+  .col-r1 { color: #003087; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 1px; }
+  .col-r2 { color: #1a1a2e; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 1px; }
+  .arrow-delta { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .arrow-delta.better { background: #f0fff4; color: #166534; }
+  .arrow-delta.worse  { background: #fff0f0; color: #c53030; }
+  .arrow-delta.neutral{ background: #f0f4ff; color: #888; }
+
+  /* Barres doubles sites */
+  .site-compare-list { display: flex; flex-direction: column; gap: 14px; }
+  .site-row { background: #fff; border-radius: 12px; padding: 14px 18px; border: 1px solid #e8edf5; }
+  .site-row-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .site-name { font-size: 13px; font-weight: 600; color: #111; }
+  .site-counts { display: flex; gap: 12px; font-size: 12px; }
+  .site-c1 { color: #003087; font-weight: 700; }
+  .site-c2 { color: #1a1a2e; font-weight: 700; }
+  .double-bar { display: flex; flex-direction: column; gap: 4px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; }
+  .bar-lbl { font-size: 10px; font-weight: 700; width: 20px; text-align: right; flex-shrink: 0; }
+  .bar-lbl.b1 { color: #003087; }
+  .bar-lbl.b2 { color: #1a1a2e; }
+  .bar-track-d { flex: 1; height: 6px; background: #f0f4ff; border-radius: 3px; overflow: hidden; }
+  .bar-fill-d { height: 100%; border-radius: 3px; }
+  .bar-fill-d.b1 { background: linear-gradient(90deg,#003087,#0047cc); }
+  .bar-fill-d.b2 { background: linear-gradient(90deg,#1a1a2e,#374151); }
+
+  /* Status badges */
+  .s-ok   { display:inline-flex; align-items:center; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; background:#f0fff4; color:#166534; }
+  .s-warn { display:inline-flex; align-items:center; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; background:#fff8e1; color:#7a5a00; }
+  .s-na   { display:inline-flex; align-items:center; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:600; background:#f5f7fb; color:#aaa; }
+
+  /* Placeholder vide */
+  .empty-compare { text-align: center; padding: 60px 20px; color: #bbb; }
+  .empty-compare .icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-compare p { font-size: 14px; line-height: 1.7; }
+
+  @media(max-width:900px){
+    .selector-grid { grid-template-columns: 1fr; }
+    .compare-header { grid-template-columns: 1fr; }
+    .vs-center { display: none; }
+    .kpi-compare { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Sélecteur ── -->
+<div class="selector-card">
+  <div class="selector-title">🔄 Comparer deux rapports</div>
+  <form method="get" action="{% url 'comparer' %}">
+    <div class="selector-grid">
+      <div class="sel-group">
+        <label>Rapport A</label>
+        <select name="r1">
+          <option value="">— Choisir un rapport —</option>
+          {% for r in all_reports %}
+          <option value="{{ r.pk }}" {% if pk1 == r.pk|stringformat:"s" %}selected{% endif %}>
+            {{ r.original_filename|truncatechars:40 }} — {{ r.date_rapport|date:"d/m/Y" }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="vs-badge">VS</div>
+      <div class="sel-group">
+        <label>Rapport B</label>
+        <select name="r2">
+          <option value="">— Choisir un rapport —</option>
+          {% for r in all_reports %}
+          <option value="{{ r.pk }}" {% if pk2 == r.pk|stringformat:"s" %}selected{% endif %}>
+            {{ r.original_filename|truncatechars:40 }} — {{ r.date_rapport|date:"d/m/Y" }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn-compare">🔍 Lancer la comparaison</button>
+  </form>
+</div>
+
+{% if r1 and r2 and diff %}
+
+<!-- ── Headers ── -->
+<div class="compare-header">
+  <div class="r-header r1">
+    <div class="r-tag">Rapport A</div>
+    <div class="r-name" title="{{ r1.original_filename }}">{{ r1.original_filename|truncatechars:40 }}</div>
+    <div class="r-date">📅 {{ r1.date_rapport|date:"d/m/Y" }}{% if r1.date_fin %} → {{ r1.date_fin|date:"d/m/Y" }}{% endif %}</div>
+  </div>
+  <div class="vs-center">VS</div>
+  <div class="r-header r2">
+    <div class="r-tag">Rapport B</div>
+    <div class="r-name" title="{{ r2.original_filename }}">{{ r2.original_filename|truncatechars:40 }}</div>
+    <div class="r-date">📅 {{ r2.date_rapport|date:"d/m/Y" }}{% if r2.date_fin %} → {{ r2.date_fin|date:"d/m/Y" }}{% endif %}</div>
+  </div>
+</div>
+
+<!-- ── KPIs ── -->
+<div class="kpi-compare">
+
+  <div class="kpi-c">
+    <div class="kpi-c-label">Incidents</div>
+    <div class="kpi-c-vals">
+      <span class="kpi-c-v blue">{{ r1.total_incidents }}</span>
+      <span class="kpi-c-sep">→</span>
+      <span class="kpi-c-v dark">{{ r2.total_incidents }}</span>
+    </div>
+    <span class="delta {{ diff.inc_trend }}">
+      {% if diff.inc_trend == 'better' %}↓{% elif diff.inc_trend == 'worse' %}↑{% else %}={% endif %}
+      {{ diff.inc_delta }}
+    </span>
+  </div>
+
+  <div class="kpi-c">
+    <div class="kpi-c-label">Non résolus</div>
+    <div class="kpi-c-vals">
+      <span class="kpi-c-v blue">{{ r1.unresolved_count }}</span>
+      <span class="kpi-c-sep">→</span>
+      <span class="kpi-c-v dark">{{ r2.unresolved_count }}</span>
+    </div>
+    <span class="delta {{ diff.unr_trend }}">
+      {% if diff.unr_trend == 'better' %}↓{% elif diff.unr_trend == 'worse' %}↑{% else %}={% endif %}
+      {{ diff.unr_delta }}
+    </span>
+  </div>
+
+  <div class="kpi-c">
+    <div class="kpi-c-label">Lignes fichier</div>
+    <div class="kpi-c-vals">
+      <span class="kpi-c-v blue">{{ r1.total_rows }}</span>
+      <span class="kpi-c-sep">→</span>
+      <span class="kpi-c-v dark">{{ r2.total_rows }}</span>
+    </div>
+    <span class="delta {{ diff.rows_trend }}">{{ diff.rows_delta }}</span>
+  </div>
+
+  <div class="kpi-c">
+    <div class="kpi-c-label">Alarmes filtrées</div>
+    <div class="kpi-c-vals">
+      <span class="kpi-c-v blue">{{ r1.filtered_rows }}</span>
+      <span class="kpi-c-sep">→</span>
+      <span class="kpi-c-v dark">{{ r2.filtered_rows }}</span>
+    </div>
+    <span class="delta {{ diff.filt_trend }}">{{ diff.filt_delta }}</span>
+  </div>
+
+</div>
+
+<!-- ── Comparaison Escalades ── -->
+<div class="compare-section">
+  <div class="cs-title">📊 Comparaison par Escalade</div>
+  <table class="esc-table">
+    <thead>
+      <tr>
+        <th>Escalade</th>
+        <th style="color:#003087;">A — Incidents</th>
+        <th style="color:#1a1a2e;">B — Incidents</th>
+        <th>Évolution</th>
+        <th style="color:#003087;">A — Outage</th>
+        <th style="color:#1a1a2e;">B — Outage</th>
+        <th>Statut A</th>
+        <th>Statut B</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in diff.esc_rows %}
+      <tr>
+        <td>{{ row.name }}</td>
+        <td><span class="col-r1">{{ row.count1 }}</span></td>
+        <td><span class="col-r2">{{ row.count2 }}</span></td>
+        <td>
+          <span class="arrow-delta {{ row.trend }}">
+            {% if row.trend == 'better' %}↓{% elif row.trend == 'worse' %}↑{% else %}={% endif %}
+            {% if row.delta > 0 %}+{{ row.delta }}{% else %}{{ row.delta }}{% endif %}
+          </span>
+        </td>
+        <td style="font-size:13px;color:#003087;font-weight:600;">{{ row.outage1_h }}h</td>
+        <td style="font-size:13px;color:#1a1a2e;font-weight:600;">{{ row.outage2_h }}h</td>
+        <td>
+          {% if "Non resolu" in row.status1 %}<span class="s-warn">⚠ {{ row.status1 }}</span>
+          {% elif row.status1 == "Résolu" %}<span class="s-ok">✓ OK</span>
+          {% else %}<span class="s-na">{{ row.status1|default:"—" }}</span>{% endif %}
+        </td>
+        <td>
+          {% if "Non resolu" in row.status2 %}<span class="s-warn">⚠ {{ row.status2 }}</span>
+          {% elif row.status2 == "Résolu" %}<span class="s-ok">✓ OK</span>
+          {% else %}<span class="s-na">{{ row.status2|default:"—" }}</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" style="text-align:center;color:#bbb;padding:32px;">Aucune donnée d'escalade disponible</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Comparaison Sites ── -->
+{% if diff.site_rows %}
+<div class="compare-section">
+  <div class="cs-title">📡 Récurrence des Sites — Top 10</div>
+  <div class="site-compare-list">
+    {% for s in diff.site_rows %}
+    {% with max_val=s.count1|add:s.count2 %}
+    <div class="site-row">
+      <div class="site-row-header">
+        <span class="site-name">{{ s.name }}</span>
+        <div class="site-counts">
+          <span class="site-c1">A: {{ s.count1 }}x</span>
+          <span class="site-c2">B: {{ s.count2 }}x</span>
+          <span class="arrow-delta {% if s.delta < 0 %}better{% elif s.delta > 0 %}worse{% else %}neutral{% endif %}">
+            {% if s.delta > 0 %}+{% endif %}{{ s.delta }}
+          </span>
+        </div>
+      </div>
+      <div class="double-bar">
+        <div class="bar-row">
+          <span class="bar-lbl b1">A</span>
+          <div class="bar-track-d">
+            <div class="bar-fill-d b1" style="width:{% if s.count1 %}{% widthratio s.count1 max_val 100 %}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-lbl b2">B</span>
+          <div class="bar-track-d">
+            <div class="bar-fill-d b2" style="width:{% if s.count2 %}{% widthratio s.count2 max_val 100 %}{% else %}0{% endif %}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+
+<!-- ── État vide ── -->
+<div class="empty-compare">
+  <div class="icon">🔄</div>
+  <p>
+    Sélectionnez deux rapports ci-dessus<br>
+    pour voir leur comparaison côte à côte.
+  </p>
+</div>
+
+{% endif %}
+
+{% endblock %}

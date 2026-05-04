@@ -18,21 +18,14 @@
     border-radius: 10px; display: flex; align-items: center; justify-content: center;
     font-size: 20px; flex-shrink: 0;
   }
-  .report-banner-tag {
-    font-size: 10px; font-weight: 700; letter-spacing: 2px;
-    text-transform: uppercase; color: #FFC72C; margin-bottom: 3px;
-  }
-  .report-banner-name {
-    font-size: 14px; font-weight: 700; color: #fff;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px;
-  }
+  .report-banner-tag { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #FFC72C; margin-bottom: 3px; }
+  .report-banner-name { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
   .report-banner-date { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 2px; }
   .btn-back-results {
     background: rgba(255,255,255,.1); border: 1.5px solid rgba(255,255,255,.25);
     color: rgba(255,255,255,.85); padding: 9px 18px; border-radius: 9px;
     font-size: 13px; font-weight: 600; text-decoration: none;
-    display: inline-flex; align-items: center; gap: 6px;
-    transition: all .15s; white-space: nowrap; flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 6px; transition: all .15s; white-space: nowrap; flex-shrink: 0;
   }
   .btn-back-results:hover { border-color: rgba(255,255,255,.6); color: #fff; }
 
@@ -42,7 +35,7 @@
   .period-btn:hover { border-color:#003087; color:#003087; }
   .period-btn.active { background:#003087; color:#fff; border-color:#003087; }
 
-  .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
+  .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
   .kpi { background:#fff; border-radius:14px; padding:20px 22px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; transition:box-shadow .2s,transform .2s; }
   .kpi:hover { box-shadow:0 4px 20px rgba(0,48,135,.1); transform:translateY(-2px); }
   .kpi-icon { width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; }
@@ -51,6 +44,39 @@
   .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:30px; color:#003087; letter-spacing:1px; line-height:1; }
   .kpi-lbl { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
 
+  /* ── Carte évolution ── */
+  .evolution-card {
+    background: #fff; border-radius: 16px; padding: 24px;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05);
+    margin-bottom: 20px;
+  }
+  .evo-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #f0f4ff;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .evo-title { font-size: 15px; font-weight: 700; color: #003087; display: flex; align-items: center; gap: 8px; }
+  .evo-legend { display: flex; gap: 18px; }
+  .evo-leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+  .evo-leg-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .evo-chart-wrap { position: relative; height: 160px; }
+  .evo-svg { width: 100%; height: 100%; overflow: visible; }
+  .evo-labels { display: flex; justify-content: space-between; margin-top: 6px; }
+  .evo-label { font-size: 11px; color: #aaa; text-align: center; flex: 1; }
+
+  /* Tooltip */
+  .evo-tooltip {
+    position: absolute; background: #003087; color: #fff;
+    border-radius: 8px; padding: 8px 12px; font-size: 12px;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+    white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,48,135,.3);
+  }
+  .evo-tooltip::after {
+    content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-bottom: none; border-top-color: #003087;
+  }
+
+  /* ── Grille stats ── */
   .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   .stat-card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05); }
   .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #f0f4ff; }
@@ -66,20 +92,8 @@
   .bar-fill.yellow { background:linear-gradient(90deg,#FFC72C,#ffdd6b); }
   .bar-fill.red    { background:linear-gradient(90deg,#e53e3e,#fc8181); }
 
-  /* ── SVG 3D wrapper — aucune transformation ── */
-  .donut3d-wrap {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: visible;
-    margin-top: 8px;
-  }
-  .donut3d-wrap svg {
-    width: 100%;
-    height: auto;
-    max-width: 520px;
-    overflow: visible;
-  }
+  .donut3d-wrap { display:flex; justify-content:center; align-items:center; overflow:visible; margin-top:8px; }
+  .donut3d-wrap svg { width:100%; height:auto; max-width:520px; overflow:visible; }
 
   .empty-msg { text-align:center; padding:40px 20px; color:#bbb; font-size:14px; }
 
@@ -113,9 +127,7 @@
       </div>
     </div>
   </div>
-  <a href="{% url 'results' single_report.pk %}" class="btn-back-results">
-    ← Retour aux résultats
-  </a>
+  <a href="{% url 'results' single_report.pk %}" class="btn-back-results">← Retour aux résultats</a>
 </div>
 {% endif %}
 
@@ -131,6 +143,7 @@
 </div>
 {% endif %}
 
+<!-- KPIs -->
 <div class="kpi-row">
   <div class="kpi">
     <div class="kpi-icon blue">📋</div>
@@ -146,6 +159,154 @@
   </div>
 </div>
 
+<!-- ── Graphique d'évolution (masqué si 1 seul rapport) ── -->
+{% if show_evolution_chart %}
+<div class="evolution-card">
+  <div class="evo-header">
+    <div class="evo-title">📈 Évolution sur la période</div>
+    <div class="evo-legend">
+      <div class="evo-leg-item">
+        <div class="evo-leg-dot" style="background:#003087"></div>
+        Incidents
+      </div>
+      <div class="evo-leg-item">
+        <div class="evo-leg-dot" style="background:#FFC72C"></div>
+        Outage (h)
+      </div>
+    </div>
+  </div>
+  <div class="evo-chart-wrap">
+    <div class="evo-tooltip" id="evoTooltip"></div>
+    <svg class="evo-svg" id="evoSvg" viewBox="0 0 800 160" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="evo-labels" id="evoLabels"></div>
+</div>
+
+<script>
+(function(){
+  const incidents = {{ evolution_incidents|safe }};
+  const outages   = {{ evolution_outage|safe }};
+  const labels    = {{ evolution_labels|safe }};
+  if (!incidents.length || incidents.length < 2) return;
+
+  const W=800, H=160, PL=10, PR=10, PT=20, PB=10;
+  const svg = document.getElementById('evoSvg');
+  const tooltip = document.getElementById('evoTooltip');
+  const labelsEl = document.getElementById('evoLabels');
+  const n = incidents.length;
+
+  const xs = incidents.map((_,i) => PL + i*(W-PL-PR)/(n-1));
+
+  // Normalise incidents
+  const maxInc = Math.max(...incidents) || 1;
+  const ysInc  = incidents.map(v => H-PB - (v/maxInc)*(H-PT-PB));
+
+  // Normalise outage
+  const maxOut = Math.max(...outages) || 1;
+  const ysOut  = outages.map(v => H-PB - (v/maxOut)*(H-PT-PB));
+
+  function makePath(ys, color, gradId) {
+    // Aire
+    const areaD = `M${xs[0]},${H-PB} ` + xs.map((x,i)=>`L${x},${ys[i]}`).join(' ') + ` L${xs[n-1]},${H-PB} Z`;
+    const area = document.createElementNS('http://www.w3.org/2000/svg','path');
+    area.setAttribute('d', areaD);
+    area.setAttribute('fill', `url(#${gradId})`);
+    svg.appendChild(area);
+
+    // Ligne lissée
+    let d = `M${xs[0]},${ys[0]}`;
+    for(let i=1;i<n;i++){
+      const cpx1 = xs[i-1]+(xs[i]-xs[i-1])/2;
+      const cpx2 = xs[i]-(xs[i]-xs[i-1])/2;
+      d += ` C${cpx1},${ys[i-1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`;
+    }
+    const line = document.createElementNS('http://www.w3.org/2000/svg','path');
+    line.setAttribute('d', d);
+    line.setAttribute('fill','none');
+    line.setAttribute('stroke', color);
+    line.setAttribute('stroke-width','2.5');
+    line.setAttribute('stroke-linecap','round');
+    svg.appendChild(line);
+  }
+
+  // Defs gradients
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  defs.innerHTML = `
+    <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#003087" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#003087" stop-opacity="0.01"/>
+    </linearGradient>
+    <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFC72C" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#FFC72C" stop-opacity="0.01"/>
+    </linearGradient>
+  `;
+  svg.appendChild(defs);
+
+  // Lignes de grille horizontales
+  for(let g=0;g<=4;g++){
+    const y = PT + g*(H-PT-PB)/4;
+    const gl = document.createElementNS('http://www.w3.org/2000/svg','line');
+    gl.setAttribute('x1', PL); gl.setAttribute('x2', W-PR);
+    gl.setAttribute('y1', y);  gl.setAttribute('y2', y);
+    gl.setAttribute('stroke','#f0f4ff'); gl.setAttribute('stroke-width','1');
+    svg.appendChild(gl);
+  }
+
+  makePath(ysInc, '#003087', 'gInc');
+  makePath(ysOut, '#FFC72C', 'gOut');
+
+  // Points interactifs
+  xs.forEach((x,i) => {
+    // Point incidents (bleu)
+    const ci = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    ci.setAttribute('cx', x); ci.setAttribute('cy', ysInc[i]);
+    ci.setAttribute('r','5'); ci.setAttribute('fill','#003087');
+    ci.setAttribute('stroke','white'); ci.setAttribute('stroke-width','2');
+    ci.style.cursor='pointer';
+
+    // Point outage (jaune)
+    const co = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    co.setAttribute('cx', x); co.setAttribute('cy', ysOut[i]);
+    co.setAttribute('r','4'); co.setAttribute('fill','#FFC72C');
+    co.setAttribute('stroke','white'); co.setAttribute('stroke-width','2');
+
+    // Zone de survol invisible
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    hit.setAttribute('x', x-20); hit.setAttribute('y', PT);
+    hit.setAttribute('width', 40); hit.setAttribute('height', H-PT-PB);
+    hit.setAttribute('fill','transparent');
+    hit.style.cursor='pointer';
+
+    hit.addEventListener('mouseenter', function(e){
+      const rect = svg.closest('.evo-chart-wrap').getBoundingClientRect();
+      const svgRect = svg.getBoundingClientRect();
+      const pct = (x-PL)/(W-PL-PR);
+      const px = pct * svgRect.width;
+      tooltip.innerHTML = `<strong>${labels[i]}</strong><br>🔵 ${incidents[i]} incidents<br>🟡 ${outages[i]}h outage`;
+      tooltip.style.opacity = '1';
+      tooltip.style.left = (px - 60) + 'px';
+      tooltip.style.top = '-70px';
+    });
+    hit.addEventListener('mouseleave', () => { tooltip.style.opacity='0'; });
+
+    svg.appendChild(ci);
+    svg.appendChild(co);
+    svg.appendChild(hit);
+  });
+
+  // Labels dates
+  labels.forEach(l => {
+    const s = document.createElement('span');
+    s.className = 'evo-label';
+    s.textContent = l;
+    labelsEl.appendChild(s);
+  });
+})();
+</script>
+{% endif %}
+
+<!-- ── 4 Cartes ── -->
 <div class="stats-grid">
 
   <!-- 1. Classement Escalades -->
@@ -194,7 +355,7 @@
     {% endif %}
   </div>
 
-  <!-- 3. Poids & Outage / Métier — SVG 3D natif -->
+  <!-- 3. Poids & Outage / Métier -->
   <div class="stat-card">
     <div class="card-header">
       <div class="card-title">🥧 Poids &amp; Outage / Métier</div>

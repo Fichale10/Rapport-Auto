@@ -1,11 +1,14 @@
+import json
 import time
 import os
 import math
 from datetime import date
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.utils.safestring import mark_safe
 from django.http import FileResponse, Http404, JsonResponse
 from django.conf import settings
+from django.contrib import messages
 
 from .models import UploadedReport
 from .forms import UploadForm
@@ -23,10 +26,36 @@ def _period_label(report):
 
 def home(request):
     if request.user.is_superuser:
-        recent_reports = UploadedReport.objects.filter(processed=True)[:5]
+        all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
-        recent_reports = UploadedReport.objects.filter(processed=True, user=request.user)[:5]
-    return render(request, 'reports/home.html', {'recent_reports': recent_reports})
+        all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
+
+    recent_reports = all_reports[:5]
+
+    # KPIs globaux
+    total_reports    = all_reports.count()
+    total_incidents  = sum(r.total_incidents  for r in all_reports)
+    total_unresolved = sum(r.unresolved_count for r in all_reports if r.unresolved_count)
+    total_outage_h   = round(sum(r.total_duration_sec for r in all_reports) / 3600, 1)
+
+    # Mini sparkline — incidents des 7 derniers rapports (du plus ancien au plus récent)
+    spark_reports = list(reversed(list(all_reports[:7])))
+    spark_labels  = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
+    spark_values  = [r.total_incidents for r in spark_reports]
+
+    # Dernier rapport traité
+    last_report = all_reports.first()
+
+    return render(request, 'reports/home.html', {
+        'recent_reports':   recent_reports,
+        'total_reports':    total_reports,
+        'total_incidents':  total_incidents,
+        'total_unresolved': total_unresolved,
+        'total_outage_h':   total_outage_h,
+        'spark_labels':     spark_labels,
+        'spark_values':     spark_values,
+        'last_report':      last_report,
+    })
 
 
 def upload(request):
@@ -52,7 +81,6 @@ def process_report(request, pk):
     if request.method == 'GET':
         return render(request, 'reports/processing.html', {'report': report})
 
-    # POST → traitement réel
     start = time.time()
     input_path = report.file.path
     date_debut_str = report.date_rapport.strftime('%Y-%m-%d')
@@ -253,53 +281,253 @@ def history(request):
     })
 
 
-# ── SVG Donut helper ────────────────────────────────────────────────────────
+# ── Palette couleurs ──────────────────────────────────────────────────────────
 DONUT_COLORS = [
-    '#003087', '#FFC72C', '#e53e3e', '#2196F3', '#FF9800',
+    '#003087', '#e05a2b', '#FF9800', '#2196F3', '#FFC72C',
     '#4CAF50', '#9C27B0', '#00BCD4', '#8BC34A', '#FF5722',
     '#607D8B', '#795548', '#009688', '#0047cc', '#F44336',
 ]
+DONUT_DARK = [
+    '#001245', '#8b3318', '#b36a00', '#0d5ca8', '#a07800',
+    '#2e7d32', '#6a1b9a', '#00838f', '#558b2f', '#bf360c',
+    '#37474f', '#4e342e', '#00695c', '#002fa0', '#b71c1c',
+]
 
+
+# ── SVG Camembert 3D Premium ──────────────────────────────────────────────────
 def _make_donut_svg(data, total_h):
     if not data:
         return ''
     total = sum(d['outage_h'] for d in data)
     if total == 0:
         return ''
-    cx = cy = 100
-    R  = 88
-    Ri = 48
-    paths = []
-    angle = -math.pi / 2
+
+    CX, CY  = 310, 148
+    RX, RY  = 215, 82
+    DEPTH   = 55
+    W       = 660
+    n       = len(data)
+    COLS    = 3
+    LEG_ROWS = math.ceil(n / COLS)
+    H       = CY + RY + DEPTH + 30 + LEG_ROWS * 52 + 20
+
+    def pt(a, r=1.0):
+        return (CX + r * RX * math.cos(a), CY + r * RY * math.sin(a))
+
+    # ── Defs ────────────────────────────────────────────────────────────────
+    defs = '<defs>'
+    for i, d in enumerate(data):
+        c  = DONUT_COLORS[i % len(DONUT_COLORS)]
+        dk = DONUT_DARK[i  % len(DONUT_DARK)]
+        defs += (
+            f'<linearGradient id="pg{i}" x1="0" y1="0" x2="0.3" y2="1">'
+            f'<stop offset="0%" stop-color="{c}"/>'
+            f'<stop offset="100%" stop-color="{dk}"/>'
+            f'</linearGradient>'
+        )
+    defs += (
+        '<filter id="pshadow" x="-20%" y="-20%" width="140%" height="160%">'
+        '<feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#00000035"/>'
+        '</filter>'
+        '</defs>'
+    )
+
+    # ── Tranches ────────────────────────────────────────────────────────────
+    slices = []
+    angle  = -math.pi / 2
     for i, d in enumerate(data):
         sweep = (d['outage_h'] / total) * 2 * math.pi
-        ea    = angle + sweep
-        large = 1 if sweep > math.pi else 0
-        x1o = cx + R  * math.cos(angle); y1o = cy + R  * math.sin(angle)
-        x2o = cx + R  * math.cos(ea);    y2o = cy + R  * math.sin(ea)
-        x1i = cx + Ri * math.cos(ea);    y1i = cy + Ri * math.sin(ea)
-        x2i = cx + Ri * math.cos(angle); y2i = cy + Ri * math.sin(angle)
-        color = DONUT_COLORS[i % len(DONUT_COLORS)]
-        mid   = angle + sweep / 2
-        p  = f'<path d="M{x1o:.2f},{y1o:.2f} A{R},{R} 0 {large},1 {x2o:.2f},{y2o:.2f} '
-        p += f'L{x1i:.2f},{y1i:.2f} A{Ri},{Ri} 0 {large},0 {x2i:.2f},{y2i:.2f} Z" '
-        p += f'fill="{color}" stroke="#fff" stroke-width="2.5">'
-        p += f'<title>{d["name"]}: {d["outage_h"]}h ({d["pct"]}%)</title></path>'
-        if d['pct'] >= 5:
-            lx = cx + (R + Ri) / 2 * math.cos(mid)
-            ly = cy + (R + Ri) / 2 * math.sin(mid)
-            p += (f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                  f'dominant-baseline="middle" fill="white" '
-                  f'font-size="10" font-weight="bold" font-family="Arial,sans-serif">'
-                  f'{d["pct"]}%</text>')
-        paths.append(p)
-        angle = ea
+        slices.append({
+            'a1':    angle,
+            'a2':    angle + sweep,
+            'mid':   angle + sweep / 2,
+            'color': DONUT_COLORS[i % len(DONUT_COLORS)],
+            'dark':  DONUT_DARK[i  % len(DONUT_DARK)],
+            'grad':  f'url(#pg{i})',
+            'pct':   d['pct'],
+            'h':     d['outage_h'],
+            'name':  d['name'],
+        })
+        angle += sweep
 
-    center  = (f'<text x="{cx}" y="{cy-7}" text-anchor="middle" fill="#003087" '
-               f'font-size="15" font-weight="bold" font-family="Arial,sans-serif">{total_h}h</text>')
-    center += (f'<text x="{cx}" y="{cy+9}" text-anchor="middle" fill="#888" '
-               f'font-size="9" font-family="Arial,sans-serif">TOTAL</text>')
-    return f'<svg width="200" height="200" viewBox="0 0 200 200">{"".join(paths)}{center}</svg>'
+    # ── Parois latérales ────────────────────────────────────────────────────
+    sides = ''
+    for s in reversed(slices):
+        a1, a2 = s['a1'], s['a2']
+        vs = max(a1, 0)
+        ve = min(a2, math.pi)
+        if vs < ve:
+            N = 32
+            tp, bp = [], []
+            for k in range(N + 1):
+                a = vs + (ve - vs) * k / N
+                x = CX + RX * math.cos(a)
+                y = CY + RY * math.sin(a)
+                tp.append(f'{x:.2f},{y:.2f}')
+                bp.append(f'{x:.2f},{y + DEPTH:.2f}')
+            bp.reverse()
+            sides += (
+                f'<path d="M{" L".join(tp + bp)}Z" '
+                f'fill="{s["dark"]}" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>'
+            )
+        for a in [a1, a2]:
+            if 0 <= a <= math.pi:
+                ox, oy = pt(a)
+                sides += (
+                    f'<path d="M{CX:.2f},{CY:.2f} L{ox:.2f},{oy:.2f} '
+                    f'L{ox:.2f},{oy+DEPTH:.2f} L{CX:.2f},{CY+DEPTH:.2f} Z" '
+                    f'fill="{s["dark"]}" opacity="0.5" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>'
+                )
+
+    bot_ellipse = (
+        f'<ellipse cx="{CX}" cy="{CY+DEPTH}" rx="{RX}" ry="{RY}" '
+        f'fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="1.5"/>'
+    )
+
+    # ── Faces supérieures ───────────────────────────────────────────────────
+    tops = ''
+    for s in slices:
+        a1, a2 = s['a1'], s['a2']
+        x1, y1 = pt(a1)
+        x2, y2 = pt(a2)
+        large  = 1 if (a2 - a1) > math.pi else 0
+        tops += (
+            f'<path d="M{CX:.2f},{CY:.2f} L{x1:.2f},{y1:.2f} '
+            f'A{RX},{RY} 0 {large},1 {x2:.2f},{y2:.2f} Z" '
+            f'fill="{s["grad"]}" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>'
+        )
+
+    # ── Reflets ─────────────────────────────────────────────────────────────
+    highlights = ''
+    for s in slices:
+        hs = max(s['a1'], -math.pi / 2)
+        he = min(s['a2'], -math.pi / 2 + 1.0)
+        if hs < he:
+            hx1, hy1 = pt(hs, 0.97)
+            hx2, hy2 = pt(he, 0.97)
+            highlights += (
+                f'<path d="M{hx1:.2f},{hy1:.2f} A{RX*0.97:.1f},{RY*0.97:.1f} 0 0,1 {hx2:.2f},{hy2:.2f}" '
+                f'fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round"/>'
+            )
+
+    # ── Labels avec anti-collision ───────────────────────────────────────────
+    # Sépare grandes tranches (label interne) et petites (label externe)
+    inner_threshold = 10  # pct >= 10 → label interne
+
+    # Calcule positions brutes des labels externes
+    ext_labels = []
+    for s in slices:
+        if s['pct'] < inner_threshold:
+            lx_raw, ly_raw = pt(s['mid'], 1.42)
+            ext_labels.append({
+                's': s,
+                'lx': lx_raw,
+                'ly': ly_raw,
+                'anchor': 'start' if math.cos(s['mid']) >= 0 else 'end',
+            })
+
+    # Anti-collision : trie par ly et écarte les labels trop proches
+    MIN_GAP = 50
+    left  = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
+    right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
+
+    left.sort(key=lambda e: e['ly'])
+    for i in range(1, len(left)):
+        if abs(left[i]['ly'] - left[i-1]['ly']) < MIN_GAP:
+            left[i]['ly'] = left[i-1]['ly'] + MIN_GAP
+
+    right.sort(key=lambda e: e['ly'])
+    for i in range(1, len(right)):
+        if abs(right[i]['ly'] - right[i-1]['ly']) < MIN_GAP:
+            right[i]['ly'] = right[i-1]['ly'] + MIN_GAP
+
+    ext_labels = left + right
+
+    labels = ''
+
+    # Labels internes (grandes tranches)
+    for s in slices:
+        if s['pct'] >= inner_threshold:
+            lx, ly = pt(s['mid'], 0.60)
+            labels += (
+                f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="white">'
+                f'{s["pct"]}%</text>'
+                f'<text x="{lx:.1f}" y="{ly+15:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="11" fill="rgba(255,255,255,0.88)">'
+                f'{s["h"]}h</text>'
+            )
+
+    # Labels externes (petites tranches) avec ligne de repère
+    for e in ext_labels:
+        s      = e['s']
+        lx     = e['lx']
+        ly     = e['ly']
+        anchor = e['anchor']
+        ox, oy = pt(s['mid'], 1.04)   # point sur le bord de la tranche
+        mx, my = pt(s['mid'], 1.16)   # coude de la ligne
+
+        # offset texte selon côté
+        tx = lx + (6 if anchor == 'start' else -6)
+
+        labels += (
+            # ligne bord → coude
+            f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
+            f'fill="none" stroke="{s["color"]}" stroke-width="1.2" opacity="0.75"/>'
+            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="2" fill="{s["color"]}"/>'
+            # %
+            f'<text x="{tx:.1f}" y="{ly-2:.1f}" text-anchor="{anchor}" '
+            f'font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="{s["color"]}">'
+            f'{s["pct"]}%</text>'
+            # heures
+            f'<text x="{tx:.1f}" y="{ly+12:.1f}" text-anchor="{anchor}" '
+            f'font-family="Arial,sans-serif" font-size="10" fill="#555">'
+            f'{s["h"]}h</text>'
+        )
+
+    # ── Badge total ─────────────────────────────────────────────────────────
+    badge = (
+        f'<rect x="{CX-40}" y="{CY-18}" width="80" height="34" rx="10" '
+        f'fill="white" opacity="0.93"/>'
+        f'<text x="{CX}" y="{CY+1}" text-anchor="middle" '
+        f'font-family="Arial,sans-serif" font-size="12" font-weight="800" fill="#003087">'
+        f'{total_h}h</text>'
+        f'<text x="{CX}" y="{CY+13}" text-anchor="middle" '
+        f'font-family="Arial,sans-serif" font-size="8" fill="#888" letter-spacing="1.5">TOTAL</text>'
+    )
+
+    # ── Légende 3 colonnes ───────────────────────────────────────────────────
+    leg_top = CY + RY + DEPTH + 32
+    COL_W   = int((W - 40) / COLS)
+    legend  = ''
+    for i, s in enumerate(slices):
+        col = i % COLS
+        row = i // COLS
+        x   = 20 + col * COL_W
+        y   = leg_top + row * 50
+        legend += (
+            f'<rect x="{x}" y="{y}" width="{COL_W-10}" height="42" rx="9" '
+            f'fill="{s["color"]}" opacity="0.08"/>'
+            f'<circle cx="{x+12}" cy="{y+12}" r="6" fill="{s["color"]}"/>'
+        )
+        name = s['name'][:16] + ('…' if len(s['name']) > 16 else '')
+        legend += (
+            f'<text x="{x+24}" y="{y+16}" '
+            f'font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="{s["color"]}">'
+            f'{name}</text>'
+            f'<text x="{x+12}" y="{y+32}" '
+            f'font-family="Arial,sans-serif" font-size="10" fill="#666">'
+            f'{s["h"]}h · {s["pct"]}%</text>'
+        )
+
+    return (
+        f'<svg width="100%" viewBox="0 0 {W} {H}" '
+        f'xmlns="http://www.w3.org/2000/svg" overflow="visible">'
+        f'{defs}'
+        f'<g filter="url(#pshadow)">{sides}{bot_ellipse}{tops}</g>'
+        f'{highlights}{labels}{badge}{legend}'
+        f'</svg>'
+    )
 
 
 def export_pdf(request, pk):
@@ -424,7 +652,7 @@ def export_pdf(request, pk):
             cell('Statut',    size=8, color='#ffffff', bold=True),
         ]
 
-        data = [header_row]
+        data_rows = [header_row]
         total_idx = None
 
         for i, row in enumerate(report.synthesis_json):
@@ -449,7 +677,7 @@ def export_pdf(request, pk):
                 s_color = '#333333'
 
             esc_color = '#003087' if is_total else '#111111'
-            data.append([
+            data_rows.append([
                 cell(esc,                    size=9, color=esc_color, bold=is_total, align='LEFT'),
                 cell(str(inc),               size=9, color=esc_color, bold=is_total),
                 cell(row.get('DUREE',''),    size=8, color='#555555'),
@@ -458,16 +686,16 @@ def export_pdf(request, pk):
                 cell(status_txt,             size=7, color=s_color),
             ])
 
-        st = Table(data, colWidths=cw, repeatRows=1)
+        st = Table(data_rows, colWidths=cw, repeatRows=1)
         ts = TableStyle([
-            ('BACKGROUND',  (0,0), (-1,0),  YAS_BLUE),
+            ('BACKGROUND',     (0,0), (-1,0),  YAS_BLUE),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, LIGHT_GRAY]),
-            ('GRID',        (0,0), (-1,-1), 0.3, colors.HexColor('#e8edf5')),
-            ('ALIGN',       (1,0), (-1,-1), 'CENTER'),
-            ('ALIGN',       (0,0), (0,-1),  'LEFT'),
-            ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
-            ('PADDING',     (0,0), (-1,-1), 5),
-            ('LEFTPADDING', (0,0), (0,-1),  8),
+            ('GRID',           (0,0), (-1,-1), 0.3, colors.HexColor('#e8edf5')),
+            ('ALIGN',          (1,0), (-1,-1), 'CENTER'),
+            ('ALIGN',          (0,0), (0,-1),  'LEFT'),
+            ('VALIGN',         (0,0), (-1,-1), 'MIDDLE'),
+            ('PADDING',        (0,0), (-1,-1), 5),
+            ('LEFTPADDING',    (0,0), (0,-1),  8),
         ])
         if total_idx:
             ts.add('BACKGROUND', (0, total_idx), (-1, total_idx), LIGHT_BLUE)
@@ -514,34 +742,173 @@ def notifications(request):
     })
 
 
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect('/')
+
+    if request.method == 'POST':
+        from django.contrib.auth.models import User
+        username   = request.POST.get('username', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name  = request.POST.get('last_name', '').strip()
+        email      = request.POST.get('email', '').strip()
+        password1  = request.POST.get('password1', '')
+        password2  = request.POST.get('password2', '')
+
+        if not username or not password1:
+            messages.error(request, 'Identifiant et mot de passe obligatoires.')
+        elif User.objects.filter(username=username).exists():
+            messages.error(request, 'Cet identifiant est déjà utilisé.')
+        elif password1 != password2:
+            messages.error(request, 'Les mots de passe ne correspondent pas.')
+        elif len(password1) < 8:
+            messages.error(request, 'Le mot de passe doit contenir au moins 8 caractères.')
+        else:
+            User.objects.create_user(
+                username=username, password=password1,
+                first_name=first_name, last_name=last_name, email=email,
+            )
+            messages.success(request, 'Compte créé avec succès ! Connectez-vous.')
+            return redirect('accounts:login')
+
+    return render(request, 'accounts/register.html')
+
+def comparer(request):
+    """
+    Comparaison de deux rapports côte à côte.
+    GET  /comparer/              → page de sélection
+    GET  /comparer/?r1=pk&r2=pk  → comparaison
+    """
+    if request.user.is_superuser:
+        all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
+    else:
+        all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
+
+    pk1 = request.GET.get('r1')
+    pk2 = request.GET.get('r2')
+
+    r1 = r2 = None
+    diff = None
+
+    if pk1 and pk2:
+        r1 = get_object_or_404(all_reports, pk=pk1)
+        r2 = get_object_or_404(all_reports, pk=pk2)
+
+        def parse_hms(s):
+            try:
+                parts = str(s).split(':')
+                if len(parts) == 3:
+                    return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+            except Exception:
+                pass
+            return 0
+
+        # ── Données KPI ──────────────────────────────────────────────────
+        def kpi_diff(v1, v2):
+            if v1 == 0 and v2 == 0:
+                return 0, 'neutral'
+            if v1 == 0:
+                return '+∞', 'worse'
+            delta = v2 - v1
+            pct   = round(delta / v1 * 100, 1)
+            trend = 'better' if delta < 0 else ('worse' if delta > 0 else 'neutral')
+            return (f'+{pct}%' if pct > 0 else f'{pct}%'), trend
+
+        inc_delta,  inc_trend  = kpi_diff(r1.total_incidents,  r2.total_incidents)
+        unr_delta,  unr_trend  = kpi_diff(r1.unresolved_count, r2.unresolved_count)
+        rows_delta, rows_trend = kpi_diff(r1.total_rows,       r2.total_rows)
+        filt_delta, filt_trend = kpi_diff(r1.filtered_rows,    r2.filtered_rows)
+
+        # ── Comparaison synthèse par escalade ────────────────────────────
+        def synth_map(report):
+            m = {}
+            for row in (report.synthesis_json or []):
+                esc = row.get('Escalade', '')
+                if esc and esc != 'TOTAL':
+                    m[esc] = {
+                        'count':      row.get('Inc count', 0),
+                        'outage_sec': parse_hms(row.get('OUTAGE', '0:00:00')),
+                        'status':     row.get('Status', ''),
+                    }
+            return m
+
+        s1, s2    = synth_map(r1), synth_map(r2)
+        all_escs  = sorted(set(list(s1.keys()) + list(s2.keys())))
+
+        esc_rows = []
+        for esc in all_escs:
+            v1 = s1.get(esc, {'count': 0, 'outage_sec': 0, 'status': '—'})
+            v2 = s2.get(esc, {'count': 0, 'outage_sec': 0, 'status': '—'})
+            delta = v2['count'] - v1['count']
+            esc_rows.append({
+                'name':       esc,
+                'count1':     v1['count'],
+                'count2':     v2['count'],
+                'outage1_h':  round(v1['outage_sec'] / 3600, 1),
+                'outage2_h':  round(v2['outage_sec'] / 3600, 1),
+                'status1':    v1['status'],
+                'status2':    v2['status'],
+                'delta':      delta,
+                'trend':      'better' if delta < 0 else ('worse' if delta > 0 else 'neutral'),
+            })
+
+        # ── Top sites communs ────────────────────────────────────────────
+        def sites_map(report):
+            return {s['name']: s['count'] for s in (report.top_sites_json or [])}
+
+        ts1, ts2    = sites_map(r1), sites_map(r2)
+        all_sites   = sorted(set(list(ts1.keys()) + list(ts2.keys())),
+                             key=lambda s: max(ts1.get(s, 0), ts2.get(s, 0)), reverse=True)[:10]
+
+        site_rows = [{
+            'name':   s,
+            'count1': ts1.get(s, 0),
+            'count2': ts2.get(s, 0),
+            'delta':  ts2.get(s, 0) - ts1.get(s, 0),
+        } for s in all_sites]
+
+        diff = {
+            'inc_delta':  inc_delta,  'inc_trend':  inc_trend,
+            'unr_delta':  unr_delta,  'unr_trend':  unr_trend,
+            'rows_delta': rows_delta, 'rows_trend': rows_trend,
+            'filt_delta': filt_delta, 'filt_trend': filt_trend,
+            'esc_rows':   esc_rows,
+            'site_rows':  site_rows,
+        }
+
+    return render(request, 'reports/comparer.html', {
+        'all_reports': all_reports,
+        'r1':   r1,
+        'r2':   r2,
+        'pk1':  pk1,
+        'pk2':  pk2,
+        'diff': diff,
+    })
+
 def statistiques(request):
     """
     Modes :
-      1. ?report=<pk>  → stats du rapport spécifique
-      2. ?period=...   → stats agrégées de la période
-      3. (défaut)      → stats du dernier rapport traité
+      1. ?report=<pk>  -> stats du rapport specifique
+      2. ?period=...   -> stats agregees de la periode
+      3. (defaut)      -> stats du dernier rapport traite
     """
     from collections import defaultdict
     from datetime import timedelta
 
-    # ── Récupère les rapports accessibles à l'utilisateur ──────────────────
     if request.user.is_superuser:
-        base_qs = UploadedReport.objects.filter(processed=True).order_by('-date_rapport')
+        base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
-        base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-date_rapport')
+        base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
 
-    # ── Mode rapport unique (?report=pk) ───────────────────────────────────
-    report_pk    = request.GET.get('report')
+    report_pk     = request.GET.get('report')
     single_report = None
-    period_filter = request.GET.get('period', 'latest')   # 'latest' = défaut
+    period_filter = request.GET.get('period', 'latest')
 
     if report_pk:
-        # Redirection depuis la page Résultats
         single_report = get_object_or_404(base_qs, pk=report_pk)
         reports = base_qs.filter(pk=report_pk)
-        period_filter = 'report'   # mode spécial, on masque les boutons période
+        period_filter = 'report'
     elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
-        # Défaut → dernier rapport traité
         single_report = base_qs.first()
         if single_report:
             reports = base_qs.filter(pk=single_report.pk)
@@ -549,7 +916,6 @@ def statistiques(request):
             reports = base_qs.none()
         period_filter = 'latest'
     else:
-        # Filtre période
         today = date.today()
         if period_filter == 'day':
             reports = base_qs.filter(uploaded_at__date=today)
@@ -559,10 +925,9 @@ def statistiques(request):
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
-        else:  # 'all'
+        else:
             reports = base_qs
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
     def parse_hms(s):
         try:
             parts = str(s).split(':')
@@ -572,7 +937,6 @@ def statistiques(request):
             pass
         return 0
 
-    # ── Classement Escalades ────────────────────────────────────────────────
     escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
     for r in reports:
         if not r.synthesis_json:
@@ -588,11 +952,15 @@ def statistiques(request):
     escalades_sorted = sorted(escalade_data.items(), key=lambda x: x[1]['count'], reverse=True)
     max_esc = escalades_sorted[0][1]['count'] if escalades_sorted else 1
     escalades_chart = [
-        {'name': k, 'count': v['count'], 'pct': round(v['count'] / max_esc * 100), 'outage': round(v['outage_sec'] / 3600, 1)}
+        {
+            'name':   k,
+            'count':  v['count'],
+            'pct':    round(v['count'] / max_esc * 100),
+            'outage': round(v['outage_sec'] / 3600, 1),
+        }
         for k, v in escalades_sorted if v['count'] > 0
     ]
 
-    # ── Récurrence des Sites ────────────────────────────────────────────────
     site_data = defaultdict(int)
     for r in reports:
         if r.top_sites_json:
@@ -600,18 +968,23 @@ def statistiques(request):
                 site_data[s['name']] += s['count']
     sites_top10 = sorted(site_data.items(), key=lambda x: x[1], reverse=True)[:10]
     max_site = sites_top10[0][1] if sites_top10 else 1
-    sites_chart = [{'name': k, 'count': v, 'pct': round(v / max_site * 100)} for k, v in sites_top10]
+    sites_chart = [
+        {'name': k, 'count': v, 'pct': round(v / max_site * 100)}
+        for k, v in sites_top10
+    ]
 
-    # ── Poids & Outage / Métier ─────────────────────────────────────────────
     total_outage_sec = sum(v['outage_sec'] for v in escalade_data.values())
     outage_chart = []
     for k, v in escalades_sorted:
         if v['outage_sec'] > 0:
             pct = round(v['outage_sec'] / total_outage_sec * 100) if total_outage_sec else 0
-            outage_chart.append({'name': k, 'outage_h': round(v['outage_sec'] / 3600, 1), 'pct': pct})
+            outage_chart.append({
+                'name':     k,
+                'outage_h': round(v['outage_sec'] / 3600, 1),
+                'pct':      pct,
+            })
     total_outage_h = round(total_outage_sec / 3600, 1)
 
-    # ── Sites les Plus Dégradés ─────────────────────────────────────────────
     site_duration = defaultdict(float)
     for r in reports:
         if not r.detailed_file:
@@ -639,7 +1012,6 @@ def statistiques(request):
         for k, v in degraded_top10
     ]
 
-    # ── Donut SVG ───────────────────────────────────────────────────────────
     donut_svg = _make_donut_svg(outage_chart, total_outage_h)
     outage_chart_colored = [
         {**d, 'color': DONUT_COLORS[i % len(DONUT_COLORS)]}
@@ -647,6 +1019,10 @@ def statistiques(request):
     ]
 
     total_reports = reports.count()
+    evolution_reports = list(reports.order_by('uploaded_at'))
+    evolution_labels = [r.uploaded_at.strftime('%d/%m') for r in evolution_reports]
+    evolution_incidents = [r.total_incidents for r in evolution_reports]
+    evolution_outage = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
 
     return render(request, 'reports/statistiques.html', {
         'period_filter':   period_filter,
@@ -658,4 +1034,11 @@ def statistiques(request):
         'total_outage_h':  total_outage_h,
         'total_reports':   total_reports,
         'donut_svg':       donut_svg,
+        'show_evolution_chart': len(evolution_labels) > 1,
+        'evolution_labels':    mark_safe(json.dumps(evolution_labels)),
+        'evolution_incidents': mark_safe(json.dumps(evolution_incidents)),
+        'evolution_outage':    mark_safe(json.dumps(evolution_outage)),
+        'evolution_labels':    evolution_labels,
+        'evolution_incidents': evolution_incidents,
+        'evolution_outage':    evolution_outage,
     })
