@@ -56,133 +56,66 @@
     .btn-logout:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
 
     /* ── NOTIFICATIONS ── */
-    .notif-wrap {
-      position: relative;
-    }
-
+    .notif-wrap { position: relative; }
     .notif-btn {
       width: 38px; height: 38px;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.15);
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 18px;
-      transition: background .2s;
-      position: relative;
+      cursor: pointer; font-size: 18px; transition: background .2s; position: relative;
     }
     .notif-btn:hover { background: rgba(255,255,255,0.15); }
-
     .notif-badge {
       position: absolute; top: -5px; right: -5px;
       background: #e53e3e; color: #fff;
       font-size: 10px; font-weight: 700;
       min-width: 18px; height: 18px;
       border-radius: 9px; padding: 0 4px;
-      display: flex; align-items: center; justify-content: center;
+      display: none; align-items: center; justify-content: center;
       border: 2px solid var(--yas-blue);
-      display: none;
     }
     .notif-badge.show { display: flex; }
-
     .notif-dropdown {
       position: absolute; top: calc(100% + 10px); right: 0;
-      width: 320px;
-      background: #fff;
-      border-radius: 14px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.2);
-      border: 1px solid #e8edf5;
-      overflow: hidden;
-      display: none;
-      z-index: 999;
+      width: 320px; background: #fff; border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.2); border: 1px solid #e8edf5;
+      overflow: hidden; display: none; z-index: 999;
     }
     .notif-dropdown.show { display: block; }
-
-    .notif-header {
-      background: #003087;
-      padding: 14px 18px;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .notif-header-title {
-      font-size: 13px; font-weight: 700; color: #fff;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .notif-header-count {
-      background: #e53e3e; color: #fff;
-      font-size: 11px; font-weight: 700;
-      padding: 2px 8px; border-radius: 10px;
-    }
-
+    .notif-header { background: #003087; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; }
+    .notif-header-title { font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .notif-header-count { background: #e53e3e; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
     .notif-list { max-height: 300px; overflow-y: auto; }
-
     .notif-item {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 18px;
-      border-bottom: 1px solid #f5f7fb;
-      text-decoration: none;
-      transition: background .15s;
+      display: flex; align-items: center; gap: 12px; padding: 12px 18px;
+      border-bottom: 1px solid #f5f7fb; text-decoration: none; transition: background .15s;
     }
     .notif-item:last-child { border-bottom: none; }
     .notif-item:hover { background: #f8faff; }
-
-    .notif-dot {
-      width: 8px; height: 8px;
-      background: #e53e3e;
-      border-radius: 50%; flex-shrink: 0;
-    }
-
+    .notif-dot { width: 8px; height: 8px; background: #e53e3e; border-radius: 50%; flex-shrink: 0; }
     .notif-item-body { flex: 1; }
-    .notif-item-file {
-      font-size: 13px; font-weight: 600; color: #111;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      max-width: 200px;
-    }
+    .notif-item-file { font-size: 13px; font-weight: 600; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
     .notif-item-date { font-size: 11px; color: #888; margin-top: 2px; }
-
-    .notif-item-count {
-      background: #fff0f0; color: #e53e3e;
-      font-size: 11px; font-weight: 700;
-      padding: 3px 8px; border-radius: 6px;
-      white-space: nowrap;
-    }
-
-    .notif-empty {
-      padding: 24px;
-      text-align: center;
-      color: #888;
-      font-size: 13px;
-    }
-
-    .notif-footer {
-      padding: 10px 18px;
-      border-top: 1px solid #f0f4ff;
-      background: #fafbff;
-      text-align: center;
-    }
-    .notif-footer a {
-      font-size: 12px; font-weight: 600; color: #003087;
-      text-decoration: none;
-    }
+    .notif-item-count { background: #fff0f0; color: #e53e3e; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+    .notif-empty { padding: 24px; text-align: center; color: #888; font-size: 13px; }
+    .notif-footer { padding: 10px 18px; border-top: 1px solid #f0f4ff; background: #fafbff; text-align: center; }
+    .notif-footer a { font-size: 12px; font-weight: 600; color: #003087; text-decoration: none; }
     .notif-footer a:hover { color: #0047cc; }
 
     /* ── TOPBAR ── */
-    .topbar {
-      background: #fff; border-bottom: 1px solid #e8edf5;
-      padding: 10px 40px; font-size: 13px; color: #888;
-    }
+    .topbar { background: #fff; border-bottom: 1px solid #e8edf5; padding: 10px 40px; font-size: 13px; color: #888; }
     .topbar span { color: var(--yas-blue); font-weight: 600; }
 
     /* ── MAIN ── */
     .main-content { padding: 32px 40px; max-width: 1280px; margin: 0 auto; }
 
-    .card {
-      background: #fff; border-radius: 16px; padding: 28px;
-      box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5;
-    }
+    .card { background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5; }
 
     .messages-container { margin-bottom: 24px; }
     .message { padding: 12px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 8px; border-left: 4px solid; }
     .message.success { background: #f0fff4; border-color: #22c55e; color: #166534; }
-    .message.error { background: #fff3cd; border-color: var(--yas-yellow); color: #7a5a00; }
+    .message.error   { background: #fff3cd; border-color: var(--yas-yellow); color: #7a5a00; }
 
     .btn-primary {
       background: var(--yas-yellow); color: var(--yas-blue); border: none;
@@ -192,6 +125,131 @@
       transition: transform .15s, box-shadow .15s;
     }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,199,44,0.35); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       ANIMATIONS GLOBALES
+    ══════════════════════════════════════════════════════════════════ */
+
+    /* ── Page fade-in ── */
+    .main-content { animation: pageFadeIn .35s ease both; }
+    @keyframes pageFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Cards slide-up ── */
+    .card,
+    .stat-card,
+    .kpi,
+    .kpi-box,
+    .kpi-c,
+    .kpi-row > div,
+    .kpi-bar > div,
+    .kpi-compare > div,
+    .evolution-card,
+    .selector-card,
+    .hero,
+    .last-report-card,
+    .table-wrap,
+    .r-header {
+      animation: cardSlideUp .4s ease both;
+    }
+    @keyframes cardSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Décalage en cascade pour les grilles */
+    .kpi-row > div:nth-child(1), .kpi-bar > div:nth-child(1), .kpi-compare > div:nth-child(1) { animation-delay: .05s; }
+    .kpi-row > div:nth-child(2), .kpi-bar > div:nth-child(2), .kpi-compare > div:nth-child(2) { animation-delay: .10s; }
+    .kpi-row > div:nth-child(3), .kpi-bar > div:nth-child(3), .kpi-compare > div:nth-child(3) { animation-delay: .15s; }
+    .kpi-row > div:nth-child(4), .kpi-bar > div:nth-child(4), .kpi-compare > div:nth-child(4) { animation-delay: .20s; }
+
+    .stats-grid .stat-card:nth-child(1) { animation-delay: .10s; }
+    .stats-grid .stat-card:nth-child(2) { animation-delay: .15s; }
+    .stats-grid .stat-card:nth-child(3) { animation-delay: .20s; }
+    .stats-grid .stat-card:nth-child(4) { animation-delay: .25s; }
+
+    /* ── Barres de progression — remplissage animé ── */
+    .bar-fill,
+    .bar-fill.yellow,
+    .bar-fill.red,
+    .bar-fill-d {
+      animation: barGrow .7s cubic-bezier(.22,.61,.36,1) both;
+      transform-origin: left center;
+    }
+    @keyframes barGrow {
+      from { clip-path: inset(0 100% 0 0); }
+      to   { clip-path: inset(0 0% 0 0); }
+    }
+    .bar-list > div:nth-child(1)  .bar-fill { animation-delay: .10s; }
+    .bar-list > div:nth-child(2)  .bar-fill { animation-delay: .15s; }
+    .bar-list > div:nth-child(3)  .bar-fill { animation-delay: .20s; }
+    .bar-list > div:nth-child(4)  .bar-fill { animation-delay: .25s; }
+    .bar-list > div:nth-child(5)  .bar-fill { animation-delay: .30s; }
+    .bar-list > div:nth-child(6)  .bar-fill { animation-delay: .35s; }
+    .bar-list > div:nth-child(7)  .bar-fill { animation-delay: .40s; }
+    .bar-list > div:nth-child(8)  .bar-fill { animation-delay: .45s; }
+    .bar-list > div:nth-child(9)  .bar-fill { animation-delay: .50s; }
+    .bar-list > div:nth-child(10) .bar-fill { animation-delay: .55s; }
+
+    /* ── Badges fade-in ── */
+    .badge, .card-badge, .section-badge {
+      animation: badgePop .3s cubic-bezier(.34,1.56,.64,1) both;
+      animation-delay: .3s;
+    }
+    @keyframes badgePop {
+      from { opacity: 0; transform: scale(.7); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Navbar link underline slide ── */
+    .nav-links a { position: relative; }
+    .nav-links a.active::after {
+      content: ''; position: absolute; bottom: 2px; left: 16px; right: 16px;
+      height: 2px; background: var(--yas-yellow); border-radius: 2px;
+      animation: underlineSlide .3s ease both;
+    }
+    @keyframes underlineSlide {
+      from { transform: scaleX(0); }
+      to   { transform: scaleX(1); }
+    }
+
+    /* ── SVG donut — apparition douce ── */
+    .donut3d-wrap svg {
+      animation: svgFadeIn .6s ease both;
+      animation-delay: .2s;
+    }
+    @keyframes svgFadeIn {
+      from { opacity: 0; transform: scale(.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Hero badge pulse ── */
+    .hero-badge {
+      animation: heroBadgePulse 2.5s ease-in-out 1s infinite;
+    }
+    @keyframes heroBadgePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,199,44,0); }
+      50%       { box-shadow: 0 0 0 6px rgba(255,199,44,0.15); }
+    }
+
+    /* ── Notification badge bounce ── */
+    .notif-badge.show {
+      animation: badgeBounce .4s cubic-bezier(.34,1.56,.64,1) both;
+    }
+    @keyframes badgeBounce {
+      from { transform: scale(0); }
+      to   { transform: scale(1); }
+    }
+
+    /* ── Respect prefers-reduced-motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
+    }
 
     @media (max-width: 768px) {
       .navbar { padding: 0 20px; }
@@ -214,15 +272,13 @@
     <a href="{% url 'home' %}"         class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
     <a href="{% url 'upload' %}"       class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
     <a href="{% url 'history' %}"      class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
-
     <a href="{% url 'statistiques' %}" class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
-    <a href="{% url 'comparer' %}" class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
+    <a href="{% url 'comparer' %}"     class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
   </div>
 
   <div class="nav-user">
     {% if user.is_authenticated %}
 
-      <!-- Cloche notifications -->
       <div class="notif-wrap" id="notifWrap">
         <div class="notif-btn" id="notifBtn" title="Incidents non résolus">
           🔔
@@ -230,16 +286,14 @@
         </div>
         <div class="notif-dropdown" id="notifDropdown">
           <div class="notif-header">
-            <div class="notif-header-title">
-              ⚠️ Incidents non résolus
-            </div>
+            <div class="notif-header-title">⚠️ Incidents non résolus</div>
             <span class="notif-header-count" id="notifCount">0</span>
           </div>
           <div class="notif-list" id="notifList">
             <div class="notif-empty">Chargement...</div>
           </div>
           <div class="notif-footer">
-           <a href="{% url 'accounts:profil' %}" class="btn-logout">👤 Profil</a>
+            <a href="{% url 'accounts:profil' %}" class="btn-logout">👤 Profil</a>
             <a href="{% url 'history' %}?period=all">Voir tout l'historique →</a>
           </div>
         </div>
@@ -273,6 +327,61 @@
 {% if user.is_authenticated %}
 <script>
 (function(){
+
+  /* ── Compteur animé pour les KPIs ── */
+  function animateCounters() {
+    var els = document.querySelectorAll(
+      '.kpi-val, .kpi-num, .kpi-c-v, .stat-num, .mini-stat-val, .incidents-val, .lr-stat-val'
+    );
+    els.forEach(function(el) {
+      var raw = el.textContent.trim();
+      /* Ignore les valeurs non numériques (ex: "24/7", "ISOC", "3G/4G") */
+      var hasUnit = raw.endsWith('h') || raw.endsWith('s') || raw.endsWith('%');
+      var unit    = hasUnit ? raw.slice(-1) : '';
+      var numStr  = hasUnit ? raw.slice(0, -1) : raw;
+      var num     = parseFloat(numStr.replace(',', '.'));
+      if (isNaN(num) || numStr.length === 0 || /[a-zA-Z\/]/.test(numStr)) return;
+
+      var isFloat = numStr.includes('.') || numStr.includes(',');
+      var duration = 900;
+      var start    = null;
+      var startVal = 0;
+
+      function step(ts) {
+        if (!start) start = ts;
+        var progress = Math.min((ts - start) / duration, 1);
+        /* easeOutExpo */
+        var ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+        var current = startVal + (num - startVal) * ease;
+        el.textContent = (isFloat ? current.toFixed(1) : Math.round(current)) + unit;
+        if (progress < 1) requestAnimationFrame(step);
+        else el.textContent = raw; /* restaure valeur exacte */
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  /* Lance les compteurs après que les cards sont apparues */
+  setTimeout(animateCounters, 200);
+
+  /* ── Intersection Observer pour barres hors viewport ── */
+  if ('IntersectionObserver' in window) {
+    var barObs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) {
+        if (e.isIntersecting) {
+          e.target.style.animationPlayState = 'running';
+          barObs.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.bar-fill, .bar-fill-d').forEach(function(bar) {
+      bar.style.animationPlayState = 'paused';
+      barObs.observe(bar);
+    });
+  }
+
+  /* ── Notifications ── */
   var btn      = document.getElementById('notifBtn');
   var dropdown = document.getElementById('notifDropdown');
   var badge    = document.getElementById('notifBadge');
@@ -284,8 +393,6 @@
     .then(function(r){ return r.json(); })
     .then(function(data) {
       var total = data.total;
-
-      // Badge
       if (total > 0) {
         badge.textContent = total > 99 ? '99+' : total;
         badge.classList.add('show');
@@ -294,8 +401,6 @@
         badge.classList.remove('show');
         count.textContent = '0';
       }
-
-      // Liste
       if (data.items.length === 0) {
         list.innerHTML = '<div class="notif-empty">✅ Aucun incident non résolu</div>';
       } else {
@@ -316,27 +421,19 @@
     });
   }
 
-  // Toggle dropdown
   btn.addEventListener('click', function(e) {
     e.stopPropagation();
     dropdown.classList.toggle('show');
-    if (dropdown.classList.contains('show')) {
-      loadNotifications();
-    }
+    if (dropdown.classList.contains('show')) loadNotifications();
   });
-
-  // Fermer en cliquant ailleurs
   document.addEventListener('click', function(e) {
-    if (!document.getElementById('notifWrap').contains(e.target)) {
+    if (!document.getElementById('notifWrap').contains(e.target))
       dropdown.classList.remove('show');
-    }
   });
 
-  // Charge au démarrage (badge uniquement)
   loadNotifications();
-
-  // Rafraîchit toutes les 2 minutes
   setInterval(loadNotifications, 120000);
+
 })();
 </script>
 {% endif %}
