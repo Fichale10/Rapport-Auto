@@ -15,4 +15,5 @@ urlpatterns = [
     path('statistiques/',                         login_required(views.statistiques),    name='statistiques'),
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
+    path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),
 ]

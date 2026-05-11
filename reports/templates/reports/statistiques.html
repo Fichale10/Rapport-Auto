@@ -13,27 +13,27 @@
     border-radius: 14px; padding: 16px 22px; margin-bottom: 20px; flex-wrap: wrap;
   }
   .report-banner-left { display: flex; align-items: center; gap: 12px; }
-  .report-banner-icon {
-    width: 40px; height: 40px; background: rgba(255,199,44,.18);
-    border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    font-size: 20px; flex-shrink: 0;
-  }
+  .report-banner-icon { width: 40px; height: 40px; background: rgba(255,199,44,.18); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
   .report-banner-tag { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #FFC72C; margin-bottom: 3px; }
   .report-banner-name { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 500px; }
   .report-banner-date { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 2px; }
-  .btn-back-results {
-    background: rgba(255,255,255,.1); border: 1.5px solid rgba(255,255,255,.25);
-    color: rgba(255,255,255,.85); padding: 9px 18px; border-radius: 9px;
-    font-size: 13px; font-weight: 600; text-decoration: none;
-    display: inline-flex; align-items: center; gap: 6px; transition: all .15s; white-space: nowrap; flex-shrink: 0;
-  }
+  .btn-back-results { background: rgba(255,255,255,.1); border: 1.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.85); padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; white-space: nowrap; flex-shrink: 0; }
   .btn-back-results:hover { border-color: rgba(255,255,255,.6); color: #fff; }
 
-  .period-bar { display:flex; align-items:center; gap:10px; margin-bottom:28px; flex-wrap:wrap; }
+  .period-export-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:28px; flex-wrap:wrap; }
+  .period-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .period-bar span { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-right:4px; }
   .period-btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; border:1.5px solid #e8edf5; background:#fff; color:#555; text-decoration:none; transition:all .15s; }
   .period-btn:hover { border-color:#003087; color:#003087; }
   .period-btn.active { background:#003087; color:#fff; border-color:#003087; }
+
+  .btn-export-xl {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #217346; color: #fff; padding: 9px 18px; border-radius: 9px;
+    font-size: 13px; font-weight: 700; text-decoration: none;
+    transition: background .15s, transform .15s, box-shadow .15s; white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-export-xl:hover { background: #1a5c38; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(33,115,70,.35); }
 
   .kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
   .kpi { background:#fff; border-radius:14px; padding:20px 22px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; transition:box-shadow .2s,transform .2s; }
@@ -44,17 +44,8 @@
   .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:30px; color:#003087; letter-spacing:1px; line-height:1; }
   .kpi-lbl { font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
 
-  /* ── Carte évolution ── */
-  .evolution-card {
-    background: #fff; border-radius: 16px; padding: 24px;
-    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05);
-    margin-bottom: 20px;
-  }
-  .evo-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #f0f4ff;
-    flex-wrap: wrap; gap: 10px;
-  }
+  .evolution-card { background: #fff; border-radius: 16px; padding: 24px; border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05); margin-bottom: 20px; }
+  .evo-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #f0f4ff; flex-wrap: wrap; gap: 10px; }
   .evo-title { font-size: 15px; font-weight: 700; color: #003087; display: flex; align-items: center; gap: 8px; }
   .evo-legend { display: flex; gap: 18px; }
   .evo-leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
@@ -63,20 +54,9 @@
   .evo-svg { width: 100%; height: 100%; overflow: visible; }
   .evo-labels { display: flex; justify-content: space-between; margin-top: 6px; }
   .evo-label { font-size: 11px; color: #aaa; text-align: center; flex: 1; }
+  .evo-tooltip { position: absolute; background: #003087; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .15s; white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,48,135,.3); }
+  .evo-tooltip::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-bottom: none; border-top-color: #003087; }
 
-  /* Tooltip */
-  .evo-tooltip {
-    position: absolute; background: #003087; color: #fff;
-    border-radius: 8px; padding: 8px 12px; font-size: 12px;
-    pointer-events: none; opacity: 0; transition: opacity .15s;
-    white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,48,135,.3);
-  }
-  .evo-tooltip::after {
-    content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
-    border: 5px solid transparent; border-bottom: none; border-top-color: #003087;
-  }
-
-  /* ── Grille stats ── */
   .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   .stat-card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05); }
   .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #f0f4ff; }
@@ -92,15 +72,72 @@
   .bar-fill.yellow { background:linear-gradient(90deg,#FFC72C,#ffdd6b); }
   .bar-fill.red    { background:linear-gradient(90deg,#e53e3e,#fc8181); }
 
-  .donut3d-wrap { display:flex; justify-content:center; align-items:center; overflow:visible; margin-top:8px; }
-  .donut3d-wrap svg { width:100%; height:auto; max-width:520px; overflow:visible; }
+  /* ── Carte double : camembert + disponibilité ── */
+  .double-card {
+    background: #fff; border-radius: 16px; padding: 0;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05);
+    grid-column: span 2;
+  }
+  .double-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px; border-bottom: 1px solid #f0f4ff;
+  }
+  .double-card-title { font-size: 15px; font-weight: 700; color: #003087; display: flex; align-items: center; gap: 8px; }
+  .double-card-body {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .double-pane {
+    padding: 20px 24px;
+  }
+  .double-pane:first-child {
+    border-right: 1px solid #f0f4ff;
+  }
+  .pane-title {
+    font-size: 13px; font-weight: 700; color: #888;
+    text-transform: uppercase; letter-spacing: .5px;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 6px;
+  }
+
+  .donut3d-wrap { display:flex; justify-content:center; align-items:center; overflow:visible; }
+  .donut3d-wrap svg { width:100%; height:auto; max-width:480px; overflow:visible; }
+
+  /* ── Graphique disponibilité ── */
+  .dispo-chart-wrap { position: relative; height: 220px; }
+  .dispo-svg { width: 100%; height: 100%; overflow: visible; }
+  .dispo-labels { display: flex; justify-content: space-between; margin-top: 4px; padding: 0 8px; }
+  .dispo-label { font-size: 13px; color: #555; text-align: center; font-weight: 700; }
+  .dispo-legend {
+    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px;
+    padding-top: 12px; border-top: 1px solid #f0f4ff;
+  }
+  .dispo-leg-item { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #333; font-weight: 600; }
+  .dispo-leg-line { width: 18px; height: 3px; border-radius: 2px; }
+  .dispo-tooltip {
+    position: absolute; background: #1a1a2e; color: #fff;
+    border-radius: 8px; padding: 8px 12px; font-size: 11px;
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+    white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  }
+
+  /* Badge "simulé" */
+  .badge-simule {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #fff8e1; color: #7a5a00; border: 1px solid #FFC72C;
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+    letter-spacing: .5px;
+  }
 
   .empty-msg { text-align:center; padding:40px 20px; color:#bbb; font-size:14px; }
 
   @media(max-width:900px){
     .stats-grid { grid-template-columns:1fr; }
-    .kpi-row    { grid-template-columns:1fr 1fr; }
+    .double-card { grid-column: span 1; }
+    .double-card-body { grid-template-columns: 1fr; }
+    .double-pane:first-child { border-right: none; border-bottom: 1px solid #f0f4ff; }
+    .kpi-row { grid-template-columns:1fr 1fr; }
     .report-banner-name { max-width: 240px; }
+    .period-export-bar { flex-direction: column; align-items: flex-start; }
   }
 </style>
 {% endblock %}
@@ -132,14 +169,25 @@
 {% endif %}
 
 {% if period_filter != 'report' %}
-<div class="period-bar">
-  <span>Période :</span>
-  <a href="?period=latest" class="period-btn {% if period_filter == 'latest' %}active{% endif %}">Dernier rapport</a>
-  <a href="?period=day"    class="period-btn {% if period_filter == 'day'    %}active{% endif %}">Aujourd'hui</a>
-  <a href="?period=week"   class="period-btn {% if period_filter == 'week'   %}active{% endif %}">7 jours</a>
-  <a href="?period=month"  class="period-btn {% if period_filter == 'month'  %}active{% endif %}">30 jours</a>
-  <a href="?period=year"   class="period-btn {% if period_filter == 'year'   %}active{% endif %}">Année</a>
-  <a href="?period=all"    class="period-btn {% if period_filter == 'all'    %}active{% endif %}">Tout</a>
+<div class="period-export-bar">
+  <div class="period-bar">
+    <span>Période :</span>
+    <a href="?period=latest" class="period-btn {% if period_filter == 'latest' %}active{% endif %}">Dernier rapport</a>
+    <a href="?period=day"    class="period-btn {% if period_filter == 'day'    %}active{% endif %}">Aujourd'hui</a>
+    <a href="?period=week"   class="period-btn {% if period_filter == 'week'   %}active{% endif %}">7 jours</a>
+    <a href="?period=month"  class="period-btn {% if period_filter == 'month'  %}active{% endif %}">30 jours</a>
+    <a href="?period=year"   class="period-btn {% if period_filter == 'year'   %}active{% endif %}">Année</a>
+    <a href="?period=all"    class="period-btn {% if period_filter == 'all'    %}active{% endif %}">Tout</a>
+  </div>
+  <a href="{% url 'export_statistiques' %}?period={{ period_filter }}{% if request.GET.report %}&report={{ request.GET.report }}{% endif %}" class="btn-export-xl">
+    📥 Exporter Excel
+  </a>
+</div>
+{% else %}
+<div style="display:flex; justify-content:flex-end; margin-bottom:20px;">
+  <a href="{% url 'export_statistiques' %}?report={{ single_report.pk }}" class="btn-export-xl">
+    📥 Exporter Excel
+  </a>
 </div>
 {% endif %}
 
@@ -159,20 +207,13 @@
   </div>
 </div>
 
-<!-- ── Graphique d'évolution (masqué si 1 seul rapport) ── -->
 {% if show_evolution_chart %}
 <div class="evolution-card">
   <div class="evo-header">
     <div class="evo-title">📈 Évolution sur la période</div>
     <div class="evo-legend">
-      <div class="evo-leg-item">
-        <div class="evo-leg-dot" style="background:#003087"></div>
-        Incidents
-      </div>
-      <div class="evo-leg-item">
-        <div class="evo-leg-dot" style="background:#FFC72C"></div>
-        Outage (h)
-      </div>
+      <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#003087"></div>Incidents</div>
+      <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#FFC72C"></div>Outage (h)</div>
     </div>
   </div>
   <div class="evo-chart-wrap">
@@ -181,132 +222,23 @@
   </div>
   <div class="evo-labels" id="evoLabels"></div>
 </div>
-
 <script>
 (function(){
-  const incidents = {{ evolution_incidents|safe }};
-  const outages   = {{ evolution_outage|safe }};
-  const labels    = {{ evolution_labels|safe }};
-  if (!incidents.length || incidents.length < 2) return;
-
-  const W=800, H=160, PL=10, PR=10, PT=20, PB=10;
-  const svg = document.getElementById('evoSvg');
-  const tooltip = document.getElementById('evoTooltip');
-  const labelsEl = document.getElementById('evoLabels');
-  const n = incidents.length;
-
-  const xs = incidents.map((_,i) => PL + i*(W-PL-PR)/(n-1));
-
-  // Normalise incidents
-  const maxInc = Math.max(...incidents) || 1;
-  const ysInc  = incidents.map(v => H-PB - (v/maxInc)*(H-PT-PB));
-
-  // Normalise outage
-  const maxOut = Math.max(...outages) || 1;
-  const ysOut  = outages.map(v => H-PB - (v/maxOut)*(H-PT-PB));
-
-  function makePath(ys, color, gradId) {
-    // Aire
-    const areaD = `M${xs[0]},${H-PB} ` + xs.map((x,i)=>`L${x},${ys[i]}`).join(' ') + ` L${xs[n-1]},${H-PB} Z`;
-    const area = document.createElementNS('http://www.w3.org/2000/svg','path');
-    area.setAttribute('d', areaD);
-    area.setAttribute('fill', `url(#${gradId})`);
-    svg.appendChild(area);
-
-    // Ligne lissée
-    let d = `M${xs[0]},${ys[0]}`;
-    for(let i=1;i<n;i++){
-      const cpx1 = xs[i-1]+(xs[i]-xs[i-1])/2;
-      const cpx2 = xs[i]-(xs[i]-xs[i-1])/2;
-      d += ` C${cpx1},${ys[i-1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`;
-    }
-    const line = document.createElementNS('http://www.w3.org/2000/svg','path');
-    line.setAttribute('d', d);
-    line.setAttribute('fill','none');
-    line.setAttribute('stroke', color);
-    line.setAttribute('stroke-width','2.5');
-    line.setAttribute('stroke-linecap','round');
-    svg.appendChild(line);
-  }
-
-  // Defs gradients
-  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
-  defs.innerHTML = `
-    <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#003087" stop-opacity="0.15"/>
-      <stop offset="100%" stop-color="#003087" stop-opacity="0.01"/>
-    </linearGradient>
-    <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFC72C" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#FFC72C" stop-opacity="0.01"/>
-    </linearGradient>
-  `;
-  svg.appendChild(defs);
-
-  // Lignes de grille horizontales
-  for(let g=0;g<=4;g++){
-    const y = PT + g*(H-PT-PB)/4;
-    const gl = document.createElementNS('http://www.w3.org/2000/svg','line');
-    gl.setAttribute('x1', PL); gl.setAttribute('x2', W-PR);
-    gl.setAttribute('y1', y);  gl.setAttribute('y2', y);
-    gl.setAttribute('stroke','#f0f4ff'); gl.setAttribute('stroke-width','1');
-    svg.appendChild(gl);
-  }
-
-  makePath(ysInc, '#003087', 'gInc');
-  makePath(ysOut, '#FFC72C', 'gOut');
-
-  // Points interactifs
-  xs.forEach((x,i) => {
-    // Point incidents (bleu)
-    const ci = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ci.setAttribute('cx', x); ci.setAttribute('cy', ysInc[i]);
-    ci.setAttribute('r','5'); ci.setAttribute('fill','#003087');
-    ci.setAttribute('stroke','white'); ci.setAttribute('stroke-width','2');
-    ci.style.cursor='pointer';
-
-    // Point outage (jaune)
-    const co = document.createElementNS('http://www.w3.org/2000/svg','circle');
-    co.setAttribute('cx', x); co.setAttribute('cy', ysOut[i]);
-    co.setAttribute('r','4'); co.setAttribute('fill','#FFC72C');
-    co.setAttribute('stroke','white'); co.setAttribute('stroke-width','2');
-
-    // Zone de survol invisible
-    const hit = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    hit.setAttribute('x', x-20); hit.setAttribute('y', PT);
-    hit.setAttribute('width', 40); hit.setAttribute('height', H-PT-PB);
-    hit.setAttribute('fill','transparent');
-    hit.style.cursor='pointer';
-
-    hit.addEventListener('mouseenter', function(e){
-      const rect = svg.closest('.evo-chart-wrap').getBoundingClientRect();
-      const svgRect = svg.getBoundingClientRect();
-      const pct = (x-PL)/(W-PL-PR);
-      const px = pct * svgRect.width;
-      tooltip.innerHTML = `<strong>${labels[i]}</strong><br>🔵 ${incidents[i]} incidents<br>🟡 ${outages[i]}h outage`;
-      tooltip.style.opacity = '1';
-      tooltip.style.left = (px - 60) + 'px';
-      tooltip.style.top = '-70px';
-    });
-    hit.addEventListener('mouseleave', () => { tooltip.style.opacity='0'; });
-
-    svg.appendChild(ci);
-    svg.appendChild(co);
-    svg.appendChild(hit);
-  });
-
-  // Labels dates
-  labels.forEach(l => {
-    const s = document.createElement('span');
-    s.className = 'evo-label';
-    s.textContent = l;
-    labelsEl.appendChild(s);
-  });
+  const incidents={{ evolution_incidents|safe }},outages={{ evolution_outage|safe }},labels={{ evolution_labels|safe }};
+  if(!incidents.length||incidents.length<2)return;
+  const W=800,H=160,PL=10,PR=10,PT=20,PB=10,svg=document.getElementById('evoSvg'),tooltip=document.getElementById('evoTooltip'),labelsEl=document.getElementById('evoLabels'),n=incidents.length;
+  const xs=incidents.map((_,i)=>PL+i*(W-PL-PR)/(n-1)),maxInc=Math.max(...incidents)||1,ysInc=incidents.map(v=>H-PB-(v/maxInc)*(H-PT-PB)),maxOut=Math.max(...outages)||1,ysOut=outages.map(v=>H-PB-(v/maxOut)*(H-PT-PB));
+  function makePath(ys,color,gid){const a=document.createElementNS('http://www.w3.org/2000/svg','path');a.setAttribute('d',`M${xs[0]},${H-PB} `+xs.map((x,i)=>`L${x},${ys[i]}`).join(' ')+` L${xs[n-1]},${H-PB} Z`);a.setAttribute('fill',`url(#${gid})`);svg.appendChild(a);let d=`M${xs[0]},${ys[0]}`;for(let i=1;i<n;i++){const c1=xs[i-1]+(xs[i]-xs[i-1])/2,c2=xs[i]-(xs[i]-xs[i-1])/2;d+=` C${c1},${ys[i-1]} ${c2},${ys[i]} ${xs[i]},${ys[i]}`;}const l=document.createElementNS('http://www.w3.org/2000/svg','path');l.setAttribute('d',d);l.setAttribute('fill','none');l.setAttribute('stroke',color);l.setAttribute('stroke-width','2.5');l.setAttribute('stroke-linecap','round');svg.appendChild(l);}
+  const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');defs.innerHTML=`<linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#003087" stop-opacity="0.15"/><stop offset="100%" stop-color="#003087" stop-opacity="0.01"/></linearGradient><linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFC72C" stop-opacity="0.2"/><stop offset="100%" stop-color="#FFC72C" stop-opacity="0.01"/></linearGradient>`;svg.appendChild(defs);
+  for(let g=0;g<=4;g++){const y=PT+g*(H-PT-PB)/4,gl=document.createElementNS('http://www.w3.org/2000/svg','line');gl.setAttribute('x1',PL);gl.setAttribute('x2',W-PR);gl.setAttribute('y1',y);gl.setAttribute('y2',y);gl.setAttribute('stroke','#f0f4ff');gl.setAttribute('stroke-width','1');svg.appendChild(gl);}
+  makePath(ysInc,'#003087','gInc');makePath(ysOut,'#FFC72C','gOut');
+  xs.forEach((x,i)=>{const ci=document.createElementNS('http://www.w3.org/2000/svg','circle');ci.setAttribute('cx',x);ci.setAttribute('cy',ysInc[i]);ci.setAttribute('r','5');ci.setAttribute('fill','#003087');ci.setAttribute('stroke','white');ci.setAttribute('stroke-width','2');const co=document.createElementNS('http://www.w3.org/2000/svg','circle');co.setAttribute('cx',x);co.setAttribute('cy',ysOut[i]);co.setAttribute('r','4');co.setAttribute('fill','#FFC72C');co.setAttribute('stroke','white');co.setAttribute('stroke-width','2');const hit=document.createElementNS('http://www.w3.org/2000/svg','rect');hit.setAttribute('x',x-20);hit.setAttribute('y',PT);hit.setAttribute('width',40);hit.setAttribute('height',H-PT-PB);hit.setAttribute('fill','transparent');hit.style.cursor='pointer';hit.addEventListener('mouseenter',function(){const sr=svg.getBoundingClientRect(),pct=(x-PL)/(W-PL-PR),px=pct*sr.width;tooltip.innerHTML=`<strong>${labels[i]}</strong><br>🔵 ${incidents[i]} incidents<br>🟡 ${outages[i]}h outage`;tooltip.style.opacity='1';tooltip.style.left=(px-60)+'px';tooltip.style.top='-70px';});hit.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});svg.appendChild(ci);svg.appendChild(co);svg.appendChild(hit);});
+  labels.forEach(l=>{const s=document.createElement('span');s.className='evo-label';s.textContent=l;labelsEl.appendChild(s);});
 })();
 </script>
 {% endif %}
 
-<!-- ── 4 Cartes ── -->
+<!-- 4 Cartes + carte double -->
 <div class="stats-grid">
 
   <!-- 1. Classement Escalades -->
@@ -319,17 +251,12 @@
       <div class="bar-list">
         {% for e in escalades_chart %}
         <div>
-          <div class="bar-meta">
-            <span class="bar-name">{{ e.name }}</span>
-            <span class="bar-val">{{ e.count }} inc.</span>
-          </div>
+          <div class="bar-meta"><span class="bar-name">{{ e.name }}</span><span class="bar-val">{{ e.count }} inc.</span></div>
           <div class="bar-track"><div class="bar-fill" style="width:{{ e.pct }}%"></div></div>
         </div>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty-msg">Aucune donnée pour cette période</div>
-    {% endif %}
+    {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
   </div>
 
   <!-- 2. Récurrence des Sites -->
@@ -342,36 +269,51 @@
       <div class="bar-list">
         {% for s in sites_chart %}
         <div>
-          <div class="bar-meta">
-            <span class="bar-name">{{ s.name }}</span>
-            <span class="bar-val">{{ s.count }}x</span>
-          </div>
+          <div class="bar-meta"><span class="bar-name">{{ s.name }}</span><span class="bar-val">{{ s.count }}x</span></div>
           <div class="bar-track"><div class="bar-fill yellow" style="width:{{ s.pct }}%"></div></div>
         </div>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty-msg">Aucune donnée pour cette période</div>
-    {% endif %}
+    {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
   </div>
 
-  <!-- 3. Poids & Outage / Métier -->
-  <div class="stat-card">
-    <div class="card-header">
-      <div class="card-title">🥧 Poids &amp; Outage / Métier</div>
-      <span class="card-badge">{{ total_outage_h }}h total</span>
-    </div>
-    {% if outage_chart %}
-      <div class="donut3d-wrap">
-        {{ donut_svg|safe }}
+  <!-- 3+4. Carte double : Camembert + Disponibilité -->
+  <div class="double-card">
+    <div class="double-card-header">
+      <div class="double-card-title">🥧 Poids &amp; Outage / Métier &nbsp;—&nbsp; 📶 Disponibilité Équipements Support</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="card-badge">{{ total_outage_h }}h outage</span>
+        <span class="badge-simule">⚠ Disponibilité simulée</span>
       </div>
-    {% else %}
-      <div class="empty-msg">Aucune donnée pour cette période</div>
-    {% endif %}
+    </div>
+    <div class="double-card-body">
+
+      <!-- Gauche : camembert -->
+      <div class="double-pane">
+        <div class="pane-title">🥧 Outage par Métier</div>
+        {% if outage_chart %}
+          <div class="donut3d-wrap">{{ donut_svg|safe }}</div>
+        {% else %}
+          <div class="empty-msg">Aucune donnée</div>
+        {% endif %}
+      </div>
+
+      <!-- Droite : courbes disponibilité -->
+      <div class="double-pane">
+        <div class="pane-title">📶 Disponibilité Équipements (%)</div>
+        <div class="dispo-chart-wrap">
+          <div class="dispo-tooltip" id="dispoTooltip"></div>
+          <svg class="dispo-svg" id="dispoSvg" viewBox="0 0 500 200" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="dispo-labels" id="dispoLabels"></div>
+        <div class="dispo-legend" id="dispoLegend"></div>
+      </div>
+
+    </div>
   </div>
 
-  <!-- 4. Sites les Plus Dégradés -->
-  <div class="stat-card">
+  <!-- 5. Sites les Plus Dégradés -->
+  <div class="stat-card" style="grid-column: span 2;">
     <div class="card-header">
       <div class="card-title">🔴 Sites les Plus Dégradés</div>
       <span class="card-badge">Top 10</span>
@@ -380,18 +322,189 @@
       <div class="bar-list">
         {% for d in degraded_chart %}
         <div>
-          <div class="bar-meta">
-            <span class="bar-name">{{ d.name }}</span>
-            <span class="bar-val">{{ d.duration_h }}h</span>
-          </div>
+          <div class="bar-meta"><span class="bar-name">{{ d.name }}</span><span class="bar-val">{{ d.duration_h }}h</span></div>
           <div class="bar-track"><div class="bar-fill red" style="width:{{ d.pct }}%"></div></div>
         </div>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty-msg">Aucune donnée pour cette période</div>
-    {% endif %}
+    {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
   </div>
 
 </div>
+
+<!-- ── Script disponibilité simulée ── -->
+<script>
+(function(){
+  // ── Données simulées — seront remplacées par de vraies données plus tard ──
+  const SERIES = [
+    { name: 'ENERGIE',       color: '#003087', data: [99.73, 99.50, 99.64, 99.68, 99.55] },
+    { name: 'TRANS FH',      color: '#FFC72C', data: [99.88, 99.86, 99.76, 99.68, 99.86] },
+    { name: 'TRANS IP',      color: '#2196F3', data: [99.998,99.995,99.990,99.87, 99.96] },
+  ];
+
+  // Génère les labels semaines depuis le rapport actuel
+  const today = new Date();
+  const LABELS = [];
+  for (let i = 4; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i * 7);
+    const week = Math.ceil((((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + 1) / 7);
+    LABELS.push('S' + week);
+  }
+
+  const svg      = document.getElementById('dispoSvg');
+  const tooltip  = document.getElementById('dispoTooltip');
+  const labelsEl = document.getElementById('dispoLabels');
+  const legendEl = document.getElementById('dispoLegend');
+
+  const W=500, H=200, PL=50, PR=16, PT=16, PB=16;
+  const n = LABELS.length;
+
+  // Toutes les valeurs pour min/max
+  const allVals = SERIES.flatMap(s => s.data);
+  const minV = Math.floor(Math.min(...allVals) * 10) / 10 - 0.1;
+  const maxV = Math.ceil(Math.max(...allVals)  * 10) / 10 + 0.05;
+
+  const xs = LABELS.map((_, i) => PL + i * (W - PL - PR) / (n - 1));
+
+  function toY(v) {
+    return H - PB - ((v - minV) / (maxV - minV)) * (H - PT - PB);
+  }
+
+  // Defs gradients
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  SERIES.forEach((s, si) => {
+    defs.innerHTML += `<linearGradient id="dg${si}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${s.color}" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="${s.color}" stop-opacity="0.01"/>
+    </linearGradient>`;
+  });
+  svg.appendChild(defs);
+
+  // Grille horizontale + labels Y
+  const GRID_STEPS = 5;
+  for (let g = 0; g <= GRID_STEPS; g++) {
+    const v = minV + (maxV - minV) * g / GRID_STEPS;
+    const y = toY(v);
+    const gl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    gl.setAttribute('x1', PL); gl.setAttribute('x2', W - PR);
+    gl.setAttribute('y1', y); gl.setAttribute('y2', y);
+    gl.setAttribute('stroke', '#f0f4ff'); gl.setAttribute('stroke-width', '1');
+    svg.appendChild(gl);
+
+    const lt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lt.setAttribute('x', PL - 4); lt.setAttribute('y', y + 4);
+    lt.setAttribute('text-anchor', 'end');
+    lt.setAttribute('font-size', '11'); lt.setAttribute('fill', '#aaa');
+    lt.setAttribute('font-family', 'Arial,sans-serif');
+    lt.textContent = v.toFixed(2) + '%';
+    svg.appendChild(lt);
+  }
+
+  // Lignes verticales colonnes
+  xs.forEach(x => {
+    const vl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    vl.setAttribute('x1', x); vl.setAttribute('x2', x);
+    vl.setAttribute('y1', PT); vl.setAttribute('y2', H - PB);
+    vl.setAttribute('stroke', '#f5f7fb'); vl.setAttribute('stroke-width', '1');
+    svg.appendChild(vl);
+  });
+
+  // Séries
+  SERIES.forEach((s, si) => {
+    const ys = s.data.map(toY);
+
+    // Aire
+    const areaD = `M${xs[0]},${H-PB} ` + xs.map((x,i) => `L${x},${ys[i]}`).join(' ') + ` L${xs[n-1]},${H-PB} Z`;
+    const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    area.setAttribute('d', areaD);
+    area.setAttribute('fill', `url(#dg${si})`);
+    svg.appendChild(area);
+
+    // Ligne lissée
+    let d = `M${xs[0]},${ys[0]}`;
+    for (let i = 1; i < n; i++) {
+      const c1x = xs[i-1] + (xs[i]-xs[i-1])/2;
+      const c2x = xs[i]   - (xs[i]-xs[i-1])/2;
+      d += ` C${c1x},${ys[i-1]} ${c2x},${ys[i]} ${xs[i]},${ys[i]}`;
+    }
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    line.setAttribute('d', d);
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', s.color);
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(line);
+
+    // Points + labels valeur
+    xs.forEach((x, i) => {
+      const y = ys[i];
+
+      // Valeur au-dessus du point
+      const vt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      vt.setAttribute('x', x);
+      vt.setAttribute('y', y - 7);
+      vt.setAttribute('text-anchor', 'middle');
+      vt.setAttribute('font-size', '11');
+      vt.setAttribute('fill', s.color);
+      vt.setAttribute('font-weight', '700');
+      vt.setAttribute('font-family', 'Arial,sans-serif');
+      vt.textContent = s.data[i].toFixed(2) + '%';
+      svg.appendChild(vt);
+
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', x); circle.setAttribute('cy', y);
+      circle.setAttribute('r', '4');
+      circle.setAttribute('fill', s.color);
+      circle.setAttribute('stroke', 'white'); circle.setAttribute('stroke-width', '1.5');
+      svg.appendChild(circle);
+    });
+  });
+
+  // Zone de survol par colonne
+  xs.forEach((x, i) => {
+    const hitW = i === 0 ? (xs[1]-xs[0])/2 : (i === n-1 ? (xs[n-1]-xs[n-2])/2 : (xs[i+1]-xs[i-1])/2);
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    hit.setAttribute('x', x - hitW/2); hit.setAttribute('y', PT);
+    hit.setAttribute('width', hitW); hit.setAttribute('height', H - PT - PB);
+    hit.setAttribute('fill', 'transparent'); hit.style.cursor = 'pointer';
+
+    hit.addEventListener('mouseenter', function() {
+      const wrap = svg.closest('.dispo-chart-wrap');
+      const wr   = wrap.getBoundingClientRect();
+      const sr   = svg.getBoundingClientRect();
+      const pct  = (x - PL) / (W - PL - PR);
+      const px   = pct * sr.width + (sr.left - wr.left);
+      let html = `<strong>${LABELS[i]}</strong>`;
+      SERIES.forEach(s => {
+        html += `<br><span style="color:${s.color}">●</span> ${s.name}: ${s.data[i].toFixed(3)}%`;
+      });
+      tooltip.innerHTML = html;
+      tooltip.style.opacity = '1';
+      tooltip.style.left  = Math.max(0, px - 70) + 'px';
+      tooltip.style.top   = '0px';
+    });
+    hit.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+    svg.appendChild(hit);
+  });
+
+  // Labels X
+  LABELS.forEach(l => {
+    const s = document.createElement('span');
+    s.className = 'dispo-label';
+    s.textContent = l;
+    labelsEl.appendChild(s);
+  });
+
+  // Légende
+  SERIES.forEach(s => {
+    legendEl.innerHTML += `
+      <div class="dispo-leg-item">
+        <div class="dispo-leg-line" style="background:${s.color}"></div>
+        <span>${s.name}</span>
+      </div>`;
+  });
+})();
+</script>
+
 {% endblock %}

@@ -411,14 +411,12 @@ def _make_donut_svg(data, total_h):
             )
 
     # ── Labels avec anti-collision ───────────────────────────────────────────
-    # Sépare grandes tranches (label interne) et petites (label externe)
-    inner_threshold = 10  # pct >= 10 → label interne
+    inner_threshold = 12  # pct >= 12 → label interne
 
-    # Calcule positions brutes des labels externes
     ext_labels = []
     for s in slices:
         if s['pct'] < inner_threshold:
-            lx_raw, ly_raw = pt(s['mid'], 1.42)
+            lx_raw, ly_raw = pt(s['mid'], 1.45)
             ext_labels.append({
                 's': s,
                 'lx': lx_raw,
@@ -426,7 +424,6 @@ def _make_donut_svg(data, total_h):
                 'anchor': 'start' if math.cos(s['mid']) >= 0 else 'end',
             })
 
-    # Anti-collision : trie par ly et écarte les labels trop proches
     MIN_GAP = 50
     left  = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
     right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
@@ -442,46 +439,46 @@ def _make_donut_svg(data, total_h):
             right[i]['ly'] = right[i-1]['ly'] + MIN_GAP
 
     ext_labels = left + right
-
     labels = ''
 
-    # Labels internes (grandes tranches)
+    # Labels internes — grandes tranches
     for s in slices:
         if s['pct'] >= inner_threshold:
             lx, ly = pt(s['mid'], 0.60)
             labels += (
+                f'<rect x="{lx-28:.1f}" y="{ly-16:.1f}" width="56" height="32" rx="6" '
+                f'fill="rgba(0,0,0,0.25)"/>'
                 f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="white">'
+                f'font-family="Arial,sans-serif" font-size="15" font-weight="bold" fill="white">'
                 f'{s["pct"]}%</text>'
-                f'<text x="{lx:.1f}" y="{ly+15:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="11" fill="rgba(255,255,255,0.88)">'
+                f'<text x="{lx:.1f}" y="{ly+14:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="12" fill="rgba(255,255,255,0.95)">'
                 f'{s["h"]}h</text>'
             )
 
-    # Labels externes (petites tranches) avec ligne de repère
+    # Labels externes — petites tranches avec fond blanc
     for e in ext_labels:
         s      = e['s']
         lx     = e['lx']
         ly     = e['ly']
         anchor = e['anchor']
-        ox, oy = pt(s['mid'], 1.04)   # point sur le bord de la tranche
-        mx, my = pt(s['mid'], 1.16)   # coude de la ligne
-
-        # offset texte selon côté
-        tx = lx + (6 if anchor == 'start' else -6)
+        ox, oy = pt(s['mid'], 1.04)
+        mx, my = pt(s['mid'], 1.20)
+        tx     = lx + (6 if anchor == 'start' else -6)
+        box_w  = 76
+        box_x  = tx - box_w if anchor == 'end' else tx
 
         labels += (
-            # ligne bord → coude
+            f'<rect x="{box_x:.1f}" y="{ly-16:.1f}" width="{box_w}" height="30" rx="6" '
+            f'fill="rgba(255,255,255,0.92)" stroke="{s["color"]}" stroke-width="1.2"/>'
             f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
-            f'fill="none" stroke="{s["color"]}" stroke-width="1.2" opacity="0.75"/>'
-            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="2" fill="{s["color"]}"/>'
-            # %
+            f'fill="none" stroke="{s["color"]}" stroke-width="1.5" opacity="0.9"/>'
+            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3" fill="{s["color"]}"/>'
             f'<text x="{tx:.1f}" y="{ly-2:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="{s["color"]}">'
+            f'font-family="Arial,sans-serif" font-size="13" font-weight="800" fill="{s["color"]}">'
             f'{s["pct"]}%</text>'
-            # heures
-            f'<text x="{tx:.1f}" y="{ly+12:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="10" fill="#555">'
+            f'<text x="{tx:.1f}" y="{ly+11:.1f}" text-anchor="{anchor}" '
+            f'font-family="Arial,sans-serif" font-size="11" font-weight="600" fill="#333">'
             f'{s["h"]}h</text>'
         )
 
@@ -512,11 +509,14 @@ def _make_donut_svg(data, total_h):
         )
         name = s['name'][:16] + ('…' if len(s['name']) > 16 else '')
         legend += (
-            f'<text x="{x+24}" y="{y+16}" '
-            f'font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="{s["color"]}">'
+            f'<rect x="{x}" y="{y}" width="{COL_W-10}" height="44" rx="9" '
+            f'fill="{s["color"]}" opacity="0.08"/>'
+            f'<circle cx="{x+14}" cy="{y+13}" r="7" fill="{s["color"]}"/>'
+            f'<text x="{x+26}" y="{y+17}" '
+            f'font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="{s["color"]}">'
             f'{name}</text>'
-            f'<text x="{x+12}" y="{y+32}" '
-            f'font-family="Arial,sans-serif" font-size="10" fill="#666">'
+            f'<text x="{x+14}" y="{y+34}" '
+            f'font-family="Arial,sans-serif" font-size="12" fill="#555">'
             f'{s["h"]}h · {s["pct"]}%</text>'
         )
 
@@ -884,6 +884,343 @@ def comparer(request):
         'pk2':  pk2,
         'diff': diff,
     })
+
+def export_statistiques(request):
+    """
+    Exporte les statistiques actuelles en Excel (4 onglets).
+    Accepte les mêmes paramètres GET que statistiques() :
+      ?period=latest|day|week|month|year|all
+      ?report=<pk>
+    """
+    import openpyxl
+    import openpyxl.chart.label
+    from openpyxl.styles import (
+        Font, PatternFill, Alignment, Border, Side, GradientFill
+    )
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    from collections import defaultdict
+    from datetime import timedelta
+    import io
+
+    # ── Récupère les rapports (même logique que statistiques()) ────────────
+    if request.user.is_superuser:
+        base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
+    else:
+        base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
+
+    report_pk     = request.GET.get('report')
+    period_filter = request.GET.get('period', 'latest')
+
+    if report_pk:
+        reports = base_qs.filter(pk=report_pk)
+        period_label = 'Rapport sélectionné'
+    elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
+        first = base_qs.first()
+        reports = base_qs.filter(pk=first.pk) if first else base_qs.none()
+        period_label = 'Dernier rapport'
+    else:
+        today = date.today()
+        labels_map = {'day': "Aujourd'hui", 'week': '7 jours', 'month': '30 jours', 'year': 'Année', 'all': 'Tout'}
+        period_label = labels_map.get(period_filter, period_filter)
+        if period_filter == 'day':
+            reports = base_qs.filter(uploaded_at__date=today)
+        elif period_filter == 'week':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        elif period_filter == 'month':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
+        elif period_filter == 'year':
+            reports = base_qs.filter(uploaded_at__year=today.year)
+        else:
+            reports = base_qs
+
+    def parse_hms(s):
+        try:
+            parts = str(s).split(':')
+            if len(parts) == 3:
+                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+        except Exception:
+            pass
+        return 0
+
+    # ── Calcule les données ─────────────────────────────────────────────────
+    escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
+    for r in reports:
+        if not r.synthesis_json:
+            continue
+        for row in r.synthesis_json:
+            esc = row.get('Escalade', '')
+            if esc == 'TOTAL' or not esc:
+                continue
+            escalade_data[esc]['count']      += row.get('Inc count', 0)
+            escalade_data[esc]['outage_sec'] += parse_hms(row.get('OUTAGE', '0:00:00'))
+            escalade_data[esc]['duree_sec']  += parse_hms(row.get('DUREE', '0:00:00'))
+
+    escalades_sorted = sorted(escalade_data.items(), key=lambda x: x[1]['count'], reverse=True)
+    total_outage_sec = sum(v['outage_sec'] for v in escalade_data.values())
+
+    site_data = defaultdict(int)
+    for r in reports:
+        for s in (r.top_sites_json or []):
+            site_data[s['name']] += s['count']
+    sites_top10 = sorted(site_data.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    outage_data = [
+        (k, round(v['outage_sec']/3600, 1),
+         round(v['outage_sec']/total_outage_sec*100) if total_outage_sec else 0)
+        for k, v in escalades_sorted if v['outage_sec'] > 0
+    ]
+
+    site_duration = defaultdict(float)
+    for r in reports:
+        if not r.detailed_file:
+            continue
+        file_name = r.detailed_file.name or ''
+        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
+            continue
+        try:
+            import pandas as pd
+            df = pd.read_excel(r.detailed_file.path)
+            site_col = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
+            if site_col and 'Duration' in df.columns:
+                for _, row in df.iterrows():
+                    site = str(row[site_col]).strip()
+                    dur  = parse_hms(row['Duration'])
+                    if site and site != 'nan':
+                        site_duration[site] += dur
+        except Exception:
+            continue
+    degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # ── Styles ──────────────────────────────────────────────────────────────
+    YAS_BLUE   = '003087'
+    YAS_YELLOW = 'FFC72C'
+    LIGHT_BLUE = 'E8F0FF'
+    LIGHT_GRAY = 'F8FAFF'
+    WHITE      = 'FFFFFF'
+
+    hdr_font  = Font(name='Calibri', bold=True, color=WHITE, size=11)
+    hdr_fill  = PatternFill('solid', fgColor=YAS_BLUE)
+    hdr_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    sub_font  = Font(name='Calibri', bold=True, color=YAS_BLUE, size=10)
+    sub_fill  = PatternFill('solid', fgColor=LIGHT_BLUE)
+
+    cell_font  = Font(name='Calibri', size=10)
+    cell_align = Alignment(horizontal='left', vertical='center')
+    num_align  = Alignment(horizontal='center', vertical='center')
+
+    alt_fill = PatternFill('solid', fgColor=LIGHT_GRAY)
+
+    thin = Side(style='thin', color='E8EDF5')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def style_header_row(ws, row_num, ncols):
+        for col in range(1, ncols + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.font   = hdr_font
+            cell.fill   = hdr_fill
+            cell.alignment = hdr_align
+            cell.border = border
+
+    def style_data_row(ws, row_num, ncols, alt=False):
+        for col in range(1, ncols + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.font   = Font(name='Calibri', size=10)
+            cell.fill   = alt_fill if alt else PatternFill('solid', fgColor=WHITE)
+            cell.alignment = num_align if col > 1 else cell_align
+            cell.border = border
+
+    def add_title_block(ws, title, period):
+        ws.merge_cells('A1:F1')
+        t = ws['A1']
+        t.value     = f'YAS NOC — {title}'
+        t.font      = Font(name='Calibri', bold=True, size=14, color=YAS_BLUE)
+        t.alignment = Alignment(horizontal='left', vertical='center')
+        t.fill      = PatternFill('solid', fgColor=LIGHT_BLUE)
+        ws.row_dimensions[1].height = 28
+
+        ws.merge_cells('A2:F2')
+        p = ws['A2']
+        p.value     = f'Période : {period}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
+        p.font      = Font(name='Calibri', size=10, color='888888')
+        p.alignment = Alignment(horizontal='left', vertical='center')
+        ws.row_dimensions[2].height = 18
+
+        ws.row_dimensions[3].height = 6  # espace
+
+    # ── Workbook ─────────────────────────────────────────────────────────────
+    wb = openpyxl.Workbook()
+
+    # ══ Onglet 1 : Classement Escalades ══════════════════════════════════════
+    ws1 = wb.active
+    ws1.title = '📊 Escalades'
+    ws1.sheet_view.showGridLines = False
+    ws1.column_dimensions['A'].width = 30
+    ws1.column_dimensions['B'].width = 14
+    ws1.column_dimensions['C'].width = 14
+    ws1.column_dimensions['D'].width = 14
+
+    add_title_block(ws1, 'Classement des Escalades', period_label)
+
+    headers = ['Escalade', 'Incidents', 'Outage (h)', 'Durée (h)']
+    for col, h in enumerate(headers, 1):
+        ws1.cell(row=4, column=col).value = h
+    style_header_row(ws1, 4, len(headers))
+    ws1.row_dimensions[4].height = 22
+
+    for i, (esc, v) in enumerate(escalades_sorted):
+        row = 5 + i
+        ws1.cell(row=row, column=1).value = esc
+        ws1.cell(row=row, column=2).value = v['count']
+        ws1.cell(row=row, column=3).value = round(v['outage_sec'] / 3600, 1)
+        ws1.cell(row=row, column=4).value = round(v['duree_sec']  / 3600, 1)
+        style_data_row(ws1, row, len(headers), alt=(i % 2 == 1))
+        ws1.row_dimensions[row].height = 20
+
+    # Ligne total
+    if escalades_sorted:
+        tr = 5 + len(escalades_sorted)
+        ws1.cell(tr, 1).value = 'TOTAL'
+        ws1.cell(tr, 2).value = sum(v['count'] for _, v in escalades_sorted)
+        ws1.cell(tr, 3).value = round(total_outage_sec / 3600, 1)
+        ws1.cell(tr, 4).value = round(sum(v['duree_sec'] for _, v in escalades_sorted) / 3600, 1)
+        for col in range(1, 5):
+            c = ws1.cell(tr, col)
+            c.font   = Font(name='Calibri', bold=True, size=10, color=WHITE)
+            c.fill   = PatternFill('solid', fgColor=YAS_BLUE)
+            c.alignment = num_align if col > 1 else cell_align
+            c.border = border
+        ws1.row_dimensions[tr].height = 22
+
+    # ══ Onglet 2 : Récurrence des Sites ══════════════════════════════════════
+    ws2 = wb.create_sheet('📡 Sites')
+    ws2.sheet_view.showGridLines = False
+    ws2.column_dimensions['A'].width = 32
+    ws2.column_dimensions['B'].width = 16
+
+    add_title_block(ws2, 'Récurrence des Sites (Top 10)', period_label)
+
+    for col, h in enumerate(['Site', 'Occurrences'], 1):
+        ws2.cell(row=4, column=col).value = h
+    style_header_row(ws2, 4, 2)
+    ws2.row_dimensions[4].height = 22
+
+    for i, (site, cnt) in enumerate(sites_top10):
+        row = 5 + i
+        ws2.cell(row, 1).value = site
+        ws2.cell(row, 2).value = cnt
+        style_data_row(ws2, row, 2, alt=(i % 2 == 1))
+        ws2.row_dimensions[row].height = 20
+
+    # ══ Onglet 3 : Poids & Outage / Métier ═══════════════════════════════════
+    from openpyxl.chart import PieChart, Reference
+    from openpyxl.chart.series import DataPoint
+
+    ws3 = wb.create_sheet('🥧 Outage Métier')
+    ws3.sheet_view.showGridLines = False
+    ws3.column_dimensions['A'].width = 30
+    ws3.column_dimensions['B'].width = 16
+    ws3.column_dimensions['C'].width = 12
+
+    add_title_block(ws3, 'Poids & Outage par Métier', period_label)
+
+    for col, h in enumerate(['Métier / Escalade', 'Outage (h)', '% Total'], 1):
+        ws3.cell(row=4, column=col).value = h
+    style_header_row(ws3, 4, 3)
+    ws3.row_dimensions[4].height = 22
+
+    for i, (name, h, pct) in enumerate(outage_data):
+        row = 5 + i
+        ws3.cell(row, 1).value = name
+        ws3.cell(row, 2).value = h
+        ws3.cell(row, 3).value = f'{pct}%'
+        style_data_row(ws3, row, 3, alt=(i % 2 == 1))
+        ws3.row_dimensions[row].height = 20
+
+    if outage_data:
+        tr = 5 + len(outage_data)
+        ws3.cell(tr, 1).value = 'TOTAL'
+        ws3.cell(tr, 2).value = round(total_outage_sec / 3600, 1)
+        ws3.cell(tr, 3).value = '100%'
+        for col in range(1, 4):
+            c = ws3.cell(tr, col)
+            c.font      = Font(name='Calibri', bold=True, size=10, color=WHITE)
+            c.fill      = PatternFill('solid', fgColor=YAS_BLUE)
+            c.alignment = num_align if col > 1 else cell_align
+            c.border    = border
+        ws3.row_dimensions[tr].height = 22
+
+    # ── Camembert Excel ──────────────────────────────────────────────────────
+    if outage_data:
+        pie = PieChart()
+        pie.title    = 'Outage par Métier'
+        pie.style    = 10
+        pie.width    = 16
+        pie.height   = 14
+
+        # Données : colonne B (valeurs outage_h), lignes 5 à 5+n-1
+        n_rows = len(outage_data)
+        data_ref   = Reference(ws3, min_col=2, min_row=4, max_row=4 + n_rows)  # inclut header
+        labels_ref = Reference(ws3, min_col=1, min_row=5, max_row=4 + n_rows)
+
+        pie.add_data(data_ref, titles_from_data=True)
+        pie.set_categories(labels_ref)
+
+        # Couleurs des tranches — palette YAS
+        SLICE_COLORS = [
+            '003087', 'E05A2B', 'FF9800', '2196F3', 'FFC72C',
+            '4CAF50', '9C27B0', '00BCD4', '8BC34A', 'FF5722',
+        ]
+        series = pie.series[0]
+        for idx in range(n_rows):
+            pt = DataPoint(idx=idx)
+            pt.graphicalProperties.solidFill = SLICE_COLORS[idx % len(SLICE_COLORS)]
+            series.dPt.append(pt)
+
+        # Affiche les labels avec % et nom de catégorie
+        series.dLbls = openpyxl.chart.label.DataLabelList()
+        series.dLbls.showCatName = True
+        series.dLbls.showPercent = True
+        series.dLbls.showVal     = False
+        series.dLbls.showLegendKey = False
+        series.dLbls.separator = '\n'
+
+        # Place le graphique à droite du tableau (colonne E)
+        ws3.add_chart(pie, 'E4')
+
+    # ══ Onglet 4 : Sites les Plus Dégradés ═══════════════════════════════════
+    ws4 = wb.create_sheet('🔴 Sites Dégradés')
+    ws4.sheet_view.showGridLines = False
+    ws4.column_dimensions['A'].width = 32
+    ws4.column_dimensions['B'].width = 16
+
+    add_title_block(ws4, 'Sites les Plus Dégradés (Top 10)', period_label)
+
+    for col, h in enumerate(['Site', 'Durée totale (h)'], 1):
+        ws4.cell(row=4, column=col).value = h
+    style_header_row(ws4, 4, 2)
+    ws4.row_dimensions[4].height = 22
+
+    for i, (site, sec) in enumerate(degraded_top10):
+        row = 5 + i
+        ws4.cell(row, 1).value = site
+        ws4.cell(row, 2).value = round(sec / 3600, 1)
+        style_data_row(ws4, row, 2, alt=(i % 2 == 1))
+        ws4.row_dimensions[row].height = 20
+
+    # ── Export ──────────────────────────────────────────────────────────────
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"Statistiques_YAS_{date.today().strftime('%Y%m%d')}_{period_label.replace(' ', '_')}.xlsx"
+    response = HttpResponse(
+        buffer.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 def statistiques(request):
     """
