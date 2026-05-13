@@ -425,11 +425,19 @@ def _make_donut_svg(data, total_h):
         if s['pct'] < inner_threshold:
             ext_labels.append({'s': s})
 
-    # Répartition gauche / droite (bandes latérales vides) + Y espacés sur la hauteur du camembert
+    # Répartition gauche / droite + Y espacés sur la hauteur du camembert
     MARGIN = 8
-    SAFE_LX_LEFT = BOX_W + 6 + MARGIN
+    PIE_L = CX - RX
+    FLANK_GAP = 18  # espace entre bord du camembert et bord des boîtes
+    # Bord droit de la boîte (anchor end) = lx - 6 → lx <= PIE_L - FLANK_GAP + 6
+    left_lx_ideal = PIE_L - FLANK_GAP + 6
+    SAFE_LX_LEFT = BOX_W + 6 + MARGIN  # tenir dans viewBox 0..W sans marge négative
     SAFE_LX_RIGHT = W - BOX_W - 6 - MARGIN
-    LEFT_COL = SAFE_LX_LEFT
+    # Marge SVG à gauche pour les boîtes qui dépassent x=0 quand on colle au flanc du camembert
+    VIEW_PAD_L = 48
+    lx_floor = -VIEW_PAD_L + BOX_W + 6 + MARGIN
+    LEFT_COL = max(lx_floor, min(left_lx_ideal, SAFE_LX_LEFT))
+    # Droite : SAFE_LX_RIGHT garde les boîtes hors du disque (à droite de CX+RX)
     RIGHT_COL = SAFE_LX_RIGHT
     COL_SPACING = 12
     RIGHT_COL_INNER = RIGHT_COL - (BOX_W + COL_SPACING)
@@ -567,7 +575,7 @@ def _make_donut_svg(data, total_h):
         )
 
     return (
-        f'<svg width="100%" viewBox="0 0 {W} {H}" '
+        f'<svg width="100%" viewBox="-{VIEW_PAD_L} 0 {W + VIEW_PAD_L} {H}" '
         f'xmlns="http://www.w3.org/2000/svg" overflow="visible">'
         f'{defs}'
         f'<g filter="url(#pshadow)">{sides}{bot_ellipse}{tops}</g>'
