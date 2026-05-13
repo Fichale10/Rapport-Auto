@@ -335,14 +335,12 @@
 <!-- ── Script disponibilité simulée ── -->
 <script>
 (function(){
-  // ── Données simulées — seront remplacées par de vraies données plus tard ──
   const SERIES = [
-    { name: 'ENERGIE',       color: '#003087', data: [99.73, 99.50, 99.64, 99.68, 99.55] },
-    { name: 'TRANS FH',      color: '#FFC72C', data: [99.88, 99.86, 99.76, 99.68, 99.86] },
-    { name: 'TRANS IP',      color: '#2196F3', data: [99.998,99.995,99.990,99.87, 99.96] },
+    { name: 'ENERGIE',  color: '#003087', data: [99.73, 99.50, 99.64, 99.68, 99.55] },
+    { name: 'TRANS FH', color: '#FFC72C', data: [99.88, 99.86, 99.76, 99.68, 99.86] },
+    { name: 'TRANS IP', color: '#2196F3', data: [99.998,99.995,99.990,99.87, 99.96 ] },
   ];
 
-  // Génère les labels semaines depuis le rapport actuel
   const today = new Date();
   const LABELS = [];
   for (let i = 4; i >= 0; i--) {
@@ -357,21 +355,17 @@
   const labelsEl = document.getElementById('dispoLabels');
   const legendEl = document.getElementById('dispoLegend');
 
-  const W=500, H=200, PL=50, PR=16, PT=16, PB=16;
+  const W=500, H=200, PL=54, PR=20, PT=18, PB=16;
   const n = LABELS.length;
 
-  // Toutes les valeurs pour min/max
   const allVals = SERIES.flatMap(s => s.data);
   const minV = Math.floor(Math.min(...allVals) * 10) / 10 - 0.1;
-  const maxV = Math.ceil(Math.max(...allVals)  * 10) / 10 + 0.05;
+  const maxV = Math.ceil( Math.max(...allVals) * 10) / 10 + 0.05;
 
   const xs = LABELS.map((_, i) => PL + i * (W - PL - PR) / (n - 1));
+  function toY(v) { return H - PB - ((v - minV) / (maxV - minV)) * (H - PT - PB); }
 
-  function toY(v) {
-    return H - PB - ((v - minV) / (maxV - minV)) * (H - PT - PB);
-  }
-
-  // Defs gradients
+  // Defs
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
   SERIES.forEach((s, si) => {
     defs.innerHTML += `<linearGradient id="dg${si}" x1="0" y1="0" x2="0" y2="1">
@@ -381,27 +375,25 @@
   });
   svg.appendChild(defs);
 
-  // Grille horizontale + labels Y
-  const GRID_STEPS = 5;
-  for (let g = 0; g <= GRID_STEPS; g++) {
-    const v = minV + (maxV - minV) * g / GRID_STEPS;
+  // Grille + labels Y
+  for (let g = 0; g <= 5; g++) {
+    const v = minV + (maxV - minV) * g / 5;
     const y = toY(v);
     const gl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     gl.setAttribute('x1', PL); gl.setAttribute('x2', W - PR);
-    gl.setAttribute('y1', y); gl.setAttribute('y2', y);
+    gl.setAttribute('y1', y);  gl.setAttribute('y2', y);
     gl.setAttribute('stroke', '#f0f4ff'); gl.setAttribute('stroke-width', '1');
     svg.appendChild(gl);
-
     const lt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     lt.setAttribute('x', PL - 4); lt.setAttribute('y', y + 4);
     lt.setAttribute('text-anchor', 'end');
-    lt.setAttribute('font-size', '11'); lt.setAttribute('fill', '#aaa');
+    lt.setAttribute('font-size', '9'); lt.setAttribute('fill', '#aaa');
     lt.setAttribute('font-family', 'Arial,sans-serif');
     lt.textContent = v.toFixed(2) + '%';
     svg.appendChild(lt);
   }
 
-  // Lignes verticales colonnes
+  // Lignes verticales
   xs.forEach(x => {
     const vl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     vl.setAttribute('x1', x); vl.setAttribute('x2', x);
@@ -410,99 +402,157 @@
     svg.appendChild(vl);
   });
 
-  // Séries
+  // Tracé lignes + aires
   SERIES.forEach((s, si) => {
     const ys = s.data.map(toY);
-
-    // Aire
-    const areaD = `M${xs[0]},${H-PB} ` + xs.map((x,i) => `L${x},${ys[i]}`).join(' ') + ` L${xs[n-1]},${H-PB} Z`;
-    const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    area.setAttribute('d', areaD);
-    area.setAttribute('fill', `url(#dg${si})`);
+    const areaD = `M${xs[0]},${H-PB} ` + xs.map((x,i)=>`L${x},${ys[i]}`).join(' ') + ` L${xs[n-1]},${H-PB} Z`;
+    const area = document.createElementNS('http://www.w3.org/2000/svg','path');
+    area.setAttribute('d', areaD); area.setAttribute('fill', `url(#dg${si})`);
     svg.appendChild(area);
-
-    // Ligne lissée
     let d = `M${xs[0]},${ys[0]}`;
-    for (let i = 1; i < n; i++) {
-      const c1x = xs[i-1] + (xs[i]-xs[i-1])/2;
-      const c2x = xs[i]   - (xs[i]-xs[i-1])/2;
-      d += ` C${c1x},${ys[i-1]} ${c2x},${ys[i]} ${xs[i]},${ys[i]}`;
+    for (let i=1;i<n;i++){
+      const c1=xs[i-1]+(xs[i]-xs[i-1])/2, c2=xs[i]-(xs[i]-xs[i-1])/2;
+      d += ` C${c1},${ys[i-1]} ${c2},${ys[i]} ${xs[i]},${ys[i]}`;
     }
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    line.setAttribute('d', d);
-    line.setAttribute('fill', 'none');
-    line.setAttribute('stroke', s.color);
-    line.setAttribute('stroke-width', '2');
-    line.setAttribute('stroke-linecap', 'round');
+    const line = document.createElementNS('http://www.w3.org/2000/svg','path');
+    line.setAttribute('d',d); line.setAttribute('fill','none');
+    line.setAttribute('stroke',s.color); line.setAttribute('stroke-width','2');
+    line.setAttribute('stroke-linecap','round');
     svg.appendChild(line);
+  });
 
-    // Points + labels valeur
-    xs.forEach((x, i) => {
-      const y = ys[i];
+  // ── Labels valeurs avec anti-collision par colonne ──────────────────────
+  xs.forEach((x, i) => {
+    // Collecte toutes les valeurs de cette colonne avec leur Y
+    const col = SERIES.map((s, si) => ({
+      si, y: toY(s.data[i]), val: s.data[i], color: s.color, name: s.name
+    }));
 
-      // Valeur au-dessus du point
-      const vt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      vt.setAttribute('x', x);
-      vt.setAttribute('y', y - 7);
-      vt.setAttribute('text-anchor', 'middle');
-      vt.setAttribute('font-size', '11');
-      vt.setAttribute('fill', s.color);
+    // Trie par Y croissant (haut -> bas)
+    col.sort((a, b) => a.y - b.y);
+
+    // Anti-collision verticale : ecarte les labels trop proches
+    const MIN_GAP = 16;
+    const TOP = PT + 10;
+    const BOTTOM = H - PB - 4;
+    const labelY = col.map(c => Math.max(TOP, Math.min(BOTTOM, c.y - 8)));
+
+    // Passage avant : pousse vers le bas si collision
+    for (let k = 1; k < labelY.length; k++) {
+      if (labelY[k] - labelY[k-1] < MIN_GAP) {
+        labelY[k] = labelY[k-1] + MIN_GAP;
+      }
+    }
+
+    // Si depasse en bas, remonte tout le groupe
+    const overflow = labelY[labelY.length - 1] - BOTTOM;
+    if (overflow > 0) {
+      for (let k = 0; k < labelY.length; k++) labelY[k] -= overflow;
+    }
+
+    // Passage arriere : restaure l'ecart minimum
+    for (let k = labelY.length-2; k >= 0; k--) {
+      if (labelY[k+1] - labelY[k] < MIN_GAP) {
+        labelY[k] = labelY[k+1] - MIN_GAP;
+      }
+    }
+
+    // Clamp final
+    for (let k = 0; k < labelY.length; k++) {
+      labelY[k] = Math.max(TOP, Math.min(BOTTOM, labelY[k]));
+    }
+
+    col.forEach((c, k) => {
+      const txt = c.val.toFixed(2) + '%';
+      const tw = txt.length * 6.2;
+
+      // Evite la zone des graduations Y aux bords
+      const anchor = i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle';
+      const tx = i === 0 ? x + 8 : i === n - 1 ? x - 8 : x;
+      const ty = labelY[k];
+      const lx = anchor === 'start' ? tx : anchor === 'end' ? tx - tw : tx - tw / 2;
+
+      // Liaison point -> label (aide visuelle quand le label est deplace)
+      if (Math.abs(c.y - ty) > 3) {
+        const guide = document.createElementNS('http://www.w3.org/2000/svg','line');
+        guide.setAttribute('x1', x);
+        guide.setAttribute('y1', c.y - 4);
+        guide.setAttribute('x2', x);
+        guide.setAttribute('y2', ty - 6);
+        guide.setAttribute('stroke', c.color);
+        guide.setAttribute('stroke-opacity', '0.35');
+        guide.setAttribute('stroke-width', '1');
+        svg.appendChild(guide);
+      }
+
+      // Fond blanc derriere le label
+      const lbg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      lbg.setAttribute('x', lx - 2); lbg.setAttribute('y', ty - 10);
+      lbg.setAttribute('width', tw + 4); lbg.setAttribute('height', 13);
+      lbg.setAttribute('rx', '3');
+      lbg.setAttribute('fill', 'rgba(255,255,255,0.88)');
+      svg.appendChild(lbg);
+
+      const vt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      vt.setAttribute('x', tx);
+      vt.setAttribute('y', ty);
+      vt.setAttribute('text-anchor', anchor);
+      vt.setAttribute('font-size', '10');
+      vt.setAttribute('fill', c.color);
       vt.setAttribute('font-weight', '700');
       vt.setAttribute('font-family', 'Arial,sans-serif');
-      vt.textContent = s.data[i].toFixed(2) + '%';
+      vt.textContent = txt;
       svg.appendChild(vt);
+    });
+  });
 
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', x); circle.setAttribute('cy', y);
-      circle.setAttribute('r', '4');
-      circle.setAttribute('fill', s.color);
-      circle.setAttribute('stroke', 'white'); circle.setAttribute('stroke-width', '1.5');
+  // Points
+  SERIES.forEach((s, si) => {
+    const ys = s.data.map(toY);
+    xs.forEach((x, i) => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx', x); circle.setAttribute('cy', ys[i]);
+      circle.setAttribute('r','4'); circle.setAttribute('fill', s.color);
+      circle.setAttribute('stroke','white'); circle.setAttribute('stroke-width','1.5');
       svg.appendChild(circle);
     });
   });
 
-  // Zone de survol par colonne
+  // Zones de survol
   xs.forEach((x, i) => {
-    const hitW = i === 0 ? (xs[1]-xs[0])/2 : (i === n-1 ? (xs[n-1]-xs[n-2])/2 : (xs[i+1]-xs[i-1])/2);
-    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    hit.setAttribute('x', x - hitW/2); hit.setAttribute('y', PT);
-    hit.setAttribute('width', hitW); hit.setAttribute('height', H - PT - PB);
-    hit.setAttribute('fill', 'transparent'); hit.style.cursor = 'pointer';
-
-    hit.addEventListener('mouseenter', function() {
-      const wrap = svg.closest('.dispo-chart-wrap');
-      const wr   = wrap.getBoundingClientRect();
-      const sr   = svg.getBoundingClientRect();
-      const pct  = (x - PL) / (W - PL - PR);
-      const px   = pct * sr.width + (sr.left - wr.left);
-      let html = `<strong>${LABELS[i]}</strong>`;
-      SERIES.forEach(s => {
-        html += `<br><span style="color:${s.color}">●</span> ${s.name}: ${s.data[i].toFixed(3)}%`;
-      });
-      tooltip.innerHTML = html;
-      tooltip.style.opacity = '1';
-      tooltip.style.left  = Math.max(0, px - 70) + 'px';
-      tooltip.style.top   = '0px';
+    const hitW = i===0 ? (xs[1]-xs[0])/2 : i===n-1 ? (xs[n-1]-xs[n-2])/2 : (xs[i+1]-xs[i-1])/2;
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    hit.setAttribute('x', x-hitW/2); hit.setAttribute('y', PT);
+    hit.setAttribute('width', hitW); hit.setAttribute('height', H-PT-PB);
+    hit.setAttribute('fill','transparent'); hit.style.cursor='pointer';
+    hit.addEventListener('mouseenter', function(){
+      const wr=svg.closest('.dispo-chart-wrap').getBoundingClientRect();
+      const sr=svg.getBoundingClientRect();
+      const pct=(x-PL)/(W-PL-PR);
+      const px=pct*sr.width+(sr.left-wr.left);
+      let html=`<strong>${LABELS[i]}</strong>`;
+      SERIES.forEach(s=>{html+=`<br><span style="color:${s.color}">●</span> ${s.name}: ${s.data[i].toFixed(3)}%`;});
+      tooltip.innerHTML=html;
+      tooltip.style.opacity='1';
+      tooltip.style.left=Math.max(0,px-70)+'px';
+      tooltip.style.top='0px';
     });
-    hit.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+    hit.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});
     svg.appendChild(hit);
   });
 
   // Labels X
-  LABELS.forEach(l => {
-    const s = document.createElement('span');
-    s.className = 'dispo-label';
-    s.textContent = l;
+  LABELS.forEach(l=>{
+    const s=document.createElement('span');
+    s.className='dispo-label'; s.textContent=l;
     labelsEl.appendChild(s);
   });
 
   // Légende
-  SERIES.forEach(s => {
-    legendEl.innerHTML += `
-      <div class="dispo-leg-item">
-        <div class="dispo-leg-line" style="background:${s.color}"></div>
-        <span>${s.name}</span>
-      </div>`;
+  SERIES.forEach(s=>{
+    legendEl.innerHTML+=`<div class="dispo-leg-item">
+      <div class="dispo-leg-line" style="background:${s.color}"></div>
+      <span>${s.name}</span></div>`;
   });
 })();
 </script>

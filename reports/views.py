@@ -1114,7 +1114,7 @@ def export_statistiques(request):
         ws2.row_dimensions[row].height = 20
 
     # ══ Onglet 3 : Poids & Outage / Métier ═══════════════════════════════════
-    from openpyxl.chart import PieChart, Reference
+    from openpyxl.chart import PieChart3D, Reference
     from openpyxl.chart.series import DataPoint
 
     ws3 = wb.create_sheet('🥧 Outage Métier')
@@ -1153,7 +1153,8 @@ def export_statistiques(request):
 
     # ── Camembert Excel ──────────────────────────────────────────────────────
     if outage_data:
-        pie = PieChart()
+        pie = PieChart3D()
+        pie.style = 26 
         pie.title    = 'Outage par Métier'
         pie.style    = 10
         pie.width    = 16
