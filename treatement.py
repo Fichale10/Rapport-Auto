@@ -16,7 +16,9 @@ def process_file(input_file, date_rapport, date_fin=None):
     # Filtrage des alarmes
     alarmes_a_garder = [
         "BTS O&M LINK FAILURE / WCDMA BASE STATION OUT OF USE",
-        "WCDMA BASE STATION OUT OF USE"
+        "WCDMA BASE STATION OUT OF USE",
+        "BTS O&M LINK FAILURE",
+        "ALL RFMS MISSING"
     ]
     
     print("Filtrage des données dans la colonne 'Alarm text'...")
