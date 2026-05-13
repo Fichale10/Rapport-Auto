@@ -302,10 +302,10 @@ def _make_donut_svg(data, total_h):
     if total == 0:
         return ''
 
-    CX, CY  = 310, 148
-    RX, RY  = 215, 82
-    DEPTH   = 55
-    W       = 660
+    CX, CY  = 330, 160
+    RX, RY  = 235, 92
+    DEPTH   = 60
+    W       = 720
     n       = len(data)
     COLS    = 3
     LEG_ROWS = math.ceil(n / COLS)
@@ -411,7 +411,7 @@ def _make_donut_svg(data, total_h):
             )
 
     # ── Labels avec anti-collision ───────────────────────────────────────────
-    inner_threshold = 12  # pct >= 12 → label interne
+    inner_threshold = 11  # pct >= 11 -> label interne
 
     ext_labels = []
     for s in slices:
@@ -424,7 +424,7 @@ def _make_donut_svg(data, total_h):
                 'anchor': 'start' if math.cos(s['mid']) >= 0 else 'end',
             })
 
-    MIN_GAP = 50
+    MIN_GAP = 54
     left  = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
     right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
 
@@ -446,13 +446,13 @@ def _make_donut_svg(data, total_h):
         if s['pct'] >= inner_threshold:
             lx, ly = pt(s['mid'], 0.60)
             labels += (
-                f'<rect x="{lx-28:.1f}" y="{ly-16:.1f}" width="56" height="32" rx="6" '
-                f'fill="rgba(0,0,0,0.25)"/>'
+                f'<rect x="{lx-34:.1f}" y="{ly-18:.1f}" width="68" height="37" rx="8" '
+                f'fill="rgba(0,0,0,0.42)"/>'
                 f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="15" font-weight="bold" fill="white">'
+                f'font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="white">'
                 f'{s["pct"]}%</text>'
-                f'<text x="{lx:.1f}" y="{ly+14:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="12" fill="rgba(255,255,255,0.95)">'
+                f'<text x="{lx:.1f}" y="{ly+15:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="12.5" font-weight="700" fill="rgba(255,255,255,0.97)">'
                 f'{s["h"]}h</text>'
             )
 
@@ -465,32 +465,32 @@ def _make_donut_svg(data, total_h):
         ox, oy = pt(s['mid'], 1.04)
         mx, my = pt(s['mid'], 1.20)
         tx     = lx + (6 if anchor == 'start' else -6)
-        box_w  = 76
+        box_w  = 92
         box_x  = tx - box_w if anchor == 'end' else tx
 
         labels += (
-            f'<rect x="{box_x:.1f}" y="{ly-16:.1f}" width="{box_w}" height="30" rx="6" '
-            f'fill="rgba(255,255,255,0.92)" stroke="{s["color"]}" stroke-width="1.2"/>'
+            f'<rect x="{box_x:.1f}" y="{ly-18:.1f}" width="{box_w}" height="34" rx="7" '
+            f'fill="rgba(255,255,255,0.97)" stroke="{s["color"]}" stroke-width="1.6"/>'
             f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
-            f'fill="none" stroke="{s["color"]}" stroke-width="1.5" opacity="0.9"/>'
-            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3" fill="{s["color"]}"/>'
+            f'fill="none" stroke="{s["color"]}" stroke-width="1.9" opacity="0.95"/>'
+            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3.3" fill="{s["color"]}"/>'
             f'<text x="{tx:.1f}" y="{ly-2:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="13" font-weight="800" fill="{s["color"]}">'
+            f'font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="{s["color"]}">'
             f'{s["pct"]}%</text>'
             f'<text x="{tx:.1f}" y="{ly+11:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="11" font-weight="600" fill="#333">'
+            f'font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#1f2937">'
             f'{s["h"]}h</text>'
         )
 
     # ── Badge total ─────────────────────────────────────────────────────────
     badge = (
-        f'<rect x="{CX-40}" y="{CY-18}" width="80" height="34" rx="10" '
-        f'fill="white" opacity="0.93"/>'
+        f'<rect x="{CX-44}" y="{CY-20}" width="88" height="38" rx="11" '
+        f'fill="white" opacity="0.96" stroke="rgba(0,48,135,0.18)" stroke-width="1"/>'
         f'<text x="{CX}" y="{CY+1}" text-anchor="middle" '
-        f'font-family="Arial,sans-serif" font-size="12" font-weight="800" fill="#003087">'
+        f'font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#003087">'
         f'{total_h}h</text>'
-        f'<text x="{CX}" y="{CY+13}" text-anchor="middle" '
-        f'font-family="Arial,sans-serif" font-size="8" fill="#888" letter-spacing="1.5">TOTAL</text>'
+        f'<text x="{CX}" y="{CY+15}" text-anchor="middle" '
+        f'font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#6b7280" letter-spacing="1.4">TOTAL</text>'
     )
 
     # ── Légende 3 colonnes ───────────────────────────────────────────────────
@@ -510,13 +510,13 @@ def _make_donut_svg(data, total_h):
         name = s['name'][:16] + ('…' if len(s['name']) > 16 else '')
         legend += (
             f'<rect x="{x}" y="{y}" width="{COL_W-10}" height="44" rx="9" '
-            f'fill="{s["color"]}" opacity="0.08"/>'
-            f'<circle cx="{x+14}" cy="{y+13}" r="7" fill="{s["color"]}"/>'
+            f'fill="{s["color"]}" opacity="0.13" stroke="{s["color"]}" stroke-opacity="0.2"/>'
+            f'<circle cx="{x+14}" cy="{y+13}" r="7.5" fill="{s["color"]}"/>'
             f'<text x="{x+26}" y="{y+17}" '
-            f'font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="{s["color"]}">'
+            f'font-family="Arial,sans-serif" font-size="13.5" font-weight="800" fill="{s["dark"]}">'
             f'{name}</text>'
             f'<text x="{x+14}" y="{y+34}" '
-            f'font-family="Arial,sans-serif" font-size="12" fill="#555">'
+            f'font-family="Arial,sans-serif" font-size="12.5" font-weight="700" fill="#374151">'
             f'{s["h"]}h · {s["pct"]}%</text>'
         )
 
