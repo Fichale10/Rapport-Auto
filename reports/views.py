@@ -434,6 +434,19 @@ def _make_donut_svg(data, total_h):
                 'side_left': edge_x < CX,
             })
 
+    # Trop d’étiquettes à gauche → en placer une partie à droite (zone souvent vide sur le camembert)
+    def _rebalance_left_right(ext_list):
+        stacked_left = [e for e in ext_list if e['side_left']]
+        if len(stacked_left) < 3:
+            return
+        stacked_left.sort(key=lambda e: e['s']['mid'])
+        for i, e in enumerate(stacked_left):
+            if i % 2 == 1:
+                e['side_left'] = False
+                e['anchor'] = 'start'
+
+    _rebalance_left_right(ext_labels)
+
     def _pack_external_vertical(side_list):
         """Empile verticalement : chaque boîte sous la précédente (pas de chevauchement)."""
         side_list.sort(key=lambda e: e['ly'])
