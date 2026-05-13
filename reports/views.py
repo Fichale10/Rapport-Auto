@@ -423,105 +423,56 @@ def _make_donut_svg(data, total_h):
     ext_labels = []
     for s in slices:
         if s['pct'] < inner_threshold:
-            lx_raw, ly_raw = pt(s['mid'], 1.45)
-            # Position réelle sur l’ellipse (plus fiable que cos(mid) près du sommet)
-            edge_x, _edge_y = pt(s['mid'], 1.0)
-            ext_labels.append({
-                's': s,
-                'lx': lx_raw,
-                'ly': ly_raw,
-                'anchor': 'start' if edge_x >= CX else 'end',
-                'side_left': edge_x < CX,
-            })
+            ext_labels.append({'s': s})
 
-    # Trop d’étiquettes d’un côté → en envoyer une partie de l’autre (vide sur le camembert)
-    def _rebalance_sides(ext_list, max_per_side=2):
-        """Si plus de max_per_side callouts à gauche ou à droite, alterner vers l’autre côté."""
-        for _ in range(8):
-            left_n = sum(1 for e in ext_list if e['side_left'])
-            right_n = len(ext_list) - left_n
-            if left_n <= max_per_side and right_n <= max_per_side:
-                break
-            if left_n > max_per_side:
-                side = [e for e in ext_list if e['side_left']]
-                side.sort(key=lambda e: e['s']['mid'])
-                for i, e in enumerate(side):
-                    if i % 2 == 1:
-                        e['side_left'] = False
-                        e['anchor'] = 'start'
-                continue
-            if right_n > max_per_side:
-                side = [e for e in ext_list if not e['side_left']]
-                side.sort(key=lambda e: e['s']['mid'])
-                for i, e in enumerate(side):
-                    if i % 2 == 1:
-                        e['side_left'] = True
-                        e['anchor'] = 'end'
-                continue
-            break
-
-    _rebalance_sides(ext_labels, max_per_side=2)
-
-    def _pack_external_vertical(side_list):
-        """Empile verticalement : chaque boîte sous la précédente (pas de chevauchement)."""
-        side_list.sort(key=lambda e: e['ly'])
-        prev_bottom = -1e9
-        for e in side_list:
-            top = e['ly'] - BOX_PAD_TOP
-            min_top = prev_bottom + VERT_GAP
-            if top < min_top:
-                e['ly'] = min_top + BOX_PAD_TOP
-            prev_bottom = max(prev_bottom, e['ly'] + RECT_BOTTOM_FROM_LY)
-
-    left = [e for e in ext_labels if e['side_left']]
-    right = [e for e in ext_labels if not e['side_left']]
-
-    # Ancres horizontales : boîtes entièrement dans le viewBox
-    # anchor end   : box_x = lx - 6 - BOX_W  >= 2  -> lx >= BOX_W + 8
-    # anchor start : lx + 6 + BOX_W <= W - 2 -> lx <= W - BOX_W - 8
+    # Répartition gauche / droite (bandes latérales vides) + Y espacés sur la hauteur du camembert
     MARGIN = 8
     SAFE_LX_LEFT = BOX_W + 6 + MARGIN
     SAFE_LX_RIGHT = W - BOX_W - 6 - MARGIN
-
-    COL_SPACING = 12
-    # À gauche de l’ellipse (~ CX - RX) : peu de place pour 2 colonnes — une seule colonne stable
     LEFT_COL = SAFE_LX_LEFT
-    # À droite : on peut placer une 2e colonne plus vers le centre si beaucoup d’étiquettes
-    RIGHT_COL_OUTER = SAFE_LX_RIGHT
-    # Deux colonnes à droite : la colonne intérieure doit finir avant la colonne extérieure
-    RIGHT_COL_INNER = RIGHT_COL_OUTER - (BOX_W + COL_SPACING)
+    RIGHT_COL = SAFE_LX_RIGHT
+    COL_SPACING = 12
+    RIGHT_COL_INNER = RIGHT_COL - (BOX_W + COL_SPACING)
 
-    def _pack_side_with_columns(items, inner_x, outer_x, use_two_cols, is_left_side):
+    def _spread_flank_vertical(items, x_col, anchor_end):
+        """Place les boîtes le long du flanc (gauche ou droite), Y répartis sur la hauteur du camembert."""
         if not items:
             return
-        if is_left_side or not use_two_cols or len(items) <= 3:
-            _pack_external_vertical(items)
-            for e in items:
-                if is_left_side:
-                    e['lx'] = LEFT_COL
-                else:
-                    # Une seule colonne à droite : ancrer au bord (évite lx trop à gauche)
-                    e['lx'] = outer_x if len(items) <= 3 else inner_x
-            return
-        items.sort(key=lambda e: e['ly'])
-        col_a, col_b = [], []
-        for i, e in enumerate(items):
-            (col_a if i % 2 == 0 else col_b).append(e)
-        _pack_external_vertical(col_a)
-        _pack_external_vertical(col_b)
-        for e in col_a:
-            e['lx'] = inner_x
-        for e in col_b:
-            e['lx'] = outer_x
+        items.sort(key=lambda e: e['s']['mid'])
+        n = len(items)
+        y_lo = CY - RY * 0.92
+        y_hi = CY + DEPTH + RY * 0.92
+        block = n * BOX_H + (n - 1) * VERT_GAP
+        span = max(y_hi - y_lo, 1.0)
+        if block <= span:
+            y_start = y_lo + (span - block) / 2
+        else:
+            y_start = y_lo
+        for j, e in enumerate(items):
+            top = y_start + j * (BOX_H + VERT_GAP)
+            e['ly'] = top + BOX_PAD_TOP
+            e['lx'] = x_col
+            e['anchor'] = 'end' if anchor_end else 'start'
 
-    _pack_side_with_columns(
-        left, LEFT_COL, LEFT_COL, use_two_cols=False, is_left_side=True,
-    )
-    _pack_side_with_columns(
-        right, RIGHT_COL_INNER, RIGHT_COL_OUTER, use_two_cols=(len(right) >= 4), is_left_side=False,
-    )
-
-    ext_labels = left + right
+    if ext_labels:
+        ext_sorted = sorted(ext_labels, key=lambda e: e['s']['mid'])
+        n_ext = len(ext_sorted)
+        n_left = (n_ext + 1) // 2
+        left = ext_sorted[:n_left]
+        right = ext_sorted[n_left:]
+        _spread_flank_vertical(left, LEFT_COL, anchor_end=True)
+        if len(right) >= 5:
+            col_a, col_b = [], []
+            for i, e in enumerate(right):
+                (col_a if i % 2 == 0 else col_b).append(e)
+            _spread_flank_vertical(col_a, RIGHT_COL_INNER, anchor_end=False)
+            _spread_flank_vertical(col_b, RIGHT_COL, anchor_end=False)
+            ext_labels = left + col_a + col_b
+        else:
+            _spread_flank_vertical(right, RIGHT_COL, anchor_end=False)
+            ext_labels = left + right
+    else:
+        ext_labels = []
 
     # Reserve de place sous les etiquettes externes pour ne pas recouvrir la legende
     base_leg_top = CY + RY + DEPTH + 32
@@ -556,12 +507,11 @@ def _make_donut_svg(data, total_h):
         lx, ly = e['lx'], e['ly']
         anchor = e['anchor']
         ox, oy = pt(s['mid'], 1.04)
-        mx, my = pt(s['mid'], 1.20)
         tx = lx + (6 if anchor == 'start' else -6)
         box_x = tx - BOX_W if anchor == 'end' else tx
-
+        # Ligne en coude : vers le flanc puis vertical (lisible quand la boîte est sur le côté)
         external_lines += (
-            f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
+            f'<polyline points="{ox:.1f},{oy:.1f} {lx:.1f},{oy:.1f} {lx:.1f},{ly:.1f}" '
             f'fill="none" stroke="{s["color"]}" stroke-width="1.6" opacity="0.85"/>'
             f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3" fill="{s["color"]}"/>'
         )
