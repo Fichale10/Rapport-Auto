@@ -434,18 +434,33 @@ def _make_donut_svg(data, total_h):
                 'side_left': edge_x < CX,
             })
 
-    # Trop d’étiquettes à gauche → en placer une partie à droite (zone souvent vide sur le camembert)
-    def _rebalance_left_right(ext_list):
-        stacked_left = [e for e in ext_list if e['side_left']]
-        if len(stacked_left) < 3:
-            return
-        stacked_left.sort(key=lambda e: e['s']['mid'])
-        for i, e in enumerate(stacked_left):
-            if i % 2 == 1:
-                e['side_left'] = False
-                e['anchor'] = 'start'
+    # Trop d’étiquettes d’un côté → en envoyer une partie de l’autre (vide sur le camembert)
+    def _rebalance_sides(ext_list, max_per_side=2):
+        """Si plus de max_per_side callouts à gauche ou à droite, alterner vers l’autre côté."""
+        for _ in range(8):
+            left_n = sum(1 for e in ext_list if e['side_left'])
+            right_n = len(ext_list) - left_n
+            if left_n <= max_per_side and right_n <= max_per_side:
+                break
+            if left_n > max_per_side:
+                side = [e for e in ext_list if e['side_left']]
+                side.sort(key=lambda e: e['s']['mid'])
+                for i, e in enumerate(side):
+                    if i % 2 == 1:
+                        e['side_left'] = False
+                        e['anchor'] = 'start'
+                continue
+            if right_n > max_per_side:
+                side = [e for e in ext_list if not e['side_left']]
+                side.sort(key=lambda e: e['s']['mid'])
+                for i, e in enumerate(side):
+                    if i % 2 == 1:
+                        e['side_left'] = True
+                        e['anchor'] = 'end'
+                continue
+            break
 
-    _rebalance_left_right(ext_labels)
+    _rebalance_sides(ext_labels, max_per_side=2)
 
     def _pack_external_vertical(side_list):
         """Empile verticalement : chaque boîte sous la précédente (pas de chevauchement)."""
@@ -461,20 +476,32 @@ def _make_donut_svg(data, total_h):
     left = [e for e in ext_labels if e['side_left']]
     right = [e for e in ext_labels if not e['side_left']]
 
-    COL_SPACING = 14
-    # Plusieurs petites tranches à gauche : deux colonnes (réduit la hauteur de pile)
-    LEFT_COL_INNER = 56
-    LEFT_COL_OUTER = LEFT_COL_INNER - BOX_W - COL_SPACING
-    RIGHT_COL_INNER = W - 56
-    RIGHT_COL_OUTER = RIGHT_COL_INNER + BOX_W + COL_SPACING
+    # Ancres horizontales : boîtes entièrement dans le viewBox
+    # anchor end   : box_x = lx - 6 - BOX_W  >= 2  -> lx >= BOX_W + 8
+    # anchor start : lx + 6 + BOX_W <= W - 2 -> lx <= W - BOX_W - 8
+    MARGIN = 8
+    SAFE_LX_LEFT = BOX_W + 6 + MARGIN
+    SAFE_LX_RIGHT = W - BOX_W - 6 - MARGIN
 
-    def _pack_side_with_columns(items, inner_x, outer_x, use_two_cols):
+    COL_SPACING = 12
+    # À gauche de l’ellipse (~ CX - RX) : peu de place pour 2 colonnes — une seule colonne stable
+    LEFT_COL = SAFE_LX_LEFT
+    # À droite : on peut placer une 2e colonne plus vers le centre si beaucoup d’étiquettes
+    RIGHT_COL_OUTER = SAFE_LX_RIGHT
+    # Deux colonnes à droite : la colonne intérieure doit finir avant la colonne extérieure
+    RIGHT_COL_INNER = RIGHT_COL_OUTER - (BOX_W + COL_SPACING)
+
+    def _pack_side_with_columns(items, inner_x, outer_x, use_two_cols, is_left_side):
         if not items:
             return
-        if not use_two_cols or len(items) <= 3:
+        if is_left_side or not use_two_cols or len(items) <= 3:
             _pack_external_vertical(items)
             for e in items:
-                e['lx'] = inner_x
+                if is_left_side:
+                    e['lx'] = LEFT_COL
+                else:
+                    # Une seule colonne à droite : ancrer au bord (évite lx trop à gauche)
+                    e['lx'] = outer_x if len(items) <= 3 else inner_x
             return
         items.sort(key=lambda e: e['ly'])
         col_a, col_b = [], []
@@ -488,10 +515,10 @@ def _make_donut_svg(data, total_h):
             e['lx'] = outer_x
 
     _pack_side_with_columns(
-        left, LEFT_COL_INNER, LEFT_COL_OUTER, use_two_cols=(len(left) >= 4),
+        left, LEFT_COL, LEFT_COL, use_two_cols=False, is_left_side=True,
     )
     _pack_side_with_columns(
-        right, RIGHT_COL_INNER, RIGHT_COL_OUTER, use_two_cols=(len(right) >= 4),
+        right, RIGHT_COL_INNER, RIGHT_COL_OUTER, use_two_cols=(len(right) >= 4), is_left_side=False,
     )
 
     ext_labels = left + right
