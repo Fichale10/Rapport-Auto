@@ -309,7 +309,7 @@ def _make_donut_svg(data, total_h):
     n       = len(data)
     COLS    = 3
     LEG_ROWS = math.ceil(n / COLS)
-    H       = CY + RY + DEPTH + 30 + LEG_ROWS * 52 + 20
+    H_BASE = CY + RY + DEPTH + 30 + LEG_ROWS * 52 + 20
 
     def pt(a, r=1.0):
         return (CX + r * RX * math.cos(a), CY + r * RY * math.sin(a))
@@ -413,6 +413,12 @@ def _make_donut_svg(data, total_h):
     # ── Labels avec anti-collision ───────────────────────────────────────────
     inner_threshold = 11  # pct >= 11 -> label interne
 
+    BOX_H = 34
+    BOX_PAD_TOP = 18   # rect top = ly - BOX_PAD_TOP
+    BOX_PAD_BOT = 16   # rect bottom ~= ly + BOX_PAD_BOT
+    VERT_GAP = 10      # espace minimum entre deux boîtes empilées
+    BOX_W = 92
+
     ext_labels = []
     for s in slices:
         if s['pct'] < inner_threshold:
@@ -424,21 +430,43 @@ def _make_donut_svg(data, total_h):
                 'anchor': 'start' if math.cos(s['mid']) >= 0 else 'end',
             })
 
-    MIN_GAP = 54
-    left  = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
+    def _pack_external_vertical(side_list):
+        """Empile sans trous ni chevauchements : chaque boîte reste sous la précédente."""
+        side_list.sort(key=lambda e: e['ly'])
+        prev_bottom = -1e9
+        for e in side_list:
+            top = e['ly'] - BOX_PAD_TOP
+            min_top = prev_bottom + VERT_GAP
+            if top < min_top:
+                e['ly'] = min_top + BOX_PAD_TOP
+            prev_bottom = max(prev_bottom, e['ly'] + BOX_PAD_BOT)
+
+    left = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
     right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
+    _pack_external_vertical(left)
+    _pack_external_vertical(right)
 
-    left.sort(key=lambda e: e['ly'])
-    for i in range(1, len(left)):
-        if abs(left[i]['ly'] - left[i-1]['ly']) < MIN_GAP:
-            left[i]['ly'] = left[i-1]['ly'] + MIN_GAP
+    # Décalage horizontal en escalier pour les grappes (réduit les chevauchements diagonaux / lignes)
+    STAGGER = 22
 
-    right.sort(key=lambda e: e['ly'])
-    for i in range(1, len(right)):
-        if abs(right[i]['ly'] - right[i-1]['ly']) < MIN_GAP:
-            right[i]['ly'] = right[i-1]['ly'] + MIN_GAP
+    def _stagger_lx(side_list, sign):
+        """sign=-1 : gauche, pousser lx plus à gauche ; sign=+1 : droite."""
+        side_list.sort(key=lambda e: e['ly'])
+        for i, e in enumerate(side_list):
+            e['lx'] += sign * STAGGER * i
+
+    _stagger_lx(left, -1)
+    _stagger_lx(right, +1)
 
     ext_labels = left + right
+
+    # Reserve de place sous les etiquettes externes pour ne pas recouvrir la legende
+    base_leg_top = CY + RY + DEPTH + 32
+    max_ext_bottom = max((e['ly'] + BOX_PAD_BOT for e in ext_labels), default=0)
+    legend_push = max(0.0, max_ext_bottom - base_leg_top + 18)
+    leg_top = base_leg_top + legend_push
+    H = H_BASE + legend_push
+
     labels = ''
 
     # Labels internes — grandes tranches
@@ -465,11 +493,10 @@ def _make_donut_svg(data, total_h):
         ox, oy = pt(s['mid'], 1.04)
         mx, my = pt(s['mid'], 1.20)
         tx     = lx + (6 if anchor == 'start' else -6)
-        box_w  = 92
-        box_x  = tx - box_w if anchor == 'end' else tx
+        box_x  = tx - BOX_W if anchor == 'end' else tx
 
         labels += (
-            f'<rect x="{box_x:.1f}" y="{ly-18:.1f}" width="{box_w}" height="34" rx="7" '
+            f'<rect x="{box_x:.1f}" y="{ly-BOX_PAD_TOP:.1f}" width="{BOX_W}" height="{BOX_H}" rx="7" '
             f'fill="rgba(255,255,255,0.97)" stroke="{s["color"]}" stroke-width="1.6"/>'
             f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
             f'fill="none" stroke="{s["color"]}" stroke-width="1.9" opacity="0.95"/>'
@@ -494,7 +521,6 @@ def _make_donut_svg(data, total_h):
     )
 
     # ── Légende 3 colonnes ───────────────────────────────────────────────────
-    leg_top = CY + RY + DEPTH + 32
     COL_W   = int((W - 40) / COLS)
     legend  = ''
     for i, s in enumerate(slices):
