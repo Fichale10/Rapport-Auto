@@ -415,8 +415,9 @@ def _make_donut_svg(data, total_h):
 
     BOX_H = 34
     BOX_PAD_TOP = 18   # rect top = ly - BOX_PAD_TOP
-    BOX_PAD_BOT = 16   # rect bottom ~= ly + BOX_PAD_BOT
-    VERT_GAP = 10      # espace minimum entre deux boîtes empilées
+    # bas du rectangle (ly = ligne de base du texte du haut)
+    RECT_BOTTOM_FROM_LY = -BOX_PAD_TOP + BOX_H  # ly + RECT_BOTTOM_FROM_LY = bas du rect
+    VERT_GAP = 12      # espace vertical entre deux boîtes empilées
     BOX_W = 92
 
     ext_labels = []
@@ -431,7 +432,7 @@ def _make_donut_svg(data, total_h):
             })
 
     def _pack_external_vertical(side_list):
-        """Empile sans trous ni chevauchements : chaque boîte reste sous la précédente."""
+        """Empile verticalement : chaque boîte sous la précédente (pas de chevauchement)."""
         side_list.sort(key=lambda e: e['ly'])
         prev_bottom = -1e9
         for e in side_list:
@@ -439,30 +440,26 @@ def _make_donut_svg(data, total_h):
             min_top = prev_bottom + VERT_GAP
             if top < min_top:
                 e['ly'] = min_top + BOX_PAD_TOP
-            prev_bottom = max(prev_bottom, e['ly'] + BOX_PAD_BOT)
+            prev_bottom = max(prev_bottom, e['ly'] + RECT_BOTTOM_FROM_LY)
 
     left = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
     right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
     _pack_external_vertical(left)
     _pack_external_vertical(right)
 
-    # Décalage horizontal en escalier pour les grappes (réduit les chevauchements diagonaux / lignes)
-    STAGGER = 22
-
-    def _stagger_lx(side_list, sign):
-        """sign=-1 : gauche, pousser lx plus à gauche ; sign=+1 : droite."""
-        side_list.sort(key=lambda e: e['ly'])
-        for i, e in enumerate(side_list):
-            e['lx'] += sign * STAGGER * i
-
-    _stagger_lx(left, -1)
-    _stagger_lx(right, +1)
+    # Colonnes d'ancrage fixes : évite le chevauchement horizontal (stagger sur lx).
+    # Toutes les étiquettes d'un même côté partagent le même lx ; seul ly varie.
+    LEFT_COL_X, RIGHT_COL_X = 52, W - 52
+    for e in left:
+        e['lx'] = LEFT_COL_X
+    for e in right:
+        e['lx'] = RIGHT_COL_X
 
     ext_labels = left + right
 
     # Reserve de place sous les etiquettes externes pour ne pas recouvrir la legende
     base_leg_top = CY + RY + DEPTH + 32
-    max_ext_bottom = max((e['ly'] + BOX_PAD_BOT for e in ext_labels), default=0)
+    max_ext_bottom = max((e['ly'] + RECT_BOTTOM_FROM_LY for e in ext_labels), default=0)
     legend_push = max(0.0, max_ext_bottom - base_leg_top + 18)
     leg_top = base_leg_top + legend_push
     H = H_BASE + legend_push
