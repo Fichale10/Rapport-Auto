@@ -417,18 +417,21 @@ def _make_donut_svg(data, total_h):
     BOX_PAD_TOP = 18   # rect top = ly - BOX_PAD_TOP
     # bas du rectangle (ly = ligne de base du texte du haut)
     RECT_BOTTOM_FROM_LY = -BOX_PAD_TOP + BOX_H  # ly + RECT_BOTTOM_FROM_LY = bas du rect
-    VERT_GAP = 12      # espace vertical entre deux boîtes empilées
+    VERT_GAP = 14      # espace vertical entre deux boîtes empilées
     BOX_W = 92
 
     ext_labels = []
     for s in slices:
         if s['pct'] < inner_threshold:
             lx_raw, ly_raw = pt(s['mid'], 1.45)
+            # Position réelle sur l’ellipse (plus fiable que cos(mid) près du sommet)
+            edge_x, _edge_y = pt(s['mid'], 1.0)
             ext_labels.append({
                 's': s,
                 'lx': lx_raw,
                 'ly': ly_raw,
-                'anchor': 'start' if math.cos(s['mid']) >= 0 else 'end',
+                'anchor': 'start' if edge_x >= CX else 'end',
+                'side_left': edge_x < CX,
             })
 
     def _pack_external_vertical(side_list):
@@ -442,18 +445,41 @@ def _make_donut_svg(data, total_h):
                 e['ly'] = min_top + BOX_PAD_TOP
             prev_bottom = max(prev_bottom, e['ly'] + RECT_BOTTOM_FROM_LY)
 
-    left = [e for e in ext_labels if math.cos(e['s']['mid']) < 0]
-    right = [e for e in ext_labels if math.cos(e['s']['mid']) >= 0]
-    _pack_external_vertical(left)
-    _pack_external_vertical(right)
+    left = [e for e in ext_labels if e['side_left']]
+    right = [e for e in ext_labels if not e['side_left']]
 
-    # Colonnes d'ancrage fixes : évite le chevauchement horizontal (stagger sur lx).
-    # Toutes les étiquettes d'un même côté partagent le même lx ; seul ly varie.
-    LEFT_COL_X, RIGHT_COL_X = 52, W - 52
-    for e in left:
-        e['lx'] = LEFT_COL_X
-    for e in right:
-        e['lx'] = RIGHT_COL_X
+    COL_SPACING = 14
+    # Plusieurs petites tranches à gauche : deux colonnes (réduit la hauteur de pile)
+    LEFT_COL_INNER = 56
+    LEFT_COL_OUTER = LEFT_COL_INNER - BOX_W - COL_SPACING
+    RIGHT_COL_INNER = W - 56
+    RIGHT_COL_OUTER = RIGHT_COL_INNER + BOX_W + COL_SPACING
+
+    def _pack_side_with_columns(items, inner_x, outer_x, use_two_cols):
+        if not items:
+            return
+        if not use_two_cols or len(items) <= 3:
+            _pack_external_vertical(items)
+            for e in items:
+                e['lx'] = inner_x
+            return
+        items.sort(key=lambda e: e['ly'])
+        col_a, col_b = [], []
+        for i, e in enumerate(items):
+            (col_a if i % 2 == 0 else col_b).append(e)
+        _pack_external_vertical(col_a)
+        _pack_external_vertical(col_b)
+        for e in col_a:
+            e['lx'] = inner_x
+        for e in col_b:
+            e['lx'] = outer_x
+
+    _pack_side_with_columns(
+        left, LEFT_COL_INNER, LEFT_COL_OUTER, use_two_cols=(len(left) >= 4),
+    )
+    _pack_side_with_columns(
+        right, RIGHT_COL_INNER, RIGHT_COL_OUTER, use_two_cols=(len(right) >= 4),
+    )
 
     ext_labels = left + right
 
@@ -481,30 +507,37 @@ def _make_donut_svg(data, total_h):
                 f'{s["h"]}h</text>'
             )
 
-    # Labels externes — petites tranches avec fond blanc
+    # Labels externes — lignes d’abord, puis fonds, puis texte (moins de croisements illisibles)
+    external_lines = ''
+    external_boxes = ''
+    external_texts = ''
     for e in ext_labels:
-        s      = e['s']
-        lx     = e['lx']
-        ly     = e['ly']
+        s = e['s']
+        lx, ly = e['lx'], e['ly']
         anchor = e['anchor']
         ox, oy = pt(s['mid'], 1.04)
         mx, my = pt(s['mid'], 1.20)
-        tx     = lx + (6 if anchor == 'start' else -6)
-        box_x  = tx - BOX_W if anchor == 'end' else tx
+        tx = lx + (6 if anchor == 'start' else -6)
+        box_x = tx - BOX_W if anchor == 'end' else tx
 
-        labels += (
+        external_lines += (
+            f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
+            f'fill="none" stroke="{s["color"]}" stroke-width="1.6" opacity="0.85"/>'
+            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3" fill="{s["color"]}"/>'
+        )
+        external_boxes += (
             f'<rect x="{box_x:.1f}" y="{ly-BOX_PAD_TOP:.1f}" width="{BOX_W}" height="{BOX_H}" rx="7" '
             f'fill="rgba(255,255,255,0.97)" stroke="{s["color"]}" stroke-width="1.6"/>'
-            f'<polyline points="{ox:.1f},{oy:.1f} {mx:.1f},{my:.1f} {lx:.1f},{ly:.1f}" '
-            f'fill="none" stroke="{s["color"]}" stroke-width="1.9" opacity="0.95"/>'
-            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3.3" fill="{s["color"]}"/>'
+        )
+        external_texts += (
             f'<text x="{tx:.1f}" y="{ly-2:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="{s["color"]}">'
+            f'font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="{s["color"]}">'
             f'{s["pct"]}%</text>'
             f'<text x="{tx:.1f}" y="{ly+11:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#1f2937">'
+            f'font-family="Arial,sans-serif" font-size="11.5" font-weight="700" fill="#1f2937">'
             f'{s["h"]}h</text>'
         )
+    labels += external_lines + external_boxes + external_texts
 
     # ── Badge total ─────────────────────────────────────────────────────────
     badge = (
