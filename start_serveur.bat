@@ -19,7 +19,7 @@ python manage.py collectstatic --noinput
 
 REM Démarrer le serveur Waitress
 echo [INFO] Démarrage du serveur sur http://0.0.0.0:8000
-echo [INFO] Accessible sur le réseau : http://10.234.24.32:8000
+echo [INFO] Accessible sur le réseau : http://10.234.24.57:8000
 echo [INFO] Pour arrêter : Ctrl+C
 echo.
 
