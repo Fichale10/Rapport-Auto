@@ -256,12 +256,19 @@
     </div>
   </div>
   <div class="kpi-box">
-    <div class="kpi-ico yellow">🔥</div>
-    <div>
-      <div class="kpi-num">{{ total_incidents }}</div>
-      <div class="kpi-lbl">Incidents total</div>
-    </div>
+  <div class="kpi-ico yellow">🔥</div>
+  <div>
+    <div class="kpi-num">{{ total_incidents }}</div>
+    <div class="kpi-lbl">Incidents total</div>
+    {% if trend_pct is not None %}
+      <div style="font-size:11px;margin-top:4px;font-weight:700;
+        color:{% if trend_pct > 0 %}#e53e3e{% elif trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
+        {% if trend_pct > 0 %}▲{% elif trend_pct < 0 %}▼{% else %}—{% endif %}
+        {{ trend_pct }}% vs rapport précédent
+      </div>
+    {% endif %}
   </div>
+</div>
   <div class="kpi-box">
     <div class="kpi-ico red">⚠️</div>
     <div>
@@ -334,30 +341,31 @@
       svg.appendChild(area);
       svg.appendChild(line);
 
-      // Points + tooltips
-      xs.forEach((x,i) => {
+      // Tooltip
+      const tooltip = document.createElement('div');
+      tooltip.style.cssText = 'position:absolute;background:#003087;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10;';
+      document.querySelector('.spark-wrap').style.position = 'relative';
+      document.querySelector('.spark-wrap').appendChild(tooltip);
+
+      xs.forEach((x, i) => {
         const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
         circle.setAttribute('cx', x);
         circle.setAttribute('cy', ys[i]);
-        circle.setAttribute('r', '4');
+        circle.setAttribute('r', '5');
         circle.setAttribute('fill', '#003087');
         circle.setAttribute('stroke','white');
         circle.setAttribute('stroke-width','2');
-        const title = document.createElementNS('http://www.w3.org/2000/svg','title');
-        title.textContent = `${labels[i]} : ${vals[i]} incidents`;
-        circle.appendChild(title);
+        circle.style.cursor = 'pointer';
 
-        // Valeur au-dessus
-        const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
-        txt.setAttribute('x', x);
-        txt.setAttribute('y', ys[i] - 8);
-        txt.setAttribute('text-anchor','middle');
-        txt.setAttribute('font-size','10');
-        txt.setAttribute('fill','#003087');
-        txt.setAttribute('font-weight','600');
-        txt.setAttribute('font-family','Arial,sans-serif');
-        txt.textContent = vals[i];
-        svg.appendChild(txt);
+        circle.addEventListener('mouseenter', function(e) {
+          tooltip.textContent = `${labels[i]} : ${vals[i]} incidents`;
+          tooltip.style.opacity = '1';
+          const wrapRect = document.querySelector('.spark-wrap').getBoundingClientRect();
+          tooltip.style.left = (e.clientX - wrapRect.left - 40) + 'px';
+          tooltip.style.top  = '-32px';
+        });
+        circle.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+
         svg.appendChild(circle);
       });
 
@@ -396,7 +404,7 @@
               <td><span class="r-date">{{ r.date_rapport|date:"d/m/Y" }}</span></td>
               <td><strong style="color:#003087;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;">{{ r.total_incidents }}</strong></td>
               <td>
-                <span style="font-size:12px;font-weight:600;color:#555;">{{ r.total_duration_sec|floatformat:0|default:"0" }}s</span>
+                <span style="font-size:12px;font-weight:600;color:#555;">{{ r.outage_fmt }}</span>
               </td>
               <td>
                 {% if r.unresolved_count > 0 %}

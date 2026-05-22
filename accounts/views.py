@@ -1,11 +1,12 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib import messages
 from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+#from axes.helpers import is_already_locked
 
 
 def login_view(request):
-    # Déjà connecté → redirection
     if request.user.is_authenticated:
         return redirect('/')
 
@@ -13,15 +14,29 @@ def login_view(request):
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '')
 
+        # Compte inactif
+        try:
+            user_obj = User.objects.get(username=username)
+            if not user_obj.is_active:
+                messages.error(request, 'Votre compte est en attente de validation par un administrateur.')
+                return render(request, 'accounts/login.html')
+        except User.DoesNotExist:
+            pass
+
+        # axes bloque automatiquement via authenticate() après 5 échecs
         user = authenticate(request, username=username, password=password)
 
         if user is not None:
             login(request, user)
-            # Respect du paramètre ?next=
             next_url = request.GET.get('next', '/')
             return redirect(next_url)
         else:
-            messages.error(request, 'Identifiant ou mot de passe incorrect.')
+            from axes.models import AccessAttempt
+            attempts = AccessAttempt.objects.filter(username=username)
+            if attempts.exists() and attempts.first().failures_since_start >= 5:
+                messages.error(request, 'Trop de tentatives échouées. Réessayez dans 1 heure.')
+            else:
+                messages.error(request, 'Identifiant ou mot de passe incorrect.')
 
     return render(request, 'accounts/login.html')
 
@@ -36,22 +51,29 @@ def register_view(request):
         return redirect('/')
 
     if request.method == 'POST':
-        username = request.POST.get('username', '').strip()
-        email = request.POST.get('email', '').strip()
+        username   = request.POST.get('username', '').strip()
+        email      = request.POST.get('email', '').strip()
         first_name = request.POST.get('first_name', '').strip()
-        last_name = request.POST.get('last_name', '').strip()
-        password1 = request.POST.get('password1', '')
-        password2 = request.POST.get('password2', '')
+        last_name  = request.POST.get('last_name', '').strip()
+        password1  = request.POST.get('password1', '')
+        password2  = request.POST.get('password2', '')
 
         if not username:
             messages.error(request, "L'identifiant est obligatoire.")
         elif User.objects.filter(username__iexact=username).exists():
-            messages.error(request, 'Cet identifiant est deja utilise.')
+            messages.error(request, 'Cet identifiant est déjà utilisé.')
         elif password1 != password2:
             messages.error(request, 'Les mots de passe ne correspondent pas.')
-        elif len(password1) < 8:
-            messages.error(request, 'Le mot de passe doit contenir au moins 8 caracteres.')
         else:
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError
+            try:
+                validate_password(password1)
+            except ValidationError as e:
+                for err in e.messages:
+                    messages.error(request, err)
+                return render(request, 'accounts/register.html')
+
             user = User.objects.create_user(
                 username=username,
                 email=email,
@@ -59,14 +81,13 @@ def register_view(request):
                 first_name=first_name,
                 last_name=last_name,
             )
-            login(request, user)
-            messages.success(request, 'Compte cree avec succes.')
-            return redirect('/')
+            user.is_active = False
+            user.save()
+            messages.success(request, 'Inscription envoyée ! Votre compte sera activé par un administrateur.')
+            return redirect('accounts:login')
 
     return render(request, 'accounts/register.html')
 
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import update_session_auth_hash
 
 @login_required
 def profil_view(request):
@@ -79,10 +100,8 @@ def profil_view(request):
             request.user.last_name  = request.POST.get('last_name', '').strip()
             request.user.email      = request.POST.get('email', '').strip()
             request.user.save()
-            from django.contrib import messages
             messages.success(request, 'Informations mises à jour avec succès.')
         elif action == 'change_password':
-            from django.contrib import messages
             old  = request.POST.get('old_password')
             new1 = request.POST.get('new_password1')
             new2 = request.POST.get('new_password2')
@@ -96,7 +115,6 @@ def profil_view(request):
                 request.user.set_password(new1)
                 request.user.save()
                 update_session_auth_hash(request, request.user)
-                from django.contrib import messages
                 messages.success(request, 'Mot de passe changé avec succès.')
         return redirect('accounts:profil')
 
@@ -105,4 +123,34 @@ def profil_view(request):
         'total_reports':    reports.count(),
         'total_incidents':  sum(r.total_incidents for r in reports),
         'total_unresolved': sum(r.unresolved_count for r in reports if r.unresolved_count),
+    })
+
+
+@login_required
+def gestion_users(request):
+    if not request.user.is_superuser:
+        return redirect('/')
+
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        action  = request.POST.get('action')
+        try:
+            u = User.objects.get(pk=user_id)
+            if action == 'approuver':
+                u.is_active = True
+                u.save()
+                messages.success(request, f'Compte de {u.username} approuvé.')
+            elif action == 'rejeter':
+                u.delete()
+                messages.success(request, f'Compte de {u.username} supprimé.')
+        except User.DoesNotExist:
+            pass
+        return redirect('accounts:gestion_users')
+
+    en_attente = User.objects.filter(is_active=False).order_by('-date_joined')
+    actifs     = User.objects.filter(is_active=True, is_superuser=False).order_by('-date_joined')
+
+    return render(request, 'accounts/gestion_users.html', {
+        'en_attente': en_attente,
+        'actifs':     actifs,
     })

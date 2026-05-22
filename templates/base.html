@@ -258,6 +258,9 @@
     }
   </style>
   {% block extra_css %}{% endblock %}
+  {% if request.user.is_superuser %}
+  <a href="{% url 'accounts:gestion_users' %}">👥 Gestion utilisateurs</a>
+{% endif %}
 </head>
 <body>
 

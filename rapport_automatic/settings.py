@@ -1,18 +1,14 @@
 import os
 from pathlib import Path
-#from dotenv import load_dotenv
+from dotenv import load_dotenv
 
-#load_dotenv()
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-fallback-key-change-in-prod'
-)
-DEBUG = True
-#DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-dev-only')
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -22,7 +18,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'reports',
-    'accounts',   # ← nouvelle app
+    'accounts',
+    'axes',
 ]
 
 MIDDLEWARE = [
@@ -34,6 +31,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'axes.middleware.AxesMiddleware',
 ]
 
 ROOT_URLCONF = 'rapport_automatic.urls'
@@ -41,7 +39,7 @@ ROOT_URLCONF = 'rapport_automatic.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],   # ← dossier templates global
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -55,18 +53,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'rapport_automatic.wsgi.application'
 
-# ─── PostgreSQL ────────────────────────────────────────────────────────────────
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME':     'rapport_db',
-        'USER':     'postgres',
-        'PASSWORD': 'PostgreSQL2026',
-        'HOST':     'localhost',
-        'PORT':     '5432',
-        'OPTIONS': {
-            'client_encoding': 'UTF8',
-        },
+        'ENGINE':   'django.db.backends.postgresql',
+        'NAME':     os.environ.get('DB_NAME', 'rapport_db'),
+        'USER':     os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+        'HOST':     os.environ.get('DB_HOST', 'localhost'),
+        'PORT':     os.environ.get('DB_PORT', '5432'),
+        'OPTIONS':  {'client_encoding': 'UTF8'},
     }
 }
 
@@ -91,7 +86,23 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ─── Auth redirects ────────────────────────────────────────────────────────────
-LOGIN_URL          = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/'        # après login → page d'accueil
+# ── Auth ───────────────────────────────────────────────────────────────────────
+LOGIN_URL           = '/accounts/login/'
+LOGIN_REDIRECT_URL  = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+# ── Sessions ───────────────────────────────────────────────────────────────────
+SESSION_COOKIE_AGE              = 8 * 3600
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY         = True
+SESSION_COOKIE_SAMESITE         = 'Lax'
+
+# ── Rate limiting (django-axes) ────────────────────────────────────────────────
+AXES_FAILURE_LIMIT      = 5
+AXES_COOLOFF_TIME       = 1
+AXES_LOCKOUT_PARAMETERS = ['username', 'ip_address']
+AXES_RESET_ON_SUCCESS   = True
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
