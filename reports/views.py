@@ -330,16 +330,6 @@ def history(request):
             r for r in all_reports
             if r.date_fin and 20 <= (r.date_fin - r.date_rapport).days <= 45
         ]
-    elif period_filter == 'custom':
-            date_from = request.GET.get('date_from')
-            date_to   = request.GET.get('date_to')
-            if date_from and date_to:
-                reports = base_qs.filter(
-                    uploaded_at__date__gte=date_from,
-                    uploaded_at__date__lte=date_to,
-                )
-            else:
-                reports = base_qs    
     elif period_filter == 'year':
         filtered_reports = [
             r for r in all_reports
@@ -959,13 +949,16 @@ def comparer(request):
 def export_statistiques(request):
     import openpyxl
     import openpyxl.chart.label
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
+    from openpyxl.chart import BarChart, PieChart3D, LineChart, Reference, Series
+    from openpyxl.chart.series import DataPoint
     from django.http import HttpResponse
     from collections import defaultdict
     from datetime import timedelta
     import io
 
+    # ── Récupère les rapports ────────────────────────────────────────────
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
@@ -975,15 +968,20 @@ def export_statistiques(request):
     period_filter = request.GET.get('period', 'latest')
 
     if report_pk:
-        reports = base_qs.filter(pk=report_pk)
+        reports      = base_qs.filter(pk=report_pk)
         period_label = 'Rapport sélectionné'
-    elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
-        first = base_qs.first()
+    elif period_filter == 'latest' or period_filter not in ('day','3days','week','2weeks','month','quarter','half','year','all','custom'):
+        first   = base_qs.first()
         reports = base_qs.filter(pk=first.pk) if first else base_qs.none()
         period_label = 'Dernier rapport'
     else:
-        today = date.today()
-        labels_map = {'day': "Aujourd'hui", 'week': '7 jours', 'month': '30 jours', 'year': 'Année', 'all': 'Tout'}
+        today      = date.today()
+        labels_map = {
+            'day': "Aujourd'hui", '3days': '3 jours', 'week': 'Semaine',
+            '2weeks': '2 semaines', 'month': 'Mois', 'quarter': '3 mois',
+            'half': '6 mois', 'year': 'Année', 'all': 'Tout',
+            'custom': 'Personnalisé',
+        }
         period_label = labels_map.get(period_filter, period_filter)
         if period_filter == 'day':
             reports = base_qs.filter(uploaded_at__date=today)
@@ -1001,18 +999,28 @@ def export_statistiques(request):
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=180))
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
+        elif period_filter == 'custom':
+            date_from = request.GET.get('date_from')
+            date_to   = request.GET.get('date_to')
+            if date_from and date_to:
+                reports = base_qs.filter(uploaded_at__date__gte=date_from, uploaded_at__date__lte=date_to)
+                period_label = f'{date_from} → {date_to}'
+            else:
+                reports = base_qs
         else:
             reports = base_qs
 
+    # ── Helpers ──────────────────────────────────────────────────────────
     def parse_hms(s):
         try:
             parts = str(s).split(':')
             if len(parts) == 3:
-                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+                return int(float(parts[0]))*3600 + int(float(parts[1]))*60 + int(float(parts[2]))
         except Exception:
             pass
         return 0
 
+    # ── Calcul données ───────────────────────────────────────────────────
     escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
     for r in reports:
         if not r.synthesis_json:
@@ -1023,10 +1031,12 @@ def export_statistiques(request):
                 continue
             escalade_data[esc]['count']      += row.get('Inc count', 0)
             escalade_data[esc]['outage_sec'] += parse_hms(row.get('OUTAGE', '0:00:00'))
-            escalade_data[esc]['duree_sec']  += parse_hms(row.get('DUREE', '0:00:00'))
+            escalade_data[esc]['duree_sec']  += parse_hms(row.get('DUREE',  '0:00:00'))
 
     escalades_sorted = sorted(escalade_data.items(), key=lambda x: x[1]['count'], reverse=True)
     total_outage_sec = sum(v['outage_sec'] for v in escalade_data.values())
+    total_incidents  = sum(v['count'] for v in escalade_data.values())
+    total_duree_sec  = sum(v['duree_sec'] for v in escalade_data.values())
 
     site_data = defaultdict(int)
     for r in reports:
@@ -1040,17 +1050,37 @@ def export_statistiques(request):
         for k, v in escalades_sorted if v['outage_sec'] > 0
     ]
 
-    cause_data = defaultdict(float)
+    # Causes durée
+    cause_dur_data = defaultdict(float)
     for r in reports:
         for c in (r.top_causes_json or []):
-            cause_data[c['name']] += c['duration_sec']
-    causes_top10 = sorted(cause_data.items(), key=lambda x: x[1], reverse=True)[:10]
-    max_cause = causes_top10[0][1] if causes_top10 else 1
-    causes_chart = [
-        {'name': k, 'duree_h': round(v / 3600, 1), 'pct': round(v / max_cause * 100)}
-        for k, v in causes_top10
-    ]
+            cause_dur_data[c['name']] += c['duration_sec']
+    causes_dur_top10 = sorted(cause_dur_data.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_cause_dur    = causes_dur_top10[0][1] if causes_dur_top10 else 1
 
+    # Causes nombre
+    cause_nb_data = defaultdict(int)
+    for r in reports:
+        if not r.detailed_file:
+            continue
+        file_name = r.detailed_file.name or ''
+        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
+            continue
+        try:
+            import pandas as pd
+            df = pd.read_excel(r.detailed_file.path)
+            cause_col2 = next((c for c in df.columns if c.strip() in ('Root Cause', 'Cause')), None)
+            if cause_col2:
+                for val in df[cause_col2].dropna().astype(str):
+                    val = val.strip()
+                    if val and val != 'nan':
+                        cause_nb_data[val] += 1
+        except Exception:
+            continue
+    causes_nb_top10 = sorted(cause_nb_data.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_cause_nb    = causes_nb_top10[0][1] if causes_nb_top10 else 1
+
+    # Sites dégradés
     site_duration = defaultdict(float)
     for r in reports:
         if not r.detailed_file:
@@ -1071,253 +1101,481 @@ def export_statistiques(request):
         except Exception:
             continue
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_degraded   = degraded_top10[0][1] if degraded_top10 else 1
 
-    YAS_BLUE   = '003087'
-    YAS_YELLOW = 'FFC72C'
-    LIGHT_BLUE = 'E8F0FF'
-    LIGHT_GRAY = 'F8FAFF'
-    WHITE      = 'FFFFFF'
+    # Disponibilité
+    import datetime as _dt
+    if period_filter == 'custom':
+        date_from  = request.GET.get('date_from')
+        date_to    = request.GET.get('date_to')
+        cutoff     = date.fromisoformat(date_from) if date_from else None
+        cutoff_end = date.fromisoformat(date_to)   if date_to   else None
+        semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(base_qs, cutoff_date=cutoff, cutoff_end=cutoff_end)
+    elif report_pk:
+        first_r    = reports.first()
+        cutoff     = first_r.date_rapport if first_r else None
+        cutoff_end = (first_r.date_fin or first_r.date_rapport) if first_r else None
+        semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(reports, cutoff_date=cutoff, cutoff_end=cutoff_end)
+    else:
+        period_days_map = {'day':1,'3days':3,'week':7,'2weeks':14,'month':30,'quarter':90,'half':180,'year':365}
+        nb_days = period_days_map.get(period_filter)
+        cutoff  = (date.today() - _dt.timedelta(days=nb_days)) if nb_days else None
+        semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(base_qs, cutoff_date=cutoff)
 
-    hdr_font  = Font(name='Calibri', bold=True, color=WHITE, size=11)
-    hdr_fill  = PatternFill('solid', fgColor=YAS_BLUE)
-    hdr_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    sub_font  = Font(name='Calibri', bold=True, color=YAS_BLUE, size=10)
-    sub_fill  = PatternFill('solid', fgColor=LIGHT_BLUE)
-    cell_font  = Font(name='Calibri', size=10)
-    cell_align = Alignment(horizontal='left', vertical='center')
-    num_align  = Alignment(horizontal='center', vertical='center')
-    alt_fill   = PatternFill('solid', fgColor=LIGHT_GRAY)
-    thin   = Side(style='thin', color='E8EDF5')
+    # ── Styles ───────────────────────────────────────────────────────────
+    YAS_BLUE    = '003087'
+    YAS_YELLOW  = 'FFC72C'
+    LIGHT_BLUE  = 'E8F0FF'
+    LIGHT_GRAY  = 'F8FAFF'
+    MID_GRAY    = 'E8EDF5'
+    WHITE       = 'FFFFFF'
+    ORANGE      = 'E05A2B'
+    PURPLE      = '7B1FA2'
+    GREEN_OK    = 'E8F5E9'
+    YELLOW_WARN = 'FFF8E1'
+    RED_BAD     = 'FFEBEE'
+
+    thin   = Side(style='thin', color=MID_GRAY)
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    def style_header_row(ws, row_num, ncols):
-        for col in range(1, ncols + 1):
-            cell = ws.cell(row=row_num, column=col)
-            cell.font      = hdr_font
-            cell.fill      = hdr_fill
-            cell.alignment = hdr_align
-            cell.border    = border
+    def h_font(sz=11):  return Font(name='Calibri', bold=True, color=WHITE, size=sz)
+    def h_fill():       return PatternFill('solid', fgColor=YAS_BLUE)
+    def s_fill():       return PatternFill('solid', fgColor=LIGHT_BLUE)
+    def a_fill():       return PatternFill('solid', fgColor=LIGHT_GRAY)
+    def w_fill():       return PatternFill('solid', fgColor=WHITE)
+    def c_align():      return Alignment(horizontal='center', vertical='center', wrap_text=True)
+    def l_align():      return Alignment(horizontal='left',   vertical='center', wrap_text=True)
 
-    def style_data_row(ws, row_num, ncols, alt=False):
-        for col in range(1, ncols + 1):
-            cell = ws.cell(row=row_num, column=col)
-            cell.font      = Font(name='Calibri', size=10)
-            cell.fill      = alt_fill if alt else PatternFill('solid', fgColor=WHITE)
-            cell.alignment = num_align if col > 1 else cell_align
-            cell.border    = border
+    def style_hdr(ws, row, ncols, height=24):
+        for c in range(1, ncols+1):
+            cell = ws.cell(row=row, column=c)
+            cell.font = h_font(); cell.fill = h_fill()
+            cell.alignment = c_align(); cell.border = border
+        ws.row_dimensions[row].height = height
 
-    def add_title_block(ws, title, period):
-        ws.merge_cells('A1:F1')
-        t = ws['A1']
-        t.value     = f'YAS NOC — {title}'
-        t.font      = Font(name='Calibri', bold=True, size=14, color=YAS_BLUE)
-        t.alignment = Alignment(horizontal='left', vertical='center')
-        t.fill      = PatternFill('solid', fgColor=LIGHT_BLUE)
-        ws.row_dimensions[1].height = 28
-        ws.merge_cells('A2:F2')
-        p = ws['A2']
-        p.value     = f'Période : {period}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
-        p.font      = Font(name='Calibri', size=10, color='888888')
-        p.alignment = Alignment(horizontal='left', vertical='center')
+    def style_row(ws, row, ncols, alt=False, bold=False, color='1A1A2E', bg=None):
+        for c in range(1, ncols+1):
+            cell = ws.cell(row=row, column=c)
+            cell.font      = Font(name='Calibri', size=10, bold=bold, color=color)
+            cell.fill      = PatternFill('solid', fgColor=bg) if bg else (a_fill() if alt else w_fill())
+            cell.alignment = l_align() if c == 1 else c_align()
+            cell.border    = border
+        ws.row_dimensions[row].height = 20
+
+    def style_total(ws, row, ncols):
+        for c in range(1, ncols+1):
+            cell = ws.cell(row=row, column=c)
+            cell.font = Font(name='Calibri', bold=True, size=11, color=WHITE)
+            cell.fill = h_fill()
+            cell.alignment = l_align() if c == 1 else c_align()
+            cell.border = border
+        ws.row_dimensions[row].height = 22
+
+    def add_banner(ws, title, ncols=6):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+        c = ws['A1']
+        c.value = f'  📊  YAS NOC — {title}'
+        c.font  = Font(name='Calibri', bold=True, size=14, color=YAS_BLUE)
+        c.alignment = l_align(); c.fill = s_fill()
+        ws.row_dimensions[1].height = 30
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
+        c = ws['A2']
+        c.value = f'  Période : {period_label}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
+        c.font  = Font(name='Calibri', size=10, color='666666', italic=True)
+        c.alignment = l_align()
+        c.fill = PatternFill('solid', fgColor='F0F4FF')
         ws.row_dimensions[2].height = 18
-        ws.row_dimensions[3].height = 6
+        ws.row_dimensions[3].height = 8
 
+    def add_section(ws, row, title, ncols, color=YAS_BLUE):
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ncols)
+        c = ws.cell(row=row, column=1, value=f'  {title}')
+        c.font = Font(name='Calibri', bold=True, size=11, color=WHITE)
+        c.fill = PatternFill('solid', fgColor=color)
+        c.alignment = l_align(); c.border = border
+        ws.row_dimensions[row].height = 20
+
+    SLICE_COLORS = ['003087','E05A2B','FF9800','2196F3','FFC72C','4CAF50','9C27B0','00BCD4','8BC34A','FF5722']
+    ESC_COLORS   = {'ENERGIE':'003087','RAN':'4CAF50','TRANS FH':'FFC72C','TRANS IP':'2196F3'}
+    DISPO_ESCS   = ['ENERGIE','RAN','TRANS FH','TRANS IP']
+
+    # ════════════════════════════════════════════════════════════════════
     wb  = openpyxl.Workbook()
-    ws1 = wb.active
-    ws1.title = '📊 Escalades'
-    ws1.sheet_view.showGridLines = False
-    ws1.column_dimensions['A'].width = 30
-    ws1.column_dimensions['B'].width = 14
-    ws1.column_dimensions['C'].width = 14
-    ws1.column_dimensions['D'].width = 14
-    add_title_block(ws1, 'Classement des Escalades', period_label)
-    headers = ['Escalade', 'Incidents', 'Outage (h)', 'Durée (h)']
-    for col, h in enumerate(headers, 1):
-        ws1.cell(row=4, column=col).value = h
-    style_header_row(ws1, 4, len(headers))
-    ws1.row_dimensions[4].height = 22
-    for i, (esc, v) in enumerate(escalades_sorted):
-        row = 5 + i
-        ws1.cell(row=row, column=1).value = esc
-        ws1.cell(row=row, column=2).value = v['count']
-        ws1.cell(row=row, column=3).value = round(v['outage_sec'] / 3600, 1)
-        ws1.cell(row=row, column=4).value = round(v['duree_sec']  / 3600, 1)
-        style_data_row(ws1, row, len(headers), alt=(i % 2 == 1))
-        ws1.row_dimensions[row].height = 20
-    if escalades_sorted:
-        tr = 5 + len(escalades_sorted)
-        ws1.cell(tr, 1).value = 'TOTAL'
-        ws1.cell(tr, 2).value = sum(v['count'] for _, v in escalades_sorted)
-        ws1.cell(tr, 3).value = round(total_outage_sec / 3600, 1)
-        ws1.cell(tr, 4).value = round(sum(v['duree_sec'] for _, v in escalades_sorted) / 3600, 1)
-        for col in range(1, 5):
-            c = ws1.cell(tr, col)
-            c.font      = Font(name='Calibri', bold=True, size=10, color=WHITE)
-            c.fill      = PatternFill('solid', fgColor=YAS_BLUE)
-            c.alignment = num_align if col > 1 else cell_align
-            c.border    = border
-        ws1.row_dimensions[tr].height = 22
 
+    # ── ONGLET 0 : TABLEAU DE BORD ───────────────────────────────────────
+    ws0 = wb.active
+    ws0.title = '🏠 Tableau de Bord'
+    ws0.sheet_view.showGridLines = False
+    for col, w in enumerate([3,22,14,14,14,14,14,3], 1):
+        ws0.column_dimensions[get_column_letter(col)].width = w
+
+    ws0.row_dimensions[1].height = 10
+    ws0.merge_cells('B2:G2')
+    c = ws0['B2']
+    c.value = 'YAS NOC — RAPPORT AUTOMATIQUE'
+    c.font  = Font(name='Calibri', bold=True, size=20, color=WHITE)
+    c.alignment = c_align(); c.fill = h_fill()
+    ws0.row_dimensions[2].height = 44
+
+    ws0.merge_cells('B3:G3')
+    c = ws0['B3']
+    c.value = f'  Période : {period_label}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
+    c.font  = Font(name='Calibri', size=11, color='888888', italic=True)
+    c.alignment = c_align(); c.fill = s_fill()
+    ws0.row_dimensions[3].height = 22
+    ws0.row_dimensions[4].height = 16
+
+    # KPIs
+    nb_reports = reports.count()
+    kpis = [
+        ('📋 Rapports',  str(nb_reports),                        YAS_BLUE,  LIGHT_BLUE),
+        ('⚡ Incidents',  f'{total_incidents:,}'.replace(',',' '), 'E05A2B',  'FFF0EB'),
+        ('⏱ Outage (h)', str(round(total_outage_sec/3600, 1)),   '7B1FA2',  'F3E5F5'),
+        ('📡 Escalades',  str(len([e for e in escalades_sorted if e[1]["count"]>0])), '003087', LIGHT_BLUE),
+    ]
+    for i, (lbl, val, fcol, bcol) in enumerate(kpis):
+        col = 2 + i
+        for r, v, sz, bold in [(5, lbl, 9, False), (6, val, 20, True), (7, '', 9, False)]:
+            cell = ws0.cell(row=r, column=col, value=v)
+            cell.font      = Font(name='Calibri', size=sz, bold=bold, color=fcol if r==6 else '888888')
+            cell.fill      = PatternFill('solid', fgColor=bcol)
+            cell.alignment = c_align()
+            cell.border    = border
+        for r in [5,6,7]: ws0.row_dimensions[r].height = 18 if r!=6 else 36
+
+    ws0.row_dimensions[8].height = 16
+
+    # Sommaire
+    add_section(ws0, 9, '📑  Contenu du classeur — Navigation', 6)
+    for c, h in enumerate(['Onglet','Description','Données incluses','Nb lignes'], 2):
+        cell = ws0.cell(row=10, column=c, value=h)
+        cell.font = Font(name='Calibri', bold=True, size=10, color=YAS_BLUE)
+        cell.fill = s_fill(); cell.alignment = c_align(); cell.border = border
+    ws0.row_dimensions[10].height = 20
+
+    sheets_info = [
+        ('📊 Escalades',     'Classement par type d\'escalade',           'Incidents, Outage, Durée, %',   str(len(escalades_sorted))),
+        ('📡 Sites',         'Récurrence des sites en panne',             'Top 10 occurrences',            '10'),
+        ('🥧 Outage Métier', 'Répartition outage par métier + camembert', 'Heures, Pourcentages',          str(len(outage_data))),
+        ('🔧 Causes Durée',  'Causes triées par durée d\'outage',         'Top 10 causes + graphique',     str(len(causes_dur_top10))),
+        ('🔢 Causes Nombre', 'Causes triées par nombre d\'incidents',     'Top 10 causes + graphique',     str(len(causes_nb_top10))),
+        ('🔴 Dégradés',      'Sites avec le plus d\'outage cumulé',       'Top 10 + niveau criticité',     str(len(degraded_top10))),
+        ('📈 Disponibilité', 'Disponibilité % équipements/semaine',       '4 équipements, Min, Moyenne',   str(len(DISPO_ESCS))),
+    ]
+    for i, (ong, desc, data, nb) in enumerate(sheets_info):
+        r = 11 + i
+        for c, v in enumerate([ong, desc, data, nb], 2):
+            cell = ws0.cell(row=r, column=c, value=v)
+            cell.font      = Font(name='Calibri', size=10)
+            cell.fill      = a_fill() if i%2 else w_fill()
+            cell.alignment = l_align() if c == 2 else c_align()
+            cell.border    = border
+        ws0.row_dimensions[r].height = 18
+
+    # ── ONGLET 1 : ESCALADES ────────────────────────────────────────────
+    ws1 = wb.create_sheet('📊 Escalades')
+    ws1.sheet_view.showGridLines = False
+    for col, w in enumerate([32,12,12,12,10,10], 1):
+        ws1.column_dimensions[get_column_letter(col)].width = w
+
+    add_banner(ws1, 'Classement des Escalades', ncols=6)
+    headers1 = ['Escalade','Incidents','Outage (h)','Durée (h)','% Outage','% Incidents']
+    for c, h in enumerate(headers1, 1):
+        ws1.cell(row=4, column=c, value=h)
+    style_hdr(ws1, 4, 6)
+
+    for i, (esc, v) in enumerate(escalades_sorted):
+        r = 5 + i
+        pct_out = round(v['outage_sec']/total_outage_sec*100, 1) if total_outage_sec else 0
+        pct_inc = round(v['count']/total_incidents*100, 1) if total_incidents else 0
+        for c, val in enumerate([esc, v['count'], round(v['outage_sec']/3600,1), round(v['duree_sec']/3600,1), f'{pct_out}%', f'{pct_inc}%'], 1):
+            ws1.cell(row=r, column=c, value=val)
+        style_row(ws1, r, 6, alt=(i%2==1))
+
+    tr1 = 5 + len(escalades_sorted)
+    for c, v in enumerate(['TOTAL', total_incidents, round(total_outage_sec/3600,1), round(total_duree_sec/3600,1), '100%','100%'], 1):
+        ws1.cell(row=tr1, column=c, value=v)
+    style_total(ws1, tr1, 6)
+
+    bc1 = BarChart()
+    bc1.type = 'bar'; bc1.title = 'Incidents par Escalade'; bc1.style = 10
+    bc1.width = 20; bc1.height = 14
+    d1 = Reference(ws1, min_col=2, min_row=4, max_row=4+len(escalades_sorted))
+    l1 = Reference(ws1, min_col=1, min_row=5, max_row=4+len(escalades_sorted))
+    bc1.add_data(d1, titles_from_data=True); bc1.set_categories(l1)
+    bc1.series[0].graphicalProperties.solidFill = YAS_BLUE
+    ws1.add_chart(bc1, 'H4')
+
+    # ── ONGLET 2 : SITES ────────────────────────────────────────────────
     ws2 = wb.create_sheet('📡 Sites')
     ws2.sheet_view.showGridLines = False
-    ws2.column_dimensions['A'].width = 32
+    ws2.column_dimensions['A'].width = 34
     ws2.column_dimensions['B'].width = 16
-    add_title_block(ws2, 'Récurrence des Sites (Top 10)', period_label)
-    for col, h in enumerate(['Site', 'Occurrences'], 1):
-        ws2.cell(row=4, column=col).value = h
-    style_header_row(ws2, 4, 2)
-    ws2.row_dimensions[4].height = 22
-    for i, (site, cnt) in enumerate(sites_top10):
-        row = 5 + i
-        ws2.cell(row, 1).value = site
-        ws2.cell(row, 2).value = cnt
-        style_data_row(ws2, row, 2, alt=(i % 2 == 1))
-        ws2.row_dimensions[row].height = 20
+    ws2.column_dimensions['C'].width = 20
 
-    from openpyxl.chart import PieChart3D, Reference
-    from openpyxl.chart.series import DataPoint
+    add_banner(ws2, 'Récurrence des Sites (Top 10)', ncols=3)
+    for c, h in enumerate(['Site','Occurrences','Barre visuelle'], 1):
+        ws2.cell(row=4, column=c, value=h)
+    style_hdr(ws2, 4, 3)
+
+    max_site = sites_top10[0][1] if sites_top10 else 1
+    for i, (site, cnt) in enumerate(sites_top10):
+        r = 5 + i
+        pct = round(cnt/max_site*100)
+        bar = '█' * (pct//5) + '░' * (20 - pct//5)
+        ws2.cell(row=r, column=1, value=site)
+        ws2.cell(row=r, column=2, value=cnt)
+        c3 = ws2.cell(row=r, column=3, value=bar)
+        c3.font = Font(name='Courier New', size=9, color=YAS_BLUE)
+        style_row(ws2, r, 2, alt=(i%2==1))
+        ws2.cell(row=r, column=3).fill   = a_fill() if i%2==1 else w_fill()
+        ws2.cell(row=r, column=3).border = border
+
+    bc2 = BarChart()
+    bc2.type = 'bar'; bc2.title = 'Récurrence des Sites'; bc2.style = 10
+    bc2.width = 18; bc2.height = 12
+    d2 = Reference(ws2, min_col=2, min_row=4, max_row=4+len(sites_top10))
+    l2 = Reference(ws2, min_col=1, min_row=5, max_row=4+len(sites_top10))
+    bc2.add_data(d2, titles_from_data=True); bc2.set_categories(l2)
+    bc2.series[0].graphicalProperties.solidFill = YAS_YELLOW
+    ws2.add_chart(bc2, 'E4')
+
+    # ── ONGLET 3 : OUTAGE MÉTIER ─────────────────────────────────────────
     ws3 = wb.create_sheet('🥧 Outage Métier')
     ws3.sheet_view.showGridLines = False
-    ws3.column_dimensions['A'].width = 30
-    ws3.column_dimensions['B'].width = 16
-    ws3.column_dimensions['C'].width = 12
-    add_title_block(ws3, 'Poids & Outage par Métier', period_label)
-    for col, h in enumerate(['Métier / Escalade', 'Outage (h)', '% Total'], 1):
-        ws3.cell(row=4, column=col).value = h
-    style_header_row(ws3, 4, 3)
-    ws3.row_dimensions[4].height = 22
+    for col, w in enumerate([30,14,10], 1):
+        ws3.column_dimensions[get_column_letter(col)].width = w
+
+    add_banner(ws3, 'Outage par Métier', ncols=3)
+    for c, h in enumerate(['Métier / Escalade','Outage (h)','% Total'], 1):
+        ws3.cell(row=4, column=c, value=h)
+    style_hdr(ws3, 4, 3)
+
     for i, (name, h, pct) in enumerate(outage_data):
-        row = 5 + i
-        ws3.cell(row, 1).value = name
-        ws3.cell(row, 2).value = h
-        ws3.cell(row, 3).value = f'{pct}%'
-        style_data_row(ws3, row, 3, alt=(i % 2 == 1))
-        ws3.row_dimensions[row].height = 20
+        r = 5 + i
+        ws3.cell(row=r, column=1, value=name)
+        ws3.cell(row=r, column=2, value=h)
+        ws3.cell(row=r, column=3, value=f'{pct}%')
+        style_row(ws3, r, 3, alt=(i%2==1))
+
+    tr3 = 5 + len(outage_data)
+    for c, v in enumerate(['TOTAL', round(total_outage_sec/3600,1), '100%'], 1):
+        ws3.cell(row=tr3, column=c, value=v)
+    style_total(ws3, tr3, 3)
+
     if outage_data:
-        tr = 5 + len(outage_data)
-        ws3.cell(tr, 1).value = 'TOTAL'
-        ws3.cell(tr, 2).value = round(total_outage_sec / 3600, 1)
-        ws3.cell(tr, 3).value = '100%'
-        for col in range(1, 4):
-            c = ws3.cell(tr, col)
-            c.font      = Font(name='Calibri', bold=True, size=10, color=WHITE)
-            c.fill      = PatternFill('solid', fgColor=YAS_BLUE)
-            c.alignment = num_align if col > 1 else cell_align
-            c.border    = border
-        ws3.row_dimensions[tr].height = 22
         pie = PieChart3D()
-        pie.title  = 'Outage par Métier'
-        pie.style  = 10
-        pie.width  = 16
-        pie.height = 14
-        n_rows     = len(outage_data)
-        data_ref   = Reference(ws3, min_col=2, min_row=4, max_row=4 + n_rows)
-        labels_ref = Reference(ws3, min_col=1, min_row=5, max_row=4 + n_rows)
-        pie.add_data(data_ref, titles_from_data=True)
-        pie.set_categories(labels_ref)
-        SLICE_COLORS = ['003087','E05A2B','FF9800','2196F3','FFC72C','4CAF50','9C27B0','00BCD4','8BC34A','FF5722']
+        pie.title = 'Outage par Métier'; pie.style = 10
+        pie.width = 18; pie.height = 16
+        n_rows = len(outage_data)
+        dr = Reference(ws3, min_col=2, min_row=4, max_row=4+n_rows)
+        lr = Reference(ws3, min_col=1, min_row=5, max_row=4+n_rows)
+        pie.add_data(dr, titles_from_data=True); pie.set_categories(lr)
         series = pie.series[0]
         for idx in range(n_rows):
             pt = DataPoint(idx=idx)
             pt.graphicalProperties.solidFill = SLICE_COLORS[idx % len(SLICE_COLORS)]
             series.dPt.append(pt)
         series.dLbls = openpyxl.chart.label.DataLabelList()
-        series.dLbls.showCatName   = True
-        series.dLbls.showPercent   = True
-        series.dLbls.showVal       = False
-        series.dLbls.showLegendKey = False
-        series.dLbls.separator     = '\n'
+        series.dLbls.showCatName = True; series.dLbls.showPercent = True
+        series.dLbls.showVal = False; series.dLbls.showLegendKey = False
+        series.dLbls.separator = '\n'
         ws3.add_chart(pie, 'E4')
 
-    ws4 = wb.create_sheet('🔴 Sites Dégradés')
+    # ── ONGLET 4 : CAUSES DURÉE ──────────────────────────────────────────
+    ws4 = wb.create_sheet('🔧 Causes Durée')
     ws4.sheet_view.showGridLines = False
-    ws4.column_dimensions['A'].width = 32
-    ws4.column_dimensions['B'].width = 16
-    add_title_block(ws4, 'Sites les Plus Dégradés (Top 10)', period_label)
-    for col, h in enumerate(['Site', 'Durée totale (h)'], 1):
-        ws4.cell(row=4, column=col).value = h
-    style_header_row(ws4, 4, 2)
-    ws4.row_dimensions[4].height = 22
-    for i, (site, sec) in enumerate(degraded_top10):
-        row = 5 + i
-        ws4.cell(row, 1).value = site
-        ws4.cell(row, 2).value = round(sec / 3600, 1)
-        style_data_row(ws4, row, 2, alt=(i % 2 == 1))
-        ws4.row_dimensions[row].height = 20
+    for col, w in enumerate([42,14,10], 1):
+        ws4.column_dimensions[get_column_letter(col)].width = w
 
-    semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(reports)
+    add_banner(ws4, 'Outage par Cause — Durée (Top 10)', ncols=3)
+    add_section(ws4, 4, '🔧  Classement par durée cumulée d\'outage', 3, ORANGE)
+    for c, h in enumerate(['Cause / Root Cause','Durée (h)','% du Max'], 1):
+        ws4.cell(row=5, column=c, value=h)
+    style_hdr(ws4, 5, 3)
+
+    for i, (cause, dur_sec) in enumerate(causes_dur_top10):
+        r = 6 + i
+        dur_h = round(dur_sec/3600, 1)
+        pct   = round(dur_sec/max_cause_dur*100, 1)
+        ws4.cell(row=r, column=1, value=cause)
+        ws4.cell(row=r, column=2, value=dur_h)
+        ws4.cell(row=r, column=3, value=f'{pct}%')
+        style_row(ws4, r, 3, alt=(i%2==1))
+
+    if causes_dur_top10:
+        bc4 = BarChart()
+        bc4.type = 'bar'; bc4.title = 'Causes — Durée Outage (h)'; bc4.style = 10
+        bc4.width = 20; bc4.height = 14
+        n4 = len(causes_dur_top10)
+        d4 = Reference(ws4, min_col=2, min_row=5, max_row=5+n4)
+        l4 = Reference(ws4, min_col=1, min_row=6, max_row=5+n4)
+        bc4.add_data(d4, titles_from_data=True); bc4.set_categories(l4)
+        bc4.series[0].graphicalProperties.solidFill = ORANGE
+        ws4.add_chart(bc4, 'E5')
+
+    # ── ONGLET 5 : CAUSES NOMBRE ─────────────────────────────────────────
+    ws5 = wb.create_sheet('🔢 Causes Nombre')
+    ws5.sheet_view.showGridLines = False
+    for col, w in enumerate([42,14,10], 1):
+        ws5.column_dimensions[get_column_letter(col)].width = w
+
+    add_banner(ws5, 'Outage par Cause — Nombre d\'incidents (Top 10)', ncols=3)
+    add_section(ws5, 4, '🔢  Classement par nombre d\'incidents', 3, PURPLE)
+    for c, h in enumerate(['Cause / Root Cause','Incidents','% du Max'], 1):
+        ws5.cell(row=5, column=c, value=h)
+    style_hdr(ws5, 5, 3)
+
+    for i, (cause, nb) in enumerate(causes_nb_top10):
+        r = 6 + i
+        pct = round(nb/max_cause_nb*100, 1)
+        ws5.cell(row=r, column=1, value=cause)
+        ws5.cell(row=r, column=2, value=nb)
+        ws5.cell(row=r, column=3, value=f'{pct}%')
+        style_row(ws5, r, 3, alt=(i%2==1))
+
+    if causes_nb_top10:
+        bc5 = BarChart()
+        bc5.type = 'bar'; bc5.title = 'Causes — Nombre d\'Incidents'; bc5.style = 10
+        bc5.width = 20; bc5.height = 14
+        n5 = len(causes_nb_top10)
+        d5 = Reference(ws5, min_col=2, min_row=5, max_row=5+n5)
+        l5 = Reference(ws5, min_col=1, min_row=6, max_row=5+n5)
+        bc5.add_data(d5, titles_from_data=True); bc5.set_categories(l5)
+        bc5.series[0].graphicalProperties.solidFill = PURPLE
+        ws5.add_chart(bc5, 'E5')
+
+    # ── ONGLET 6 : SITES DÉGRADÉS ────────────────────────────────────────
+    ws6 = wb.create_sheet('🔴 Dégradés')
+    ws6.sheet_view.showGridLines = False
+    for col, w in enumerate([34,16,14], 1):
+        ws6.column_dimensions[get_column_letter(col)].width = w
+
+    add_banner(ws6, 'Sites les Plus Dégradés (Top 10)', ncols=3)
+    for c, h in enumerate(['Site','Durée totale (h)','Criticité'], 1):
+        ws6.cell(row=4, column=c, value=h)
+    style_hdr(ws6, 4, 3)
+
+    for i, (site, dur_sec) in enumerate(degraded_top10):
+        r = 5 + i
+        dur_h = round(dur_sec/3600, 1)
+        pct   = dur_sec / max_degraded if max_degraded else 0
+        if pct >= 0.8:   crit, bg = '🔴 Critique', 'FFEBEE'
+        elif pct >= 0.5: crit, bg = '🟠 Élevé',    'FFF3E0'
+        else:            crit, bg = '🟡 Modéré',   'FFFDE7'
+        ws6.cell(row=r, column=1, value=site)
+        ws6.cell(row=r, column=2, value=dur_h)
+        ws6.cell(row=r, column=3, value=crit)
+        for col in range(1, 4):
+            cell = ws6.cell(row=r, column=col)
+            cell.font      = Font(name='Calibri', size=10)
+            cell.fill      = PatternFill('solid', fgColor=bg)
+            cell.alignment = l_align() if col == 1 else c_align()
+            cell.border    = border
+        ws6.row_dimensions[r].height = 20
+
+    if degraded_top10:
+        bc6 = BarChart()
+        bc6.type = 'bar'; bc6.title = 'Sites les Plus Dégradés'; bc6.style = 10
+        bc6.width = 18; bc6.height = 12
+        n6 = len(degraded_top10)
+        d6 = Reference(ws6, min_col=2, min_row=4, max_row=4+n6)
+        l6 = Reference(ws6, min_col=1, min_row=5, max_row=4+n6)
+        bc6.add_data(d6, titles_from_data=True); bc6.set_categories(l6)
+        bc6.series[0].graphicalProperties.solidFill = 'E53E3E'
+        ws6.add_chart(bc6, 'E4')
+
+    # ── ONGLET 7 : DISPONIBILITÉ ─────────────────────────────────────────
     if semaine_labels_exp:
-        ws5 = wb.create_sheet('📈 Disponibilité')
-        ws5.sheet_view.showGridLines = False
-        add_title_block(ws5, 'Disponibilité Équipements (%)', period_label)
-        headers_dispo = ['Escalade'] + semaine_labels_exp
-        for col, h in enumerate(headers_dispo, 1):
-            ws5.column_dimensions[get_column_letter(col)].width = 18
-            ws5.cell(row=4, column=col).value = h
-        ws5.column_dimensions['A'].width = 16
-        style_header_row(ws5, 4, len(headers_dispo))
-        ws5.row_dimensions[4].height = 22
-        DISPO_ESCS = ['ENERGIE', 'RAN', 'TRANS FH', 'TRANS IP']
+        ws7 = wb.create_sheet('📈 Disponibilité')
+        ws7.sheet_view.showGridLines = False
+        n_weeks   = len(semaine_labels_exp)
+        all_cols7 = 1 + n_weeks + 2
+        ws7.column_dimensions['A'].width = 16
+        for i in range(1, n_weeks+3):
+            ws7.column_dimensions[get_column_letter(i+1)].width = 15
+
+        add_banner(ws7, 'Disponibilité Équipements (%)', ncols=all_cols7)
+        add_section(ws7, 4, '📶  Taux de disponibilité par équipement et par semaine', all_cols7)
+
+        ws7.cell(row=5, column=1, value='Équipement')
+        for j, lbl in enumerate(semaine_labels_exp, 2):
+            ws7.cell(row=5, column=j, value=lbl)
+        ws7.cell(row=5, column=n_weeks+2, value='Min (%)')
+        ws7.cell(row=5, column=n_weeks+3, value='Moy (%)')
+        style_hdr(ws7, 5, all_cols7)
+
+        all_dispo_vals = []
         for i, esc in enumerate(DISPO_ESCS):
-            row = 5 + i
-            ws5.cell(row, 1).value = esc
+            r = 6 + i
+            ws7.cell(row=r, column=1, value=esc).font = Font(name='Calibri', bold=True, size=11, color=ESC_COLORS.get(esc, YAS_BLUE))
+            ws7.cell(row=r, column=1).fill      = s_fill()
+            ws7.cell(row=r, column=1).alignment = l_align()
+            ws7.cell(row=r, column=1).border    = border
             for j, lbl in enumerate(semaine_labels_exp, 2):
                 val = dispo_table_exp.get(esc, {}).get(lbl)
                 if val is not None:
-                    c = ws5.cell(row, j)
-                    c.value = round(val, 4)
+                    all_dispo_vals.append(val)
+                    c = ws7.cell(row=r, column=j, value=round(val, 4))
                     c.number_format = '0.0000"%"'
-                    if val >= 99.9:
-                        c.fill = PatternFill('solid', fgColor='E8F5E9')
-                    elif val >= 99.5:
-                        c.fill = PatternFill('solid', fgColor='FFF8E1')
-                    else:
-                        c.fill = PatternFill('solid', fgColor='FFEBEE')
-            style_data_row(ws5, row, len(headers_dispo), alt=(i % 2 == 1))
-            ws5.row_dimensions[row].height = 20
+                    if val >= 99.9:    c.fill = PatternFill('solid', fgColor='E8F5E9')
+                    elif val >= 99.5:  c.fill = PatternFill('solid', fgColor='FFF8E1')
+                    else:              c.fill = PatternFill('solid', fgColor='FFEBEE')
+                    c.font      = Font(name='Calibri', size=10, bold=(val < 99.5))
+                    c.alignment = c_align(); c.border = border
+            # Min et Moy
+            c1 = get_column_letter(2)
+            cn = get_column_letter(n_weeks+1)
+            for col_idx, formula in [(n_weeks+2, f'=MIN({c1}{r}:{cn}{r})'), (n_weeks+3, f'=AVERAGE({c1}{r}:{cn}{r})')]:
+                c = ws7.cell(row=r, column=col_idx, value=formula)
+                c.number_format = '0.0000"%"'
+                c.font          = Font(name='Calibri', size=10, bold=True, color=ESC_COLORS.get(esc, YAS_BLUE))
+                c.alignment     = c_align(); c.border = border; c.fill = s_fill()
+            ws7.row_dimensions[r].height = 22
 
-        from openpyxl.chart import LineChart, Reference, Series
+        # Légende
+        leg_row = 6 + len(DISPO_ESCS) + 2
+        ws7.merge_cells(start_row=leg_row, start_column=1, end_row=leg_row, end_column=min(all_cols7, 6))
+        ws7.cell(row=leg_row, column=1, value='  Légende :   🟢 ≥ 99.9% Excellent    🟡 ≥ 99.5% Bon    🔴 < 99.5% Critique')
+        ws7.cell(row=leg_row, column=1).font = Font(name='Calibri', size=9, italic=True, color='555555')
+        ws7.row_dimensions[leg_row].height = 18
+
+        # Graphique courbes
         lc = LineChart()
-        lc.title             = 'Disponibilité Équipements (%)'
-        lc.style             = 10
-        lc.y_axis.title      = 'Disponibilité (%)'
-        lc.x_axis.title      = 'Semaine'
-        lc.width             = 24
-        lc.height            = 14
-        lc.y_axis.numFmt     = '0.00"%"'
-        lc.x_axis.tickLblPos = 'low'
-        ESC_COLORS = {'ENERGIE': '003087', 'RAN': '4CAF50', 'TRANS FH': 'FFC72C', 'TRANS IP': '2196F3'}
-        n_semaines = len(semaine_labels_exp)
+        lc.title = 'Disponibilité Équipements (%)'; lc.style = 10
+        lc.y_axis.title = 'Disponibilité (%)'; lc.x_axis.title = 'Semaine'
+        lc.width = 26; lc.height = 16
+        lc.y_axis.numFmt = '0.00"%"'; lc.x_axis.tickLblPos = 'low'
+
         for i, esc in enumerate(DISPO_ESCS):
-            data_row = 5 + i
-            data_ref = Reference(ws5, min_col=2, max_col=1 + n_semaines, min_row=data_row, max_row=data_row)
-            serie = Series(data_ref, title=esc)
-            serie.graphicalProperties.line.solidFill         = ESC_COLORS[esc]
-            serie.graphicalProperties.line.width             = 20000
-            serie.smooth                                     = True
-            serie.marker.symbol                              = 'circle'
-            serie.marker.size                                = 6
-            serie.marker.graphicalProperties.solidFill       = ESC_COLORS[esc]
-            serie.marker.graphicalProperties.line.solidFill  = ESC_COLORS[esc]
+            data_row = 6 + i
+            dr = Reference(ws7, min_col=2, max_col=1+n_weeks, min_row=data_row, max_row=data_row)
+            serie = Series(dr, title=esc)
+            serie.graphicalProperties.line.solidFill        = ESC_COLORS.get(esc, YAS_BLUE)
+            serie.graphicalProperties.line.width            = 25000
+            serie.smooth                                    = True
+            serie.marker.symbol                             = 'circle'
+            serie.marker.size                               = 7
+            serie.marker.graphicalProperties.solidFill      = ESC_COLORS.get(esc, YAS_BLUE)
+            serie.marker.graphicalProperties.line.solidFill = ESC_COLORS.get(esc, YAS_BLUE)
             lc.series.append(serie)
-        cats = Reference(ws5, min_col=2, max_col=1 + n_semaines, min_row=4)
+
+        cats = Reference(ws7, min_col=2, max_col=1+n_weeks, min_row=5)
         lc.set_categories(cats)
-        all_dispo_vals = [
-            dispo_table_exp.get(esc, {}).get(lbl)
-            for esc in DISPO_ESCS for lbl in semaine_labels_exp
-            if dispo_table_exp.get(esc, {}).get(lbl) is not None
-        ]
         if all_dispo_vals:
             lc.y_axis.scaling.min = round(min(all_dispo_vals) - 0.2, 1)
             lc.y_axis.scaling.max = 100.05
         lc.legend.position = 'b'
-        ws5.add_chart(lc, f'A{6 + len(DISPO_ESCS) + 2}')
+        ws7.add_chart(lc, f'A{leg_row + 2}')
 
+    # ── Export ───────────────────────────────────────────────────────────
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-    filename = f"Statistiques_YAS_{date.today().strftime('%Y%m%d')}_{period_label.replace(' ', '_')}.xlsx"
-    response = HttpResponse(
+
+    safe_period = period_label.replace(' ', '_').replace('/', '-').replace('→', 'to')[:40]
+    filename    = f"Statistiques_YAS_{date.today().strftime('%Y%m%d')}_{safe_period}.xlsx"
+    response    = HttpResponse(
         buffer.read(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
@@ -1372,7 +1630,6 @@ def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
     semaine_labels  = [_week_label(y, w) for y, w in semaines_sorted]
     semaine_keys    = [f"S{w:02d}-{y}" for y, w in semaines_sorted]
 
-    # Le reste est identique...
     outage_sec_table = defaultdict(lambda: defaultdict(float))
     for esc, jours in outage_par_jour.items():
         for day_str, sec in jours.items():
@@ -1405,6 +1662,7 @@ def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
 def statistiques(request):
     from collections import defaultdict
     from datetime import timedelta
+    import datetime as _dt
 
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
@@ -1417,22 +1675,41 @@ def statistiques(request):
 
     if report_pk:
         single_report = get_object_or_404(base_qs, pk=report_pk)
-        reports = base_qs.filter(pk=report_pk)
+        reports       = base_qs.filter(pk=report_pk)
         period_filter = 'report'
-    elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
+    elif period_filter == 'latest' or period_filter not in (
+            'day','3days','week','2weeks','month','quarter','half','year','all','custom'):
         single_report = base_qs.first()
-        reports = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
+        reports       = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
         today = date.today()
         if period_filter == 'day':
             reports = base_qs.filter(uploaded_at__date=today)
+        elif period_filter == '3days':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=3))
         elif period_filter == 'week':
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        elif period_filter == '2weeks':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=14))
         elif period_filter == 'month':
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
+        elif period_filter == 'quarter':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=90))
+        elif period_filter == 'half':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=180))
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
+        elif period_filter == 'custom':
+            date_from = request.GET.get('date_from')
+            date_to   = request.GET.get('date_to')
+            if date_from and date_to:
+                reports = base_qs.filter(
+                    uploaded_at__date__gte=date_from,
+                    uploaded_at__date__lte=date_to,
+                )
+            else:
+                reports = base_qs
         else:
             reports = base_qs
 
@@ -1458,8 +1735,8 @@ def statistiques(request):
             escalade_data[esc]['duree_sec']  += parse_hms(row.get('DUREE',  '0:00:00'))
 
     escalades_sorted = sorted(escalade_data.items(), key=lambda x: x[1]['count'], reverse=True)
-    max_esc = escalades_sorted[0][1]['count'] if escalades_sorted else 1
-    escalades_chart = [
+    max_esc          = escalades_sorted[0][1]['count'] if escalades_sorted else 1
+    escalades_chart  = [
         {
             'name':   k,
             'count':  v['count'],
@@ -1547,7 +1824,7 @@ def statistiques(request):
         for k, v in causes_top10
     ]
 
-    # ── Incidents par Cause (Nombre) ─────────────────────────────────────
+    # ── Incidents par Cause (Nombre) ──────────────────────────────────────
     cause_count_data = defaultdict(int)
     for r in reports:
         if not r.detailed_file:
@@ -1566,7 +1843,6 @@ def statistiques(request):
                         cause_count_data[val] += 1
         except Exception:
             continue
-
     causes_count_top10 = sorted(cause_count_data.items(), key=lambda x: x[1], reverse=True)[:10]
     max_cause_count    = causes_count_top10[0][1] if causes_count_top10 else 1
     causes_count_chart = [
@@ -1586,7 +1862,7 @@ def statistiques(request):
     evolution_incidents = [r.total_incidents for r in evolution_reports]
     evolution_outage    = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
 
-    import datetime as _dt
+    # ── Disponibilité dynamique selon filtre ──────────────────────────────
     if period_filter == 'custom':
         date_from  = request.GET.get('date_from')
         date_to    = request.GET.get('date_to')
@@ -1603,13 +1879,8 @@ def statistiques(request):
         )
     else:
         period_days = {
-            '3days':   3,
-            'week':    7,
-            '2weeks':  14,
-            'month':   30,
-            'quarter': 90,
-            'half':    180,
-            'year':    365,
+            '3days': 3, 'week': 7, '2weeks': 14, 'month': 30,
+            'quarter': 90, 'half': 180, 'year': 365,
         }
         nb_days = period_days.get(period_filter)
         cutoff  = (date.today() - _dt.timedelta(days=nb_days)) if nb_days else None
@@ -1648,6 +1919,7 @@ def statistiques(request):
         'outage_chart':         outage_chart_colored,
         'degraded_chart':       degraded_chart,
         'causes_chart':         causes_chart,
+        'causes_count_chart':   causes_count_chart,
         'total_outage_h':       total_outage_h,
         'total_reports':        total_reports,
         'donut_svg':            donut_svg,
@@ -1662,5 +1934,4 @@ def statistiques(request):
         'nb_sites':             NB_SITES,
         'semaine_labels_js':    mark_safe(_json.dumps(semaine_labels)),
         'dispo_series_js':      mark_safe(_json.dumps(dispo_series_js)),
-        'causes_count_chart':   causes_count_chart,
     })
