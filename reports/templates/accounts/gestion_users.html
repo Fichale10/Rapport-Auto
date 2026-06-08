@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Gestion des utilisateurs{% endblock %}
+{% block breadcrumb %}Gestion utilisateurs{% endblock %}
+
+{% block content %}
+<style>
+  .users-card { background:#fff; border-radius:16px; padding:24px; border:1px solid #e8edf5; margin-bottom:24px; }
+  .section-title { font-size:15px; font-weight:700; color:#003087; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #f0f4ff; display:flex; align-items:center; gap:8px; }
+  .badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
+  .badge-warning { background:#fff8e1; color:#7a5a00; }
+  .badge-success { background:#e8f5e9; color:#2e7d32; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:2px solid #f0f4ff; }
+  td { padding:12px; border-bottom:1px solid #f8faff; font-size:14px; color:#333; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  .btn-approve { background:#003087; color:#fff; border:none; padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s; }
+  .btn-approve:hover { background:#0047cc; }
+  .btn-reject { background:#fff; color:#e53e3e; border:1.5px solid #e53e3e; padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; margin-left:8px; transition:all .15s; }
+  .btn-reject:hover { background:#fff5f5; }
+  .btn-deactivate { background:#fff; color:#888; border:1.5px solid #ddd; padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+  .btn-deactivate:hover { border-color:#888; color:#333; }
+  .empty-msg { text-align:center; padding:32px; color:#bbb; font-size:14px; }
+  .alert-success { background:#e8f5e9; border-left:4px solid #4CAF50; color:#2e7d32; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:14px; }
+</style>
+
+{% if messages %}
+  {% for message in messages %}
+    <div class="alert-success">✓ {{ message }}</div>
+  {% endfor %}
+{% endif %}
+
+<!-- Comptes en attente -->
+<div class="users-card">
+  <div class="section-title">
+    ⏳ Comptes en attente de validation
+    <span class="badge badge-warning">{{ en_attente|length }}</span>
+  </div>
+  {% if en_attente %}
+  <table>
+    <thead>
+      <tr>
+        <th>Identifiant</th>
+        <th>Nom complet</th>
+        <th>Email</th>
+        <th>Date d'inscription</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in en_attente %}
+      <tr>
+        <td><strong>{{ u.username }}</strong></td>
+        <td>{{ u.get_full_name|default:"—" }}</td>
+        <td>{{ u.email|default:"—" }}</td>
+        <td>{{ u.date_joined|date:"d/m/Y à H:i" }}</td>
+        <td>
+          <form method="POST" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="user_id" value="{{ u.pk }}">
+            <button type="submit" name="action" value="approuver" class="btn-approve">✓ Approuver</button>
+            <button type="submit" name="action" value="rejeter" class="btn-reject"
+              onclick="return confirm('Supprimer le compte de {{ u.username }} ?')">✗ Rejeter</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-msg">Aucun compte en attente de validation</div>
+  {% endif %}
+</div>
+
+<!-- Comptes actifs -->
+<div class="users-card">
+  <div class="section-title">
+    ✅ Comptes actifs
+    <span class="badge badge-success">{{ actifs|length }}</span>
+  </div>
+  {% if actifs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Identifiant</th>
+        <th>Nom complet</th>
+        <th>Email</th>
+        <th>Date d'inscription</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in actifs %}
+      <tr>
+        <td><strong>{{ u.username }}</strong></td>
+        <td>{{ u.get_full_name|default:"—" }}</td>
+        <td>{{ u.email|default:"—" }}</td>
+        <td>{{ u.date_joined|date:"d/m/Y à H:i" }}</td>
+        <td>
+          <form method="POST" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="user_id" value="{{ u.pk }}">
+            <button type="submit" name="action" value="rejeter" class="btn-deactivate"
+              onclick="return confirm('Supprimer le compte de {{ u.username }} ?')">Supprimer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty-msg">Aucun compte actif</div>
+  {% endif %}
+</div>
+
+{% endblock %}

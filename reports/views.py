@@ -2,7 +2,9 @@ import json
 import time
 import os
 import math
+from collections import defaultdict
 from datetime import date
+from urllib import request
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.safestring import mark_safe
@@ -14,6 +16,22 @@ from .models import UploadedReport
 from .forms import UploadForm
 
 from treatement import process_file
+
+ESC_MAPPING = {
+    'ENERGIE':          'ENERGIE',
+    'RAN-FIELD O':      'RAN',
+    'RAN':              'RAN',
+    'TRANS FH-FIELD O': 'TRANS FH',
+    'TRANS FH':         'TRANS FH',
+    'TRANS IP':         'TRANS IP',
+}
+
+NB_SITES = {
+    'ENERGIE':  1227,
+    'RAN':      1227,
+    'TRANS FH': 996,
+    'TRANS IP': 582,
+}
 
 
 def _period_label(report):
@@ -30,20 +48,29 @@ def home(request):
     else:
         all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
 
-    recent_reports = all_reports[:5]
+    recent_reports_raw = all_reports[:5]
+    recent_reports = []
+    for r in recent_reports_raw:
+        h = int(r.total_duration_sec // 3600)
+        m = int((r.total_duration_sec % 3600) // 60)
+        r.outage_fmt = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
+        recent_reports.append(r)
 
-    # KPIs globaux
     total_reports    = all_reports.count()
     total_incidents  = sum(r.total_incidents  for r in all_reports)
     total_unresolved = sum(r.unresolved_count for r in all_reports if r.unresolved_count)
-    total_outage_h   = round(sum(r.total_duration_sec for r in all_reports) / 3600, 1)
+    trend_pct = None
+    if all_reports.count() >= 2:
+        last   = all_reports[0].total_incidents
+        before = all_reports[1].total_incidents
+        if before > 0:
+            trend_pct = round((last - before) / before * 100, 1)
+    total_outage_h = round(sum(r.total_duration_sec for r in all_reports) / 3600, 1)
 
-    # Mini sparkline — incidents des 7 derniers rapports (du plus ancien au plus récent)
     spark_reports = list(reversed(list(all_reports[:7])))
     spark_labels  = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
     spark_values  = [r.total_incidents for r in spark_reports]
 
-    # Dernier rapport traité
     last_report = all_reports.first()
 
     return render(request, 'reports/home.html', {
@@ -55,6 +82,7 @@ def home(request):
         'spark_labels':     spark_labels,
         'spark_values':     spark_values,
         'last_report':      last_report,
+        'trend_pct':        trend_pct,
     })
 
 
@@ -161,11 +189,55 @@ def process_report(request, pk):
     else:
         report.top_sites_json = []
 
+    cause_col = next((c for c in ('Root Cause', 'Cause') if c in df_export.columns), None)
+    if cause_col and 'Duration' in df_export.columns:
+        cause_duration = defaultdict(float)
+        for _, row in df_export.iterrows():
+            cause = str(row.get(cause_col, '')).strip()
+            dur   = _parse_duration(str(row.get('Duration', '')))
+            if cause and cause != 'nan' and dur > 0:
+                cause_duration[cause] += dur
+        top_causes = sorted(cause_duration.items(), key=lambda x: x[1], reverse=True)[:10]
+        report.top_causes_json = json.loads(json.dumps([
+            {'name': k, 'duration_sec': v} for k, v in top_causes
+        ], cls=_NpEncoder))
+    else:
+        report.top_causes_json = []
+
     report.detailed_file.name = os.path.relpath(output_path, settings.MEDIA_ROOT)
     if os.path.exists(synthesis_path):
         report.synthesis_file.name = os.path.relpath(synthesis_path, settings.MEDIA_ROOT)
 
     report.processed = True
+
+    outage_j = defaultdict(lambda: defaultdict(float))
+
+    if 'Alarm Time' in df_export.columns and 'Escalade' in df_export.columns and 'Duration' in df_export.columns:
+        for _, row in df_export.iterrows():
+            alarm_time = row.get('Alarm Time')
+            escalade   = str(row.get('Escalade', '')).strip()
+            duration   = row.get('Duration', '')
+
+            esc_key = ESC_MAPPING.get(escalade)
+            if not esc_key:
+                continue
+
+            try:
+                if hasattr(alarm_time, 'date'):
+                    day = alarm_time.date().isoformat()
+                else:
+                    day = pd.to_datetime(alarm_time).date().isoformat()
+            except Exception:
+                continue
+
+            dur_sec = _parse_duration(str(duration))
+            if dur_sec > 0:
+                outage_j[esc_key][day] += dur_sec
+
+    report.outage_journalier_json = {
+        esc: dict(jours)
+        for esc, jours in outage_j.items()
+    }
     report.save()
 
     return JsonResponse({
@@ -258,6 +330,16 @@ def history(request):
             r for r in all_reports
             if r.date_fin and 20 <= (r.date_fin - r.date_rapport).days <= 45
         ]
+    elif period_filter == 'custom':
+            date_from = request.GET.get('date_from')
+            date_to   = request.GET.get('date_to')
+            if date_from and date_to:
+                reports = base_qs.filter(
+                    uploaded_at__date__gte=date_from,
+                    uploaded_at__date__lte=date_to,
+                )
+            else:
+                reports = base_qs    
     elif period_filter == 'year':
         filtered_reports = [
             r for r in all_reports
@@ -294,7 +376,6 @@ DONUT_DARK = [
 ]
 
 
-# ── SVG Camembert 3D Premium ──────────────────────────────────────────────────
 def _make_donut_svg(data, total_h):
     if not data:
         return ''
@@ -302,37 +383,38 @@ def _make_donut_svg(data, total_h):
     if total == 0:
         return ''
 
-    CX, CY  = 330, 160
-    RX, RY  = 235, 92
-    DEPTH   = 60
-    W       = 720
-    n       = len(data)
-    COLS    = 3
+    CX, CY  = 320, 175
+    RX, RY  = 230, 90
+    DEPTH   = 58
+    W       = 680
+    VIEW_PAD = 120
+    FULL_W  = W + VIEW_PAD * 2
+
+    n        = len(data)
+    COLS     = 3
     LEG_ROWS = math.ceil(n / COLS)
-    H_BASE = CY + RY + DEPTH + 30 + LEG_ROWS * 52 + 20
+    H        = CY + RY + DEPTH + 44 + LEG_ROWS * 52 + 20
 
     def pt(a, r=1.0):
         return (CX + r * RX * math.cos(a), CY + r * RY * math.sin(a))
 
-    # ── Defs ────────────────────────────────────────────────────────────────
     defs = '<defs>'
     for i, d in enumerate(data):
         c  = DONUT_COLORS[i % len(DONUT_COLORS)]
         dk = DONUT_DARK[i  % len(DONUT_DARK)]
         defs += (
-            f'<linearGradient id="pg{i}" x1="0" y1="0" x2="0.3" y2="1">'
+            f'<linearGradient id="pg{i}" x1="0" y1="0" x2="0.2" y2="1">'
             f'<stop offset="0%" stop-color="{c}"/>'
             f'<stop offset="100%" stop-color="{dk}"/>'
             f'</linearGradient>'
         )
     defs += (
-        '<filter id="pshadow" x="-20%" y="-20%" width="140%" height="160%">'
-        '<feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#00000035"/>'
+        '<filter id="pshadow" x="-30%" y="-30%" width="160%" height="180%">'
+        '<feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#00000022"/>'
         '</filter>'
         '</defs>'
     )
 
-    # ── Tranches ────────────────────────────────────────────────────────────
     slices = []
     angle  = -math.pi / 2
     for i, d in enumerate(data):
@@ -350,14 +432,13 @@ def _make_donut_svg(data, total_h):
         })
         angle += sweep
 
-    # ── Parois latérales ────────────────────────────────────────────────────
     sides = ''
     for s in reversed(slices):
         a1, a2 = s['a1'], s['a2']
         vs = max(a1, 0)
         ve = min(a2, math.pi)
         if vs < ve:
-            N = 32
+            N = 40
             tp, bp = [], []
             for k in range(N + 1):
                 a = vs + (ve - vs) * k / N
@@ -368,7 +449,7 @@ def _make_donut_svg(data, total_h):
             bp.reverse()
             sides += (
                 f'<path d="M{" L".join(tp + bp)}Z" '
-                f'fill="{s["dark"]}" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>'
+                f'fill="{s["dark"]}" stroke="rgba(255,255,255,0.15)" stroke-width="0.8"/>'
             )
         for a in [a1, a2]:
             if 0 <= a <= math.pi:
@@ -376,15 +457,15 @@ def _make_donut_svg(data, total_h):
                 sides += (
                     f'<path d="M{CX:.2f},{CY:.2f} L{ox:.2f},{oy:.2f} '
                     f'L{ox:.2f},{oy+DEPTH:.2f} L{CX:.2f},{CY+DEPTH:.2f} Z" '
-                    f'fill="{s["dark"]}" opacity="0.5" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>'
+                    f'fill="{s["dark"]}" opacity="0.40" '
+                    f'stroke="rgba(255,255,255,0.08)" stroke-width="0.6"/>'
                 )
 
     bot_ellipse = (
         f'<ellipse cx="{CX}" cy="{CY+DEPTH}" rx="{RX}" ry="{RY}" '
-        f'fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="1.5"/>'
+        f'fill="none" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>'
     )
 
-    # ── Faces supérieures ───────────────────────────────────────────────────
     tops = ''
     for s in slices:
         a1, a2 = s['a1'], s['a2']
@@ -394,188 +475,117 @@ def _make_donut_svg(data, total_h):
         tops += (
             f'<path d="M{CX:.2f},{CY:.2f} L{x1:.2f},{y1:.2f} '
             f'A{RX},{RY} 0 {large},1 {x2:.2f},{y2:.2f} Z" '
-            f'fill="{s["grad"]}" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>'
+            f'fill="{s["grad"]}" stroke="rgba(255,255,255,0.25)" stroke-width="1.2"/>'
         )
 
-    # ── Reflets ─────────────────────────────────────────────────────────────
     highlights = ''
     for s in slices:
         hs = max(s['a1'], -math.pi / 2)
-        he = min(s['a2'], -math.pi / 2 + 1.0)
+        he = min(s['a2'], -math.pi / 2 + 0.85)
         if hs < he:
-            hx1, hy1 = pt(hs, 0.97)
-            hx2, hy2 = pt(he, 0.97)
+            hx1, hy1 = pt(hs, 0.96)
+            hx2, hy2 = pt(he, 0.96)
             highlights += (
-                f'<path d="M{hx1:.2f},{hy1:.2f} A{RX*0.97:.1f},{RY*0.97:.1f} 0 0,1 {hx2:.2f},{hy2:.2f}" '
-                f'fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round"/>'
+                f'<path d="M{hx1:.2f},{hy1:.2f} '
+                f'A{RX*0.96:.1f},{RY*0.96:.1f} 0 0,1 {hx2:.2f},{hy2:.2f}" '
+                f'fill="none" stroke="rgba(255,255,255,0.35)" '
+                f'stroke-width="1.6" stroke-linecap="round"/>'
             )
 
-    # ── Labels avec anti-collision ───────────────────────────────────────────
-    inner_threshold = 11  # pct >= 11 -> label interne
-
-    BOX_H = 34
-    BOX_PAD_TOP = 18   # rect top = ly - BOX_PAD_TOP
-    # bas du rectangle (ly = ligne de base du texte du haut)
-    RECT_BOTTOM_FROM_LY = -BOX_PAD_TOP + BOX_H  # ly + RECT_BOTTOM_FROM_LY = bas du rect
-    VERT_GAP = 14      # espace vertical entre deux boîtes empilées
-    BOX_W = 92
-
-    ext_labels = []
-    for s in slices:
-        if s['pct'] < inner_threshold:
-            ext_labels.append({'s': s})
-
-    # Répartition gauche / droite + Y espacés sur la hauteur du camembert
-    MARGIN = 8
-    PIE_L = CX - RX
-    FLANK_GAP = 18  # espace entre bord du camembert et bord des boîtes
-    # Bord droit de la boîte (anchor end) = lx - 6 → lx <= PIE_L - FLANK_GAP + 6
-    left_lx_ideal = PIE_L - FLANK_GAP + 6
-    SAFE_LX_LEFT = BOX_W + 6 + MARGIN  # tenir dans viewBox 0..W sans marge négative
-    SAFE_LX_RIGHT = W - BOX_W - 6 - MARGIN
-    # Marge SVG à gauche pour les boîtes qui dépassent x=0 quand on colle au flanc du camembert
-    VIEW_PAD_L = 48
-    lx_floor = -VIEW_PAD_L + BOX_W + 6 + MARGIN
-    LEFT_COL = max(lx_floor, min(left_lx_ideal, SAFE_LX_LEFT))
-    # Droite : SAFE_LX_RIGHT garde les boîtes hors du disque (à droite de CX+RX)
-    RIGHT_COL = SAFE_LX_RIGHT
-    COL_SPACING = 12
-    RIGHT_COL_INNER = RIGHT_COL - (BOX_W + COL_SPACING)
-
-    def _spread_flank_vertical(items, x_col, anchor_end):
-        """Place les boîtes le long du flanc (gauche ou droite), Y répartis sur la hauteur du camembert."""
-        if not items:
-            return
-        items.sort(key=lambda e: e['s']['mid'])
-        n = len(items)
-        y_lo = CY - RY * 0.92
-        y_hi = CY + DEPTH + RY * 0.92
-        block = n * BOX_H + (n - 1) * VERT_GAP
-        span = max(y_hi - y_lo, 1.0)
-        if block <= span:
-            y_start = y_lo + (span - block) / 2
-        else:
-            y_start = y_lo
-        for j, e in enumerate(items):
-            top = y_start + j * (BOX_H + VERT_GAP)
-            e['ly'] = top + BOX_PAD_TOP
-            e['lx'] = x_col
-            e['anchor'] = 'end' if anchor_end else 'start'
-
-    if ext_labels:
-        ext_sorted = sorted(ext_labels, key=lambda e: e['s']['mid'])
-        n_ext = len(ext_sorted)
-        n_left = (n_ext + 1) // 2
-        left = ext_sorted[:n_left]
-        right = ext_sorted[n_left:]
-        _spread_flank_vertical(left, LEFT_COL, anchor_end=True)
-        if len(right) >= 5:
-            col_a, col_b = [], []
-            for i, e in enumerate(right):
-                (col_a if i % 2 == 0 else col_b).append(e)
-            _spread_flank_vertical(col_a, RIGHT_COL_INNER, anchor_end=False)
-            _spread_flank_vertical(col_b, RIGHT_COL, anchor_end=False)
-            ext_labels = left + col_a + col_b
-        else:
-            _spread_flank_vertical(right, RIGHT_COL, anchor_end=False)
-            ext_labels = left + right
-    else:
-        ext_labels = []
-
-    # Reserve de place sous les etiquettes externes pour ne pas recouvrir la legende
-    base_leg_top = CY + RY + DEPTH + 32
-    max_ext_bottom = max((e['ly'] + RECT_BOTTOM_FROM_LY for e in ext_labels), default=0)
-    legend_push = max(0.0, max_ext_bottom - base_leg_top + 18)
-    leg_top = base_leg_top + legend_push
-    H = H_BASE + legend_push
-
+    INNER_THRESHOLD = 8
     labels = ''
+    EXT_R  = 1.42
+    LINE_R = 1.12
 
-    # Labels internes — grandes tranches
+    ext_items = []
     for s in slices:
-        if s['pct'] >= inner_threshold:
-            lx, ly = pt(s['mid'], 0.60)
+        if s['pct'] < INNER_THRESHOLD:
+            tx, ty = pt(s['mid'], EXT_R)
+            anchor = 'start' if math.cos(s['mid']) >= 0 else 'end'
+            offset = 22 if anchor == 'start' else -22
+            ext_items.append({'s': s, 'tx': tx + offset, 'ty': ty, 'anchor': anchor})
+
+    MIN_GAP   = 26
+    left_ext  = sorted([e for e in ext_items if e['anchor'] == 'end'],   key=lambda e: e['ty'])
+    right_ext = sorted([e for e in ext_items if e['anchor'] == 'start'], key=lambda e: e['ty'])
+
+    for grp in [left_ext, right_ext]:
+        for k in range(1, len(grp)):
+            if grp[k]['ty'] - grp[k-1]['ty'] < MIN_GAP:
+                grp[k]['ty'] = grp[k-1]['ty'] + MIN_GAP
+
+    ext_items = left_ext + right_ext
+
+    for s in slices:
+        if s['pct'] >= INNER_THRESHOLD:
+            lx, ly = pt(s['mid'], 0.56)
+            name_short = s['name'][:12] + ('…' if len(s['name']) > 12 else '')
             labels += (
-                f'<rect x="{lx-34:.1f}" y="{ly-18:.1f}" width="68" height="37" rx="8" '
-                f'fill="rgba(0,0,0,0.42)"/>'
-                f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="17" font-weight="800" fill="white">'
-                f'{s["pct"]}%</text>'
-                f'<text x="{lx:.1f}" y="{ly+15:.1f}" text-anchor="middle" '
-                f'font-family="Arial,sans-serif" font-size="12.5" font-weight="700" fill="rgba(255,255,255,0.97)">'
-                f'{s["h"]}h</text>'
+                f'<rect x="{lx-38:.1f}" y="{ly-20:.1f}" width="76" height="38" rx="8" '
+                f'fill="rgba(0,0,0,0.35)"/>'
+                f'<text x="{lx:.1f}" y="{ly-4:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="10" font-weight="700" '
+                f'fill="rgba(255,255,255,0.90)">{name_short}</text>'
+                f'<text x="{lx:.1f}" y="{ly+11:.1f}" text-anchor="middle" '
+                f'font-family="Arial,sans-serif" font-size="15" font-weight="900" '
+                f'fill="white">{s["pct"]}%</text>'
             )
 
-    # Labels externes — lignes d’abord, puis fonds, puis texte (moins de croisements illisibles)
-    external_lines = ''
-    external_boxes = ''
-    external_texts = ''
-    for e in ext_labels:
-        s = e['s']
-        lx, ly = e['lx'], e['ly']
+    for e in ext_items:
+        s      = e['s']
+        ox, oy = pt(s['mid'], LINE_R)
+        px, py = pt(s['mid'], 1.00)
+        tx, ty = e['tx'], e['ty']
         anchor = e['anchor']
-        ox, oy = pt(s['mid'], 1.04)
-        tx = lx + (6 if anchor == 'start' else -6)
-        box_x = tx - BOX_W if anchor == 'end' else tx
-        # Ligne en coude : vers le flanc puis vertical (lisible quand la boîte est sur le côté)
-        external_lines += (
-            f'<polyline points="{ox:.1f},{oy:.1f} {lx:.1f},{oy:.1f} {lx:.1f},{ly:.1f}" '
-            f'fill="none" stroke="{s["color"]}" stroke-width="1.6" opacity="0.85"/>'
-            f'<circle cx="{ox:.1f}" cy="{oy:.1f}" r="3" fill="{s["color"]}"/>'
+        name_short = s['name'][:14] + ('…' if len(s['name']) > 14 else '')
+        labels += (
+            f'<line x1="{px:.1f}" y1="{py:.1f}" x2="{tx:.1f}" y2="{ty:.1f}" '
+            f'stroke="{s["color"]}" stroke-width="1.5" opacity="0.9"/>'
+            f'<circle cx="{px:.1f}" cy="{py:.1f}" r="2" fill="{s["color"]}"/>'
+            f'<text x="{tx:.1f}" y="{ty-4:.1f}" text-anchor="{anchor}" '
+            f'font-family="Arial,sans-serif" font-size="13" font-weight="700" '
+            f'fill="{s["dark"]}">{name_short}</text>'
+            f'<text x="{tx:.1f}" y="{ty+11:.1f}" text-anchor="{anchor}" '
+            f'font-family="Arial,sans-serif" font-size="12" font-weight="600" '
+            f'fill="#4b5563">{s["pct"]}% · {s["h"]}h</text>'
         )
-        external_boxes += (
-            f'<rect x="{box_x:.1f}" y="{ly-BOX_PAD_TOP:.1f}" width="{BOX_W}" height="{BOX_H}" rx="7" '
-            f'fill="rgba(255,255,255,0.97)" stroke="{s["color"]}" stroke-width="1.6"/>'
-        )
-        external_texts += (
-            f'<text x="{tx:.1f}" y="{ly-2:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="13" font-weight="900" fill="{s["color"]}">'
-            f'{s["pct"]}%</text>'
-            f'<text x="{tx:.1f}" y="{ly+11:.1f}" text-anchor="{anchor}" '
-            f'font-family="Arial,sans-serif" font-size="11.5" font-weight="700" fill="#1f2937">'
-            f'{s["h"]}h</text>'
-        )
-    labels += external_lines + external_boxes + external_texts
 
-    # ── Badge total ─────────────────────────────────────────────────────────
     badge = (
-        f'<rect x="{CX-44}" y="{CY-20}" width="88" height="38" rx="11" '
-        f'fill="white" opacity="0.96" stroke="rgba(0,48,135,0.18)" stroke-width="1"/>'
-        f'<text x="{CX}" y="{CY+1}" text-anchor="middle" '
-        f'font-family="Arial,sans-serif" font-size="14" font-weight="900" fill="#003087">'
+        f'<rect x="{CX-40}" y="{CY-18}" width="80" height="34" rx="9" '
+        f'fill="white" opacity="0.95" stroke="rgba(0,48,135,0.14)" stroke-width="1"/>'
+        f'<text x="{CX}" y="{CY}" text-anchor="middle" '
+        f'font-family="Arial,sans-serif" font-size="17" font-weight="900" fill="#003087">'
         f'{total_h}h</text>'
-        f'<text x="{CX}" y="{CY+15}" text-anchor="middle" '
-        f'font-family="Arial,sans-serif" font-size="8.5" font-weight="700" fill="#6b7280" letter-spacing="1.4">TOTAL</text>'
+        f'<text x="{CX}" y="{CY+13}" text-anchor="middle" '
+        f'font-family="Arial,sans-serif" font-size="12" font-weight="700" '
+        f'fill="#9ca3af" letter-spacing="1.5">TOTAL</text>'
     )
 
-    # ── Légende 3 colonnes ───────────────────────────────────────────────────
+    leg_top = CY + RY + DEPTH + 44
     COL_W   = int((W - 40) / COLS)
     legend  = ''
     for i, s in enumerate(slices):
-        col = i % COLS
-        row = i // COLS
-        x   = 20 + col * COL_W
-        y   = leg_top + row * 50
+        col  = i % COLS
+        row  = i // COLS
+        x    = 20 + col * COL_W - VIEW_PAD
+        y    = leg_top + row * 52
+        name = s['name'][:18] + ('…' if len(s['name']) > 18 else '')
         legend += (
-            f'<rect x="{x}" y="{y}" width="{COL_W-10}" height="42" rx="9" '
-            f'fill="{s["color"]}" opacity="0.08"/>'
-            f'<circle cx="{x+12}" cy="{y+12}" r="6" fill="{s["color"]}"/>'
-        )
-        name = s['name'][:16] + ('…' if len(s['name']) > 16 else '')
-        legend += (
-            f'<rect x="{x}" y="{y}" width="{COL_W-10}" height="44" rx="9" '
-            f'fill="{s["color"]}" opacity="0.13" stroke="{s["color"]}" stroke-opacity="0.2"/>'
-            f'<circle cx="{x+14}" cy="{y+13}" r="7.5" fill="{s["color"]}"/>'
-            f'<text x="{x+26}" y="{y+17}" '
-            f'font-family="Arial,sans-serif" font-size="13.5" font-weight="800" fill="{s["dark"]}">'
-            f'{name}</text>'
-            f'<text x="{x+14}" y="{y+34}" '
-            f'font-family="Arial,sans-serif" font-size="12.5" font-weight="700" fill="#374151">'
-            f'{s["h"]}h · {s["pct"]}%</text>'
+            f'<rect x="{x}" y="{y}" width="{COL_W-12}" height="42" rx="8" '
+            f'fill="{s["color"]}" opacity="0.09" '
+            f'stroke="{s["color"]}" stroke-opacity="0.20"/>'
+            f'<circle cx="{x+13}" cy="{y+12}" r="6.5" fill="{s["color"]}"/>'
+            f'<text x="{x+25}" y="{y+16}" '
+            f'font-family="Arial,sans-serif" font-size="12.5" font-weight="800" '
+            f'fill="{s["dark"]}">{name}</text>'
+            f'<text x="{x+13}" y="{y+32}" '
+            f'font-family="Arial,sans-serif" font-size="11.5" font-weight="600" '
+            f'fill="#4b5563">{s["h"]}h · {s["pct"]}%</text>'
         )
 
     return (
-        f'<svg width="100%" viewBox="-{VIEW_PAD_L} 0 {W + VIEW_PAD_L} {H}" '
+        f'<svg width="100%" '
+        f'viewBox="-{VIEW_PAD} 0 {FULL_W} {H}" '
         f'xmlns="http://www.w3.org/2000/svg" overflow="visible">'
         f'{defs}'
         f'<g filter="url(#pshadow)">{sides}{bot_ellipse}{tops}</g>'
@@ -809,30 +819,39 @@ def register_view(request):
         password1  = request.POST.get('password1', '')
         password2  = request.POST.get('password2', '')
 
-        if not username or not password1:
-            messages.error(request, 'Identifiant et mot de passe obligatoires.')
-        elif User.objects.filter(username=username).exists():
+        if not password1:
+            messages.error(request, 'Le mot de passe est obligatoire.')
+        elif not username:
+            messages.error(request, "L'identifiant est obligatoire.")
+        elif User.objects.filter(username__iexact=username).exists():
             messages.error(request, 'Cet identifiant est déjà utilisé.')
         elif password1 != password2:
             messages.error(request, 'Les mots de passe ne correspondent pas.')
-        elif len(password1) < 8:
-            messages.error(request, 'Le mot de passe doit contenir au moins 8 caractères.')
         else:
-            User.objects.create_user(
-                username=username, password=password1,
-                first_name=first_name, last_name=last_name, email=email,
+            from django.contrib.auth.password_validation import validate_password
+            from django.core.exceptions import ValidationError
+            try:
+                validate_password(password1)
+            except ValidationError as e:
+                for err in e.messages:
+                    messages.error(request, err)
+                return render(request, 'accounts/register.html')
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password1,
+                first_name=first_name,
+                last_name=last_name,
             )
-            messages.success(request, 'Compte créé avec succès ! Connectez-vous.')
+            user.is_active = False
+            user.save()
+            messages.success(request, 'Inscription envoyée ! Votre compte sera activé par un administrateur.')
             return redirect('accounts:login')
 
     return render(request, 'accounts/register.html')
 
+
 def comparer(request):
-    """
-    Comparaison de deux rapports côte à côte.
-    GET  /comparer/              → page de sélection
-    GET  /comparer/?r1=pk&r2=pk  → comparaison
-    """
     if request.user.is_superuser:
         all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
@@ -857,7 +876,6 @@ def comparer(request):
                 pass
             return 0
 
-        # ── Données KPI ──────────────────────────────────────────────────
         def kpi_diff(v1, v2):
             if v1 == 0 and v2 == 0:
                 return 0, 'neutral'
@@ -873,7 +891,6 @@ def comparer(request):
         rows_delta, rows_trend = kpi_diff(r1.total_rows,       r2.total_rows)
         filt_delta, filt_trend = kpi_diff(r1.filtered_rows,    r2.filtered_rows)
 
-        # ── Comparaison synthèse par escalade ────────────────────────────
         def synth_map(report):
             m = {}
             for row in (report.synthesis_json or []):
@@ -886,8 +903,8 @@ def comparer(request):
                     }
             return m
 
-        s1, s2    = synth_map(r1), synth_map(r2)
-        all_escs  = sorted(set(list(s1.keys()) + list(s2.keys())))
+        s1, s2   = synth_map(r1), synth_map(r2)
+        all_escs = sorted(set(list(s1.keys()) + list(s2.keys())))
 
         esc_rows = []
         for esc in all_escs:
@@ -906,13 +923,12 @@ def comparer(request):
                 'trend':      'better' if delta < 0 else ('worse' if delta > 0 else 'neutral'),
             })
 
-        # ── Top sites communs ────────────────────────────────────────────
         def sites_map(report):
             return {s['name']: s['count'] for s in (report.top_sites_json or [])}
 
-        ts1, ts2    = sites_map(r1), sites_map(r2)
-        all_sites   = sorted(set(list(ts1.keys()) + list(ts2.keys())),
-                             key=lambda s: max(ts1.get(s, 0), ts2.get(s, 0)), reverse=True)[:10]
+        ts1, ts2  = sites_map(r1), sites_map(r2)
+        all_sites = sorted(set(list(ts1.keys()) + list(ts2.keys())),
+                           key=lambda s: max(ts1.get(s, 0), ts2.get(s, 0)), reverse=True)[:10]
 
         site_rows = [{
             'name':   s,
@@ -939,25 +955,17 @@ def comparer(request):
         'diff': diff,
     })
 
+
 def export_statistiques(request):
-    """
-    Exporte les statistiques actuelles en Excel (4 onglets).
-    Accepte les mêmes paramètres GET que statistiques() :
-      ?period=latest|day|week|month|year|all
-      ?report=<pk>
-    """
     import openpyxl
     import openpyxl.chart.label
-    from openpyxl.styles import (
-        Font, PatternFill, Alignment, Border, Side, GradientFill
-    )
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
     from openpyxl.utils import get_column_letter
     from django.http import HttpResponse
     from collections import defaultdict
     from datetime import timedelta
     import io
 
-    # ── Récupère les rapports (même logique que statistiques()) ────────────
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
@@ -979,10 +987,18 @@ def export_statistiques(request):
         period_label = labels_map.get(period_filter, period_filter)
         if period_filter == 'day':
             reports = base_qs.filter(uploaded_at__date=today)
+        elif period_filter == '3days':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=3))
         elif period_filter == 'week':
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        elif period_filter == '2weeks':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=14))
         elif period_filter == 'month':
             reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
+        elif period_filter == 'quarter':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=90))
+        elif period_filter == 'half':
+            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=180))
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
         else:
@@ -997,7 +1013,6 @@ def export_statistiques(request):
             pass
         return 0
 
-    # ── Calcule les données ─────────────────────────────────────────────────
     escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
     for r in reports:
         if not r.synthesis_json:
@@ -1025,6 +1040,17 @@ def export_statistiques(request):
         for k, v in escalades_sorted if v['outage_sec'] > 0
     ]
 
+    cause_data = defaultdict(float)
+    for r in reports:
+        for c in (r.top_causes_json or []):
+            cause_data[c['name']] += c['duration_sec']
+    causes_top10 = sorted(cause_data.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_cause = causes_top10[0][1] if causes_top10 else 1
+    causes_chart = [
+        {'name': k, 'duree_h': round(v / 3600, 1), 'pct': round(v / max_cause * 100)}
+        for k, v in causes_top10
+    ]
+
     site_duration = defaultdict(float)
     for r in reports:
         if not r.detailed_file:
@@ -1046,7 +1072,6 @@ def export_statistiques(request):
             continue
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
 
-    # ── Styles ──────────────────────────────────────────────────────────────
     YAS_BLUE   = '003087'
     YAS_YELLOW = 'FFC72C'
     LIGHT_BLUE = 'E8F0FF'
@@ -1056,34 +1081,30 @@ def export_statistiques(request):
     hdr_font  = Font(name='Calibri', bold=True, color=WHITE, size=11)
     hdr_fill  = PatternFill('solid', fgColor=YAS_BLUE)
     hdr_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
     sub_font  = Font(name='Calibri', bold=True, color=YAS_BLUE, size=10)
     sub_fill  = PatternFill('solid', fgColor=LIGHT_BLUE)
-
     cell_font  = Font(name='Calibri', size=10)
     cell_align = Alignment(horizontal='left', vertical='center')
     num_align  = Alignment(horizontal='center', vertical='center')
-
-    alt_fill = PatternFill('solid', fgColor=LIGHT_GRAY)
-
-    thin = Side(style='thin', color='E8EDF5')
+    alt_fill   = PatternFill('solid', fgColor=LIGHT_GRAY)
+    thin   = Side(style='thin', color='E8EDF5')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     def style_header_row(ws, row_num, ncols):
         for col in range(1, ncols + 1):
             cell = ws.cell(row=row_num, column=col)
-            cell.font   = hdr_font
-            cell.fill   = hdr_fill
+            cell.font      = hdr_font
+            cell.fill      = hdr_fill
             cell.alignment = hdr_align
-            cell.border = border
+            cell.border    = border
 
     def style_data_row(ws, row_num, ncols, alt=False):
         for col in range(1, ncols + 1):
             cell = ws.cell(row=row_num, column=col)
-            cell.font   = Font(name='Calibri', size=10)
-            cell.fill   = alt_fill if alt else PatternFill('solid', fgColor=WHITE)
+            cell.font      = Font(name='Calibri', size=10)
+            cell.fill      = alt_fill if alt else PatternFill('solid', fgColor=WHITE)
             cell.alignment = num_align if col > 1 else cell_align
-            cell.border = border
+            cell.border    = border
 
     def add_title_block(ws, title, period):
         ws.merge_cells('A1:F1')
@@ -1093,20 +1114,15 @@ def export_statistiques(request):
         t.alignment = Alignment(horizontal='left', vertical='center')
         t.fill      = PatternFill('solid', fgColor=LIGHT_BLUE)
         ws.row_dimensions[1].height = 28
-
         ws.merge_cells('A2:F2')
         p = ws['A2']
         p.value     = f'Période : {period}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
         p.font      = Font(name='Calibri', size=10, color='888888')
         p.alignment = Alignment(horizontal='left', vertical='center')
         ws.row_dimensions[2].height = 18
+        ws.row_dimensions[3].height = 6
 
-        ws.row_dimensions[3].height = 6  # espace
-
-    # ── Workbook ─────────────────────────────────────────────────────────────
-    wb = openpyxl.Workbook()
-
-    # ══ Onglet 1 : Classement Escalades ══════════════════════════════════════
+    wb  = openpyxl.Workbook()
     ws1 = wb.active
     ws1.title = '📊 Escalades'
     ws1.sheet_view.showGridLines = False
@@ -1114,15 +1130,12 @@ def export_statistiques(request):
     ws1.column_dimensions['B'].width = 14
     ws1.column_dimensions['C'].width = 14
     ws1.column_dimensions['D'].width = 14
-
     add_title_block(ws1, 'Classement des Escalades', period_label)
-
     headers = ['Escalade', 'Incidents', 'Outage (h)', 'Durée (h)']
     for col, h in enumerate(headers, 1):
         ws1.cell(row=4, column=col).value = h
     style_header_row(ws1, 4, len(headers))
     ws1.row_dimensions[4].height = 22
-
     for i, (esc, v) in enumerate(escalades_sorted):
         row = 5 + i
         ws1.cell(row=row, column=1).value = esc
@@ -1131,8 +1144,6 @@ def export_statistiques(request):
         ws1.cell(row=row, column=4).value = round(v['duree_sec']  / 3600, 1)
         style_data_row(ws1, row, len(headers), alt=(i % 2 == 1))
         ws1.row_dimensions[row].height = 20
-
-    # Ligne total
     if escalades_sorted:
         tr = 5 + len(escalades_sorted)
         ws1.cell(tr, 1).value = 'TOTAL'
@@ -1141,25 +1152,21 @@ def export_statistiques(request):
         ws1.cell(tr, 4).value = round(sum(v['duree_sec'] for _, v in escalades_sorted) / 3600, 1)
         for col in range(1, 5):
             c = ws1.cell(tr, col)
-            c.font   = Font(name='Calibri', bold=True, size=10, color=WHITE)
-            c.fill   = PatternFill('solid', fgColor=YAS_BLUE)
+            c.font      = Font(name='Calibri', bold=True, size=10, color=WHITE)
+            c.fill      = PatternFill('solid', fgColor=YAS_BLUE)
             c.alignment = num_align if col > 1 else cell_align
-            c.border = border
+            c.border    = border
         ws1.row_dimensions[tr].height = 22
 
-    # ══ Onglet 2 : Récurrence des Sites ══════════════════════════════════════
     ws2 = wb.create_sheet('📡 Sites')
     ws2.sheet_view.showGridLines = False
     ws2.column_dimensions['A'].width = 32
     ws2.column_dimensions['B'].width = 16
-
     add_title_block(ws2, 'Récurrence des Sites (Top 10)', period_label)
-
     for col, h in enumerate(['Site', 'Occurrences'], 1):
         ws2.cell(row=4, column=col).value = h
     style_header_row(ws2, 4, 2)
     ws2.row_dimensions[4].height = 22
-
     for i, (site, cnt) in enumerate(sites_top10):
         row = 5 + i
         ws2.cell(row, 1).value = site
@@ -1167,23 +1174,18 @@ def export_statistiques(request):
         style_data_row(ws2, row, 2, alt=(i % 2 == 1))
         ws2.row_dimensions[row].height = 20
 
-    # ══ Onglet 3 : Poids & Outage / Métier ═══════════════════════════════════
     from openpyxl.chart import PieChart3D, Reference
     from openpyxl.chart.series import DataPoint
-
     ws3 = wb.create_sheet('🥧 Outage Métier')
     ws3.sheet_view.showGridLines = False
     ws3.column_dimensions['A'].width = 30
     ws3.column_dimensions['B'].width = 16
     ws3.column_dimensions['C'].width = 12
-
     add_title_block(ws3, 'Poids & Outage par Métier', period_label)
-
     for col, h in enumerate(['Métier / Escalade', 'Outage (h)', '% Total'], 1):
         ws3.cell(row=4, column=col).value = h
     style_header_row(ws3, 4, 3)
     ws3.row_dimensions[4].height = 22
-
     for i, (name, h, pct) in enumerate(outage_data):
         row = 5 + i
         ws3.cell(row, 1).value = name
@@ -1191,7 +1193,6 @@ def export_statistiques(request):
         ws3.cell(row, 3).value = f'{pct}%'
         style_data_row(ws3, row, 3, alt=(i % 2 == 1))
         ws3.row_dimensions[row].height = 20
-
     if outage_data:
         tr = 5 + len(outage_data)
         ws3.cell(tr, 1).value = 'TOTAL'
@@ -1204,59 +1205,39 @@ def export_statistiques(request):
             c.alignment = num_align if col > 1 else cell_align
             c.border    = border
         ws3.row_dimensions[tr].height = 22
-
-    # ── Camembert Excel ──────────────────────────────────────────────────────
-    if outage_data:
         pie = PieChart3D()
-        pie.style = 26 
-        pie.title    = 'Outage par Métier'
-        pie.style    = 10
-        pie.width    = 16
-        pie.height   = 14
-
-        # Données : colonne B (valeurs outage_h), lignes 5 à 5+n-1
-        n_rows = len(outage_data)
-        data_ref   = Reference(ws3, min_col=2, min_row=4, max_row=4 + n_rows)  # inclut header
+        pie.title  = 'Outage par Métier'
+        pie.style  = 10
+        pie.width  = 16
+        pie.height = 14
+        n_rows     = len(outage_data)
+        data_ref   = Reference(ws3, min_col=2, min_row=4, max_row=4 + n_rows)
         labels_ref = Reference(ws3, min_col=1, min_row=5, max_row=4 + n_rows)
-
         pie.add_data(data_ref, titles_from_data=True)
         pie.set_categories(labels_ref)
-
-        # Couleurs des tranches — palette YAS
-        SLICE_COLORS = [
-            '003087', 'E05A2B', 'FF9800', '2196F3', 'FFC72C',
-            '4CAF50', '9C27B0', '00BCD4', '8BC34A', 'FF5722',
-        ]
+        SLICE_COLORS = ['003087','E05A2B','FF9800','2196F3','FFC72C','4CAF50','9C27B0','00BCD4','8BC34A','FF5722']
         series = pie.series[0]
         for idx in range(n_rows):
             pt = DataPoint(idx=idx)
             pt.graphicalProperties.solidFill = SLICE_COLORS[idx % len(SLICE_COLORS)]
             series.dPt.append(pt)
-
-        # Affiche les labels avec % et nom de catégorie
         series.dLbls = openpyxl.chart.label.DataLabelList()
-        series.dLbls.showCatName = True
-        series.dLbls.showPercent = True
-        series.dLbls.showVal     = False
+        series.dLbls.showCatName   = True
+        series.dLbls.showPercent   = True
+        series.dLbls.showVal       = False
         series.dLbls.showLegendKey = False
-        series.dLbls.separator = '\n'
-
-        # Place le graphique à droite du tableau (colonne E)
+        series.dLbls.separator     = '\n'
         ws3.add_chart(pie, 'E4')
 
-    # ══ Onglet 4 : Sites les Plus Dégradés ═══════════════════════════════════
     ws4 = wb.create_sheet('🔴 Sites Dégradés')
     ws4.sheet_view.showGridLines = False
     ws4.column_dimensions['A'].width = 32
     ws4.column_dimensions['B'].width = 16
-
     add_title_block(ws4, 'Sites les Plus Dégradés (Top 10)', period_label)
-
     for col, h in enumerate(['Site', 'Durée totale (h)'], 1):
         ws4.cell(row=4, column=col).value = h
     style_header_row(ws4, 4, 2)
     ws4.row_dimensions[4].height = 22
-
     for i, (site, sec) in enumerate(degraded_top10):
         row = 5 + i
         ws4.cell(row, 1).value = site
@@ -1264,11 +1245,77 @@ def export_statistiques(request):
         style_data_row(ws4, row, 2, alt=(i % 2 == 1))
         ws4.row_dimensions[row].height = 20
 
-    # ── Export ──────────────────────────────────────────────────────────────
+    semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(reports)
+    if semaine_labels_exp:
+        ws5 = wb.create_sheet('📈 Disponibilité')
+        ws5.sheet_view.showGridLines = False
+        add_title_block(ws5, 'Disponibilité Équipements (%)', period_label)
+        headers_dispo = ['Escalade'] + semaine_labels_exp
+        for col, h in enumerate(headers_dispo, 1):
+            ws5.column_dimensions[get_column_letter(col)].width = 18
+            ws5.cell(row=4, column=col).value = h
+        ws5.column_dimensions['A'].width = 16
+        style_header_row(ws5, 4, len(headers_dispo))
+        ws5.row_dimensions[4].height = 22
+        DISPO_ESCS = ['ENERGIE', 'RAN', 'TRANS FH', 'TRANS IP']
+        for i, esc in enumerate(DISPO_ESCS):
+            row = 5 + i
+            ws5.cell(row, 1).value = esc
+            for j, lbl in enumerate(semaine_labels_exp, 2):
+                val = dispo_table_exp.get(esc, {}).get(lbl)
+                if val is not None:
+                    c = ws5.cell(row, j)
+                    c.value = round(val, 4)
+                    c.number_format = '0.0000"%"'
+                    if val >= 99.9:
+                        c.fill = PatternFill('solid', fgColor='E8F5E9')
+                    elif val >= 99.5:
+                        c.fill = PatternFill('solid', fgColor='FFF8E1')
+                    else:
+                        c.fill = PatternFill('solid', fgColor='FFEBEE')
+            style_data_row(ws5, row, len(headers_dispo), alt=(i % 2 == 1))
+            ws5.row_dimensions[row].height = 20
+
+        from openpyxl.chart import LineChart, Reference, Series
+        lc = LineChart()
+        lc.title             = 'Disponibilité Équipements (%)'
+        lc.style             = 10
+        lc.y_axis.title      = 'Disponibilité (%)'
+        lc.x_axis.title      = 'Semaine'
+        lc.width             = 24
+        lc.height            = 14
+        lc.y_axis.numFmt     = '0.00"%"'
+        lc.x_axis.tickLblPos = 'low'
+        ESC_COLORS = {'ENERGIE': '003087', 'RAN': '4CAF50', 'TRANS FH': 'FFC72C', 'TRANS IP': '2196F3'}
+        n_semaines = len(semaine_labels_exp)
+        for i, esc in enumerate(DISPO_ESCS):
+            data_row = 5 + i
+            data_ref = Reference(ws5, min_col=2, max_col=1 + n_semaines, min_row=data_row, max_row=data_row)
+            serie = Series(data_ref, title=esc)
+            serie.graphicalProperties.line.solidFill         = ESC_COLORS[esc]
+            serie.graphicalProperties.line.width             = 20000
+            serie.smooth                                     = True
+            serie.marker.symbol                              = 'circle'
+            serie.marker.size                                = 6
+            serie.marker.graphicalProperties.solidFill       = ESC_COLORS[esc]
+            serie.marker.graphicalProperties.line.solidFill  = ESC_COLORS[esc]
+            lc.series.append(serie)
+        cats = Reference(ws5, min_col=2, max_col=1 + n_semaines, min_row=4)
+        lc.set_categories(cats)
+        all_dispo_vals = [
+            dispo_table_exp.get(esc, {}).get(lbl)
+            for esc in DISPO_ESCS for lbl in semaine_labels_exp
+            if dispo_table_exp.get(esc, {}).get(lbl) is not None
+        ]
+        if all_dispo_vals:
+            lc.y_axis.scaling.min = round(min(all_dispo_vals) - 0.2, 1)
+            lc.y_axis.scaling.max = 100.05
+        lc.legend.position = 'b'
+        ws5.add_chart(lc, f'A{6 + len(DISPO_ESCS) + 2}')
+
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-
     filename = f"Statistiques_YAS_{date.today().strftime('%Y%m%d')}_{period_label.replace(' ', '_')}.xlsx"
     response = HttpResponse(
         buffer.read(),
@@ -1277,13 +1324,85 @@ def export_statistiques(request):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+
+def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
+    import datetime as _dt
+    from collections import defaultdict
+
+    MOIS_FR = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+               'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
+
+    def _week_label(year, week):
+        lundi    = _dt.date.fromisocalendar(year, week, 1)
+        dimanche = lundi + _dt.timedelta(days=6)
+        if lundi.month == dimanche.month:
+            return f"{lundi.day}-{dimanche.day} {MOIS_FR[dimanche.month]}"
+        return f"{lundi.day} {MOIS_FR[lundi.month]}-{dimanche.day} {MOIS_FR[dimanche.month]}"
+
+    outage_par_jour = defaultdict(lambda: defaultdict(float))
+    for r in reports:
+        for esc, jours in (r.outage_journalier_json or {}).items():
+            for day_str, sec in jours.items():
+                outage_par_jour[esc][day_str] += sec
+
+    if not outage_par_jour:
+        return [], {}, {}
+
+    all_days = set()
+    for jours in outage_par_jour.values():
+        all_days.update(jours.keys())
+
+    semaines_set = set()
+    for day_str in all_days:
+        try:
+            d = _dt.date.fromisoformat(day_str)
+            if cutoff_date and d < cutoff_date:
+                continue
+            if cutoff_end and d > cutoff_end:
+                continue
+            iso = d.isocalendar()
+            semaines_set.add((iso[0], iso[1]))
+        except Exception:
+            pass
+
+    if not semaines_set:
+        return [], {}, {}
+
+    semaines_sorted = sorted(semaines_set)
+    semaine_labels  = [_week_label(y, w) for y, w in semaines_sorted]
+    semaine_keys    = [f"S{w:02d}-{y}" for y, w in semaines_sorted]
+
+    # Le reste est identique...
+    outage_sec_table = defaultdict(lambda: defaultdict(float))
+    for esc, jours in outage_par_jour.items():
+        for day_str, sec in jours.items():
+            try:
+                d   = _dt.date.fromisoformat(day_str)
+                iso = d.isocalendar()
+                key = f"S{iso[1]:02d}-{iso[0]}"
+                outage_sec_table[esc][key] += sec
+            except Exception:
+                pass
+
+    dispo_table  = {}
+    outage_table = {}
+    for esc in NB_SITES:
+        nb = NB_SITES[esc]
+        dispo_table[esc]  = {}
+        outage_table[esc] = {}
+        for lbl, key in zip(semaine_labels, semaine_keys):
+            outage_sec = outage_sec_table[esc].get(key, 0)
+            total_sec  = nb * 7 * 24 * 3600
+            dispo_pct  = round((1 - outage_sec / total_sec) * 100, 4) if total_sec else None
+            h  = int(outage_sec // 3600)
+            m  = int((outage_sec % 3600) // 60)
+            dispo_table[esc][lbl]  = dispo_pct
+            outage_table[esc][lbl] = f"{h}:{m:02d}"
+
+    return semaine_labels, dispo_table, outage_table
+
+
 def statistiques(request):
-    """
-    Modes :
-      1. ?report=<pk>  -> stats du rapport specifique
-      2. ?period=...   -> stats agregees de la periode
-      3. (defaut)      -> stats du dernier rapport traite
-    """
     from collections import defaultdict
     from datetime import timedelta
 
@@ -1302,10 +1421,7 @@ def statistiques(request):
         period_filter = 'report'
     elif period_filter == 'latest' or period_filter not in ('day', 'week', 'month', 'year', 'all'):
         single_report = base_qs.first()
-        if single_report:
-            reports = base_qs.filter(pk=single_report.pk)
-        else:
-            reports = base_qs.none()
+        reports = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
         today = date.today()
@@ -1359,22 +1475,37 @@ def statistiques(request):
             for s in r.top_sites_json:
                 site_data[s['name']] += s['count']
     sites_top10 = sorted(site_data.items(), key=lambda x: x[1], reverse=True)[:10]
-    max_site = sites_top10[0][1] if sites_top10 else 1
+    max_site    = sites_top10[0][1] if sites_top10 else 1
     sites_chart = [
         {'name': k, 'count': v, 'pct': round(v / max_site * 100)}
         for k, v in sites_top10
     ]
 
     total_outage_sec = sum(v['outage_sec'] for v in escalade_data.values())
+
+    SEUIL_AUTRES = 3
     outage_chart = []
+    autres_sec   = 0.0
     for k, v in escalades_sorted:
         if v['outage_sec'] > 0:
             pct = round(v['outage_sec'] / total_outage_sec * 100) if total_outage_sec else 0
-            outage_chart.append({
-                'name':     k,
-                'outage_h': round(v['outage_sec'] / 3600, 1),
-                'pct':      pct,
-            })
+            if pct < SEUIL_AUTRES:
+                autres_sec += v['outage_sec']
+            else:
+                outage_chart.append({
+                    'name':     k,
+                    'outage_h': round(v['outage_sec'] / 3600, 1),
+                    'pct':      pct,
+                })
+    if autres_sec > 0:
+        autres_pct = max(0, 100 - sum(d['pct'] for d in outage_chart))
+        outage_chart.append({
+            'name':      'Autres',
+            'outage_h':  round(autres_sec / 3600, 1),
+            'pct':       autres_pct,
+            'is_autres': True,
+        })
+
     total_outage_h = round(total_outage_sec / 3600, 1)
 
     site_duration = defaultdict(float)
@@ -1398,10 +1529,49 @@ def statistiques(request):
             continue
 
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
-    max_deg = degraded_top10[0][1] if degraded_top10 else 1
+    max_deg        = degraded_top10[0][1] if degraded_top10 else 1
     degraded_chart = [
         {'name': k, 'duration_h': round(v / 3600, 1), 'pct': round(v / max_deg * 100)}
         for k, v in degraded_top10
+    ]
+
+    # ── Outage par Cause (Durée) ──────────────────────────────────────────
+    cause_data = defaultdict(float)
+    for r in reports:
+        for c in (r.top_causes_json or []):
+            cause_data[c['name']] += c['duration_sec']
+    causes_top10 = sorted(cause_data.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_cause    = causes_top10[0][1] if causes_top10 else 1
+    causes_chart = [
+        {'name': k, 'duree_h': round(v / 3600, 1), 'pct': round(v / max_cause * 100)}
+        for k, v in causes_top10
+    ]
+
+    # ── Incidents par Cause (Nombre) ─────────────────────────────────────
+    cause_count_data = defaultdict(int)
+    for r in reports:
+        if not r.detailed_file:
+            continue
+        file_name = r.detailed_file.name or ''
+        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
+            continue
+        try:
+            import pandas as pd
+            df = pd.read_excel(r.detailed_file.path)
+            cause_col2 = next((c for c in df.columns if c.strip() in ('Root Cause', 'Cause')), None)
+            if cause_col2:
+                for val in df[cause_col2].dropna().astype(str):
+                    val = val.strip()
+                    if val and val != 'nan':
+                        cause_count_data[val] += 1
+        except Exception:
+            continue
+
+    causes_count_top10 = sorted(cause_count_data.items(), key=lambda x: x[1], reverse=True)[:10]
+    max_cause_count    = causes_count_top10[0][1] if causes_count_top10 else 1
+    causes_count_chart = [
+        {'name': k, 'count': v, 'pct': round(v / max_cause_count * 100)}
+        for k, v in causes_count_top10
     ]
 
     donut_svg = _make_donut_svg(outage_chart, total_outage_h)
@@ -1410,27 +1580,87 @@ def statistiques(request):
         for i, d in enumerate(outage_chart)
     ]
 
-    total_reports = reports.count()
+    total_reports     = reports.count()
     evolution_reports = list(reports.order_by('uploaded_at'))
-    evolution_labels = [r.uploaded_at.strftime('%d/%m') for r in evolution_reports]
+    evolution_labels  = [r.uploaded_at.strftime('%d/%m') for r in evolution_reports]
     evolution_incidents = [r.total_incidents for r in evolution_reports]
-    evolution_outage = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
+    evolution_outage    = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
+
+    import datetime as _dt
+    if period_filter == 'custom':
+        date_from  = request.GET.get('date_from')
+        date_to    = request.GET.get('date_to')
+        cutoff     = date.fromisoformat(date_from) if date_from else None
+        cutoff_end = date.fromisoformat(date_to)   if date_to   else None
+        semaine_labels, dispo_table, outage_table = _calc_disponibilite(
+            base_qs, cutoff_date=cutoff, cutoff_end=cutoff_end
+        )
+    elif period_filter in ('report', 'latest') and single_report:
+        date_debut = single_report.date_rapport
+        cutoff_end = single_report.date_fin or date_debut
+        semaine_labels, dispo_table, outage_table = _calc_disponibilite(
+            reports, cutoff_date=date_debut, cutoff_end=cutoff_end
+        )
+    else:
+        period_days = {
+            '3days':   3,
+            'week':    7,
+            '2weeks':  14,
+            'month':   30,
+            'quarter': 90,
+            'half':    180,
+            'year':    365,
+        }
+        nb_days = period_days.get(period_filter)
+        cutoff  = (date.today() - _dt.timedelta(days=nb_days)) if nb_days else None
+        semaine_labels, dispo_table, outage_table = _calc_disponibilite(base_qs, cutoff_date=cutoff)
+
+    DISPO_COLORS = {
+        'ENERGIE':  '#003087',
+        'RAN':      '#4CAF50',
+        'TRANS FH': '#FFC72C',
+        'TRANS IP': '#2196F3',
+    }
+    dispo_series = []
+    for esc, color in DISPO_COLORS.items():
+        if esc in dispo_table and any(v for v in dispo_table[esc].values()):
+            dispo_series.append({
+                'name':  esc,
+                'color': color,
+                'data':  [dispo_table[esc].get(lbl) for lbl in semaine_labels],
+            })
+
+    import json as _json
+    dispo_series_js = [
+        {
+            'name':  s['name'],
+            'color': s['color'],
+            'data':  [dispo_table[s['name']].get(lbl) for lbl in semaine_labels],
+        }
+        for s in dispo_series
+    ]
 
     return render(request, 'reports/statistiques.html', {
-        'period_filter':   period_filter,
-        'single_report':   single_report,
-        'escalades_chart': escalades_chart,
-        'sites_chart':     sites_chart,
-        'outage_chart':    outage_chart_colored,
-        'degraded_chart':  degraded_chart,
-        'total_outage_h':  total_outage_h,
-        'total_reports':   total_reports,
-        'donut_svg':       donut_svg,
+        'period_filter':        period_filter,
+        'single_report':        single_report,
+        'escalades_chart':      escalades_chart,
+        'sites_chart':          sites_chart,
+        'outage_chart':         outage_chart_colored,
+        'degraded_chart':       degraded_chart,
+        'causes_chart':         causes_chart,
+        'total_outage_h':       total_outage_h,
+        'total_reports':        total_reports,
+        'donut_svg':            donut_svg,
         'show_evolution_chart': len(evolution_labels) > 1,
-        'evolution_labels':    mark_safe(json.dumps(evolution_labels)),
-        'evolution_incidents': mark_safe(json.dumps(evolution_incidents)),
-        'evolution_outage':    mark_safe(json.dumps(evolution_outage)),
-        'evolution_labels':    evolution_labels,
-        'evolution_incidents': evolution_incidents,
-        'evolution_outage':    evolution_outage,
+        'evolution_labels':     mark_safe(json.dumps(evolution_labels)),
+        'evolution_incidents':  mark_safe(json.dumps(evolution_incidents)),
+        'evolution_outage':     mark_safe(json.dumps(evolution_outage)),
+        'semaine_labels':       semaine_labels,
+        'dispo_table':          dispo_table,
+        'outage_table':         outage_table,
+        'dispo_series':         dispo_series,
+        'nb_sites':             NB_SITES,
+        'semaine_labels_js':    mark_safe(_json.dumps(semaine_labels)),
+        'dispo_series_js':      mark_safe(_json.dumps(dispo_series_js)),
+        'causes_count_chart':   causes_count_chart,
     })
