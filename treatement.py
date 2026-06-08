@@ -107,9 +107,9 @@ def process_file(input_file, date_rapport, date_fin=None):
     # --- CREATION DU TABLEAU DE SYNTHESE (ESCALADE) ---
     rapport_lignes = []
     escalades_ordre = [
-        "ENERGIE", "RAN", "TRANS FH", "ENERGIE / TRANS / RAN", 
+        "ENERGIE","TRANS FH-FIELD O","RAN-FIELD O", "ENERGIE / TRANS / RAN", 
         "TRANS / RAN", "INFRA", "PROJET", "TRANS FO", 
-        "TRANS FTTM", "TRANS IP", "ENVIRONNEMENT", "BSS","TRANS FH-FIELD O","RAN-FIELD O",
+        "TRANS FTTM", "TRANS IP", "ENVIRONNEMENT", "BSS",
     ]
     
     for esc in escalades_ordre:
