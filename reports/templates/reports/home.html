@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Accueil — ReportXCare | Yas{% endblock %}
+{% block title %}Accueil — Rapport Auto | Yas{% endblock %}
 {% block breadcrumb %}Accueil{% endblock %}
 
 {% block extra_css %}
 <style>
   :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
 
-  /* ── Hero ─────────────────────────────────────────────────────────────── */
+  /* ── Hero ── */
   .hero {
     background: linear-gradient(135deg, #003087 0%, #0047cc 60%, #003087 100%);
     border-radius: 20px; padding: 48px 52px; margin-bottom: 24px;
@@ -14,20 +14,14 @@
   }
   .hero::before {
     content: ''; position: absolute; top: -100px; right: -100px;
-    width: 350px; height: 350px;
-    background: #FFC72C; border-radius: 50%; opacity: 0.07;
+    width: 350px; height: 350px; background: #FFC72C; border-radius: 50%; opacity: 0.07;
   }
   .hero::after {
     content: 'YAS'; font-family: 'Bebas Neue', sans-serif;
-    font-size: 180px; letter-spacing: 12px;
-    color: rgba(255,255,255,0.03);
-    position: absolute; bottom: -40px; right: 30px;
-    pointer-events: none; line-height: 1;
+    font-size: 180px; letter-spacing: 12px; color: rgba(255,255,255,0.03);
+    position: absolute; bottom: -40px; right: 30px; pointer-events: none; line-height: 1;
   }
-  .hero-inner {
-    display: flex; align-items: center;
-    justify-content: space-between; gap: 40px; position: relative; z-index: 1;
-  }
+  .hero-inner { display: flex; align-items: center; justify-content: space-between; gap: 40px; position: relative; z-index: 1; }
   .hero-text { flex: 1; }
   .hero-badge {
     display: inline-flex; align-items: center; gap: 6px;
@@ -37,56 +31,23 @@
     padding: 5px 12px; border-radius: 20px; margin-bottom: 20px;
   }
   .hero-badge::before { content: '●'; font-size: 8px; }
-  .hero-title {
-    font-family: 'Bebas Neue', sans-serif; font-size: 52px;
-    color: #fff; letter-spacing: 2px; line-height: 1.05; margin-bottom: 14px;
-  }
+  .hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 52px; color: #fff; letter-spacing: 2px; line-height: 1.05; margin-bottom: 14px; }
   .hero-title span { color: #FFC72C; }
-  .hero-desc {
-    color: rgba(255,255,255,.6); font-size: 15px; line-height: 1.7;
-    max-width: 400px; margin-bottom: 30px;
-  }
+  .hero-desc { color: rgba(255,255,255,.6); font-size: 15px; line-height: 1.7; max-width: 400px; margin-bottom: 30px; }
   .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .btn-hero {
-    background: #FFC72C; color: #003087; padding: 13px 26px;
-    border-radius: 10px; font-weight: 700; font-size: 14px;
-    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
-    transition: transform .15s, box-shadow .15s;
-  }
+  .btn-hero { background: #FFC72C; color: #003087; padding: 13px 26px; border-radius: 10px; font-weight: 700; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: transform .15s, box-shadow .15s; }
   .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,199,44,.4); }
-  .btn-hero-ghost {
-    background: transparent; color: rgba(255,255,255,.8); padding: 13px 26px;
-    border-radius: 10px; font-weight: 600; font-size: 14px;
-    text-decoration: none; border: 1.5px solid rgba(255,255,255,.25);
-    transition: all .15s; display: inline-flex; align-items: center; gap: 8px;
-  }
+  .btn-hero-ghost { background: transparent; color: rgba(255,255,255,.8); padding: 13px 26px; border-radius: 10px; font-weight: 600; font-size: 14px; text-decoration: none; border: 1.5px solid rgba(255,255,255,.25); transition: all .15s; display: inline-flex; align-items: center; gap: 8px; }
   .btn-hero-ghost:hover { border-color: rgba(255,255,255,.6); color: #fff; }
-
-  /* Hero visual — mini stats + sparkline */
   .hero-visual { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; min-width: 200px; }
-  .mini-stat {
-    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
-    border-radius: 12px; padding: 12px 18px;
-    display: flex; align-items: center; gap: 12px;
-  }
-  .mini-stat-icon {
-    width: 34px; height: 34px; background: rgba(255,199,44,.2);
-    border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;
-  }
+  .mini-stat { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; gap: 12px; }
+  .mini-stat-icon { width: 34px; height: 34px; background: rgba(255,199,44,.2); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
   .mini-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #fff; letter-spacing: 1px; line-height: 1; }
   .mini-stat-lbl { font-size: 10px; color: rgba(255,255,255,.45); text-transform: uppercase; letter-spacing: .5px; }
 
-  /* ── KPI bar ──────────────────────────────────────────────────────────── */
-  .kpi-bar {
-    display: grid; grid-template-columns: repeat(4,1fr);
-    gap: 16px; margin-bottom: 24px;
-  }
-  .kpi-box {
-    background: #fff; border-radius: 14px; padding: 18px 20px;
-    border: 1px solid #e8edf5;
-    display: flex; align-items: center; gap: 14px;
-    transition: box-shadow .2s, transform .2s;
-  }
+  /* ── KPI bar ── */
+  .kpi-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-box { background: #fff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e8edf5; display: flex; align-items: center; gap: 14px; transition: box-shadow .2s, transform .2s; }
   .kpi-box:hover { box-shadow: 0 4px 20px rgba(0,48,135,.1); transform: translateY(-2px); }
   .kpi-ico { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
   .kpi-ico.blue   { background: #e8f0ff; }
@@ -97,119 +58,92 @@
   .kpi-num.warn { color: #e53e3e; }
   .kpi-lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
 
-  /* ── Main grid ────────────────────────────────────────────────────────── */
+  /* ── Main grid ── */
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
-
-  /* ── Card ─────────────────────────────────────────────────────────────── */
-  .card {
-    background: #fff; border-radius: 16px; padding: 24px;
-    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05);
-  }
-  .sec-title {
-    font-size: 15px; font-weight: 700; color: #003087;
-    margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
-  }
+  .card { background: #fff; border-radius: 16px; padding: 24px; border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05); }
+  .sec-title { font-size: 15px; font-weight: 700; color: #003087; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
   .sec-title::after { content: ''; flex: 1; height: 1px; background: #e8edf5; }
 
-  /* ── Sparkline ────────────────────────────────────────────────────────── */
+  /* ── Sparkline ── */
   .spark-wrap { margin-bottom: 20px; }
   .spark-svg { width: 100%; height: 70px; overflow: visible; }
 
-  /* ── Table rapports ───────────────────────────────────────────────────── */
-  .r-table { width: 100%; border-collapse: collapse; }
-  .r-table th {
-    text-align: left; font-size: 11px; font-weight: 600;
-    color: #999; text-transform: uppercase; letter-spacing: .5px;
-    padding: 8px 12px; border-bottom: 1px solid #e8edf5;
+  /* ── Synthèse par Escalade ── */
+  .synth-period-bar { display: flex; align-items: center; gap: 6px; }
+  .synth-btn {
+    padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid #e8edf5; background: #fff; color: #666;
+    text-decoration: none; transition: all .15s;
   }
-  .r-table td { padding: 12px; font-size: 13px; color: #333; border-bottom: 1px solid #f5f7fb; }
-  .r-table tr:last-child td { border-bottom: none; }
-  .r-table tr:hover td { background: #fafbff; }
-  .r-fname { font-weight: 600; color: #111; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-  .r-date  { color: #888; font-size: 12px; }
-
-  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .synth-btn:hover { border-color: #003087; color: #003087; }
+  .synth-btn.active { background: #003087; color: #fff; border-color: #003087; }
+  .synth-badge {
+    background: #f0f4ff; color: #003087; font-size: 11px; font-weight: 700;
+    padding: 4px 10px; border-radius: 20px;
+  }
+  .synth-table-wrap { overflow-x: auto; }
+  .synth-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .synth-table th {
+    text-align: left; font-size: 11px; font-weight: 700; color: #999;
+    text-transform: uppercase; letter-spacing: .5px;
+    padding: 8px 12px; border-bottom: 2px solid #e8edf5;
+  }
+  .synth-table th.num { text-align: center; }
+  .synth-table td { padding: 11px 12px; border-bottom: 1px solid #f5f7fb; color: #333; }
+  .synth-table td.num { text-align: center; }
+  .synth-table tr:last-child td { border-bottom: none; }
+  .synth-table tr:hover td { background: #fafbff; }
+  .synth-table tr.synth-total td {
+    background: #e8f0ff; font-weight: 700; color: #003087;
+    border-top: 2px solid #003087;
+  }
+  .synth-esc { font-weight: 600; color: #111; }
+  .synth-time { font-size: 12px; color: #666; font-family: 'DM Mono', monospace, sans-serif; }
+  .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
   .badge-ok   { background: #f0fff4; color: #166534; }
   .badge-warn { background: #fff8e1; color: #7a5a00; }
 
-  /* Barre outage inline */
-  .outage-bar { width: 60px; height: 5px; background: #f0f4ff; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
-  .outage-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg,#003087,#0047cc); }
-
-  .link-view { color: #003087; text-decoration: none; font-weight: 600; font-size: 12px; }
-  .link-view:hover { color: #0047cc; }
-
-  .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
-  .empty a { color: #003087; font-weight: 600; text-decoration: none; }
-
-  /* ── Sidebar ──────────────────────────────────────────────────────────── */
+  /* ── Sidebar ── */
   .sidebar { display: flex; flex-direction: column; gap: 20px; }
-
-  /* Dernier rapport card */
-  .last-report-card {
-    background: linear-gradient(135deg,#003087,#0047cc);
-    border-radius: 14px; padding: 20px;
-  }
+  .last-report-card { background: linear-gradient(135deg,#003087,#0047cc); border-radius: 14px; padding: 20px; }
   .lr-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #FFC72C; text-transform: uppercase; margin-bottom: 8px; }
   .lr-name  { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lr-stats { display: flex; gap: 16px; margin-bottom: 14px; }
   .lr-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #fff; letter-spacing: 1px; line-height: 1; }
   .lr-stat-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; }
-  .lr-btn {
-    display: block; text-align: center; background: #FFC72C; color: #003087;
-    border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px;
-    text-decoration: none; transition: box-shadow .15s;
-  }
+  .lr-btn { display: block; text-align: center; background: #FFC72C; color: #003087; border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; text-decoration: none; transition: box-shadow .15s; }
   .lr-btn:hover { box-shadow: 0 4px 16px rgba(255,199,44,.4); }
-
-  /* Actions rapides */
   .qa-list { display: flex; flex-direction: column; gap: 8px; }
-  .qa-btn {
-    display: flex; align-items: center; gap: 12px;
-    background: #f0f4ff; border: 1.5px solid transparent;
-    border-radius: 10px; padding: 11px 14px;
-    color: #003087; text-decoration: none; font-weight: 600; font-size: 13px;
-    transition: border-color .15s, background .15s;
-  }
+  .qa-btn { display: flex; align-items: center; gap: 12px; background: #f0f4ff; border: 1.5px solid transparent; border-radius: 10px; padding: 11px 14px; color: #003087; text-decoration: none; font-weight: 600; font-size: 13px; transition: border-color .15s, background .15s; }
   .qa-btn:hover { border-color: #003087; background: #e8f0ff; }
-  .qa-ico {
-    width: 32px; height: 32px; background: #003087; color: #FFC72C;
-    border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    font-size: 15px; flex-shrink: 0;
-  }
-
-  /* Steps */
+  .qa-ico { width: 32px; height: 32px; background: #003087; color: #FFC72C; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
   .steps { display: flex; flex-direction: column; }
   .step { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f0f4ff; }
   .step:last-child { border-bottom: none; }
-  .step-num {
-    width: 28px; height: 28px; flex-shrink: 0;
-    background: #FFC72C; color: #003087; border-radius: 7px;
-    font-weight: 800; font-size: 12px;
-    display: flex; align-items: center; justify-content: center;
-  }
+  .step-num { width: 28px; height: 28px; flex-shrink: 0; background: #FFC72C; color: #003087; border-radius: 7px; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center; }
   .step h4 { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 2px; }
   .step p  { font-size: 12px; color: #888; line-height: 1.5; }
+  .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
+  .empty a { color: #003087; font-weight: 600; text-decoration: none; }
 
   @media(max-width:900px){
     .kpi-bar { grid-template-columns: repeat(2,1fr); }
     .main-grid { grid-template-columns: 1fr; }
     .hero-visual { display: none; }
     .hero-title { font-size: 38px; }
+    .synth-period-bar { flex-wrap: wrap; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
+<!-- ── Hero ── -->
 <div class="hero">
   <div class="hero-inner">
     <div class="hero-text">
       <div class="hero-badge">ISOC Automation</div>
-      <h1 class="hero-title">
-        Report<span>XCare</span><br>Réseau Yas
-      </h1>
+      <h1 class="hero-title">Rapport <span>Automatique</span><br>Réseau YAS</h1>
       <p class="hero-desc">
         Importez vos fichiers Excel et obtenez en quelques secondes
         statistiques, synthèses par escalade et rapports prêts à l'emploi.
@@ -223,297 +157,212 @@
     <div class="hero-visual">
       <div class="mini-stat">
         <div class="mini-stat-icon">📋</div>
-        <div>
-          <div class="mini-stat-val">{{ total_reports }}</div>
-          <div class="mini-stat-lbl">Rapports</div>
-        </div>
+        <div><div class="mini-stat-val">{{ total_reports }}</div><div class="mini-stat-lbl">Rapports</div></div>
       </div>
       <div class="mini-stat">
         <div class="mini-stat-icon">⚠️</div>
-        <div>
-          <div class="mini-stat-val">{{ total_unresolved }}</div>
-          <div class="mini-stat-lbl">Non résolus</div>
-        </div>
+        <div><div class="mini-stat-val">{{ total_unresolved }}</div><div class="mini-stat-lbl">Non résolus</div></div>
       </div>
       <div class="mini-stat">
         <div class="mini-stat-icon">⏱</div>
-        <div>
-          <div class="mini-stat-val">{{ total_outage_h }}h</div>
-          <div class="mini-stat-lbl">Outage total</div>
-        </div>
+        <div><div class="mini-stat-val">{{ total_outage_h }}h</div><div class="mini-stat-lbl">Outage total</div></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── KPI bar ────────────────────────────────────────────────────────────── -->
+<!-- ── KPI bar ── -->
 <div class="kpi-bar">
   <div class="kpi-box">
     <div class="kpi-ico blue">📊</div>
-    <div>
-      <div class="kpi-num">{{ total_reports }}</div>
-      <div class="kpi-lbl">Rapports traités</div>
-    </div>
+    <div><div class="kpi-num">{{ total_reports }}</div><div class="kpi-lbl">Rapports traités</div></div>
   </div>
   <div class="kpi-box">
-  <div class="kpi-ico yellow">🔥</div>
-  <div>
-    <div class="kpi-num">{{ total_incidents }}</div>
-    <div class="kpi-lbl">Incidents total</div>
-    {% if trend_pct is not None %}
-      <div style="font-size:11px;margin-top:4px;font-weight:700;
-        color:{% if trend_pct > 0 %}#e53e3e{% elif trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
-        {% if trend_pct > 0 %}▲{% elif trend_pct < 0 %}▼{% else %}—{% endif %}
-        {{ trend_pct }}% vs rapport précédent
-      </div>
-    {% endif %}
+    <div class="kpi-ico yellow">🔥</div>
+    <div>
+      <div class="kpi-num">{{ total_incidents }}</div>
+      <div class="kpi-lbl">Incidents total</div>
+      {% if trend_pct is not None %}
+        <div style="font-size:11px;margin-top:4px;font-weight:700;color:{% if trend_pct > 0 %}#e53e3e{% elif trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
+          {% if trend_pct > 0 %}▲{% elif trend_pct < 0 %}▼{% else %}—{% endif %} {{ trend_pct }}% vs précédent
+        </div>
+      {% endif %}
+    </div>
   </div>
-</div>
   <div class="kpi-box">
     <div class="kpi-ico red">⚠️</div>
-    <div>
-      <div class="kpi-num {% if total_unresolved > 0 %}warn{% endif %}">{{ total_unresolved }}</div>
-      <div class="kpi-lbl">Non résolus</div>
-    </div>
+    <div><div class="kpi-num {% if total_unresolved > 0 %}warn{% endif %}">{{ total_unresolved }}</div><div class="kpi-lbl">Non résolus</div></div>
   </div>
   <div class="kpi-box">
     <div class="kpi-ico green">⏱</div>
-    <div>
-      <div class="kpi-num">{{ total_outage_h }}h</div>
-      <div class="kpi-lbl">Outage cumulé</div>
-    </div>
+    <div><div class="kpi-num">{{ total_outage_h }}h</div><div class="kpi-lbl">Outage cumulé</div></div>
   </div>
 </div>
 
-<!-- ── Main grid ──────────────────────────────────────────────────────────── -->
+<!-- ── Main grid ── -->
 <div class="main-grid">
 
-  <!-- Colonne principale -->
   <div style="display:flex;flex-direction:column;gap:20px;">
 
-    <!-- Sparkline évolution incidents -->
+    <!-- Sparkline -->
     {% if spark_values %}
     <div class="card">
       <div class="sec-title">📈 Évolution des incidents</div>
       <div class="spark-wrap">
-        <svg class="spark-svg" id="sparkSvg" viewBox="0 0 600 70" preserveAspectRatio="none">
-          <!-- rendu JS -->
-        </svg>
+        <svg class="spark-svg" id="sparkSvg" viewBox="0 0 600 70" preserveAspectRatio="none"></svg>
       </div>
       <div id="sparkLegend" style="display:flex;justify-content:space-between;font-size:11px;color:#aaa;margin-top:4px;"></div>
     </div>
     <script>
     (function(){
-      const vals   = {{ spark_values|safe }};
-      const labels = {{ spark_labels|safe }};
+      const vals = {{ spark_values|safe }}, labels = {{ spark_labels|safe }};
       if (!vals.length) return;
-
-      const W = 600, H = 70, PAD = 8;
-      const mn = Math.min(...vals), mx = Math.max(...vals) || 1;
-      const svg = document.getElementById('sparkSvg');
-
-      const xs = vals.map((_,i) => PAD + i * (W - PAD*2) / Math.max(vals.length-1,1));
-      const ys = vals.map(v => H - PAD - (v - mn) / (mx - mn || 1) * (H - PAD*2));
-
-      // Zone remplie
-      const areaD = `M${xs[0]},${H} ` + xs.map((x,i)=>`L${x},${ys[i]}`).join(' ') + ` L${xs[xs.length-1]},${H} Z`;
-      const area  = document.createElementNS('http://www.w3.org/2000/svg','path');
-      area.setAttribute('d', areaD);
-      area.setAttribute('fill', 'url(#sparkGrad)');
-
-      // Ligne
-      const lineD = `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x,i)=>`L${x},${ys[i+1]}`).join(' ');
-      const line  = document.createElementNS('http://www.w3.org/2000/svg','path');
-      line.setAttribute('d', lineD);
-      line.setAttribute('fill','none');
-      line.setAttribute('stroke','#003087');
-      line.setAttribute('stroke-width','2.5');
-      line.setAttribute('stroke-linecap','round');
-      line.setAttribute('stroke-linejoin','round');
-
-      // Gradient
-      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
-      defs.innerHTML = `<linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#003087" stop-opacity="0.18"/>
-        <stop offset="100%" stop-color="#003087" stop-opacity="0.01"/>
-      </linearGradient>`;
+      const W=600,H=70,PAD=8, svg=document.getElementById('sparkSvg');
+      const mn=Math.min(...vals), mx=Math.max(...vals)||1;
+      const xs=vals.map((_,i)=>PAD+i*(W-PAD*2)/Math.max(vals.length-1,1));
+      const ys=vals.map(v=>H-PAD-(v-mn)/(mx-mn||1)*(H-PAD*2));
+      const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+      defs.innerHTML=`<linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#003087" stop-opacity="0.18"/><stop offset="100%" stop-color="#003087" stop-opacity="0.01"/></linearGradient>`;
       svg.appendChild(defs);
-      svg.appendChild(area);
+      const area=document.createElementNS('http://www.w3.org/2000/svg','path');
+      area.setAttribute('d',`M${xs[0]},${H} `+xs.map((x,i)=>`L${x},${ys[i]}`).join(' ')+` L${xs[xs.length-1]},${H} Z`);
+      area.setAttribute('fill','url(#sparkGrad)'); svg.appendChild(area);
+      const line=document.createElementNS('http://www.w3.org/2000/svg','path');
+      line.setAttribute('d',`M${xs[0]},${ys[0]} `+xs.slice(1).map((x,i)=>`L${x},${ys[i+1]}`).join(' '));
+      line.setAttribute('fill','none');line.setAttribute('stroke','#003087');line.setAttribute('stroke-width','2.5');line.setAttribute('stroke-linecap','round');
       svg.appendChild(line);
-
-      // Tooltip
-      const tooltip = document.createElement('div');
-      tooltip.style.cssText = 'position:absolute;background:#003087;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10;';
-      document.querySelector('.spark-wrap').style.position = 'relative';
+      const tooltip=document.createElement('div');
+      tooltip.style.cssText='position:absolute;background:#003087;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10;';
+      document.querySelector('.spark-wrap').style.position='relative';
       document.querySelector('.spark-wrap').appendChild(tooltip);
-
-      xs.forEach((x, i) => {
-        const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        circle.setAttribute('cx', x);
-        circle.setAttribute('cy', ys[i]);
-        circle.setAttribute('r', '5');
-        circle.setAttribute('fill', '#003087');
-        circle.setAttribute('stroke','white');
-        circle.setAttribute('stroke-width','2');
-        circle.style.cursor = 'pointer';
-
-        circle.addEventListener('mouseenter', function(e) {
-          tooltip.textContent = `${labels[i]} : ${vals[i]} incidents`;
-          tooltip.style.opacity = '1';
-          const wrapRect = document.querySelector('.spark-wrap').getBoundingClientRect();
-          tooltip.style.left = (e.clientX - wrapRect.left - 40) + 'px';
-          tooltip.style.top  = '-32px';
+      xs.forEach((x,i)=>{
+        const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('cx',x);c.setAttribute('cy',ys[i]);c.setAttribute('r','5');
+        c.setAttribute('fill','#003087');c.setAttribute('stroke','white');c.setAttribute('stroke-width','2');c.style.cursor='pointer';
+        c.addEventListener('mouseenter',function(e){
+          tooltip.textContent=`${labels[i]} : ${vals[i]} incidents`;tooltip.style.opacity='1';
+          const r=document.querySelector('.spark-wrap').getBoundingClientRect();
+          tooltip.style.left=(e.clientX-r.left-40)+'px';tooltip.style.top='-32px';
         });
-        circle.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
-
-        svg.appendChild(circle);
+        c.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});
+        svg.appendChild(c);
       });
-
-      // Légende dates
-      const leg = document.getElementById('sparkLegend');
-      labels.forEach(l => {
-        const s = document.createElement('span');
-        s.textContent = l;
-        leg.appendChild(s);
-      });
+      const leg=document.getElementById('sparkLegend');
+      labels.forEach(l=>{const s=document.createElement('span');s.textContent=l;leg.appendChild(s);});
     })();
     </script>
     {% endif %}
 
-    <!-- Rapports récents -->
-    <div class="card">
-      <div class="sec-title">📋 Rapports récents</div>
-      {% if recent_reports %}
-        <table class="r-table">
+    <!-- ══ SYNTHÈSE PAR ESCALADE ══ -->
+    <div class="card" id="syntheseCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+        <div class="sec-title" style="margin-bottom:0;flex:1;">📋 Synthèse par Escalade</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="synth-period-bar">
+            <a href="?synth_period=week"  class="synth-btn {% if synth_period == 'week'  %}active{% endif %}">7 jours</a>
+            <a href="?synth_period=month" class="synth-btn {% if synth_period == 'month' %}active{% endif %}">Mois</a>
+            <a href="?synth_period=year"  class="synth-btn {% if synth_period == 'year'  %}active{% endif %}">Année</a>
+            <a href="?synth_period=all"   class="synth-btn {% if synth_period == 'all'   %}active{% endif %}">Tout</a>
+          </div>
+          {% if synth_total_inc > 0 %}
+          <span class="synth-badge">{{ synth_total_inc }} incidents</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if synth_rows %}
+      <div class="synth-table-wrap">
+        <table class="synth-table">
           <thead>
             <tr>
-              <th>Fichier</th>
-              <th>Date</th>
-              <th>Incidents</th>
-              <th>Outage</th>
+              <th>Escalade</th>
+              <th class="num">Incidents</th>
+              <th class="num">Durée</th>
+              <th class="num">MTTR</th>
+              <th class="num">Outage</th>
               <th>Statut</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
-            {% for r in recent_reports %}
-            <tr>
-              <td>
-                <span class="r-fname" title="{{ r.original_filename }}">{{ r.original_filename|truncatechars:28 }}</span>
+            {% for row in synth_rows %}
+            <tr class="{% if row.is_total %}synth-total{% endif %}">
+              <td class="synth-esc">{{ row.escalade }}</td>
+              <td class="num">
+                {% if row.inc_count %}
+                  <strong style="color:#003087;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;">{{ row.inc_count }}</strong>
+                {% else %}<span style="color:#ccc;">—</span>{% endif %}
               </td>
-              <td><span class="r-date">{{ r.date_rapport|date:"d/m/Y" }}</span></td>
-              <td><strong style="color:#003087;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;">{{ r.total_incidents }}</strong></td>
-              <td>
-                <span style="font-size:12px;font-weight:600;color:#555;">{{ r.outage_fmt }}</span>
+              <td class="num"><span class="synth-time">{{ row.duree }}</span></td>
+              <td class="num"><span class="synth-time">{{ row.mttr }}</span></td>
+              <td class="num">
+                {% if row.outage and row.outage != '0:00:00' %}
+                  <span style="color:#003087;font-weight:700;">{{ row.outage }}</span>
+                {% else %}<span style="color:#ccc;">0:00:00</span>{% endif %}
               </td>
               <td>
-                {% if r.unresolved_count > 0 %}
-                  <span class="badge badge-warn">⚠ {{ r.unresolved_count }}</span>
+                {% if row.status == 'resolved' %}
+                  <span class="badge badge-ok">✓ Résolu</span>
+                {% elif row.status == 'unresolved' %}
+                  <span class="badge badge-warn">⚠ {{ row.unresolved }} Non résolu</span>
                 {% else %}
-                  <span class="badge badge-ok">✓ OK</span>
+                  <span style="color:#ccc;font-size:12px;">N/A</span>
                 {% endif %}
-              </td>
-              <td>
-                <a href="{% url 'results' r.pk %}" class="link-view">Voir →</a>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
-        <div style="margin-top:14px;text-align:right;">
-          <a href="{% url 'history' %}" style="font-size:13px;color:#003087;font-weight:600;text-decoration:none;">Voir tout l'historique →</a>
-        </div>
+      </div>
+      <div style="margin-top:14px;text-align:right;">
+        <a href="{% url 'history' %}" style="font-size:13px;color:#003087;font-weight:600;text-decoration:none;">Voir tout l'historique →</a>
+      </div>
       {% else %}
         <div class="empty">
-          Aucun rapport traité pour l'instant.<br><br>
+          Aucun rapport pour cette période.<br><br>
           <a href="{% url 'upload' %}">Commencer maintenant →</a>
         </div>
       {% endif %}
     </div>
 
-  </div>
+  </div><!-- /col principale -->
 
-  <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+  <!-- ── Sidebar ── -->
   <div class="sidebar">
-
-    <!-- Dernier rapport -->
     {% if last_report %}
     <div class="last-report-card">
       <div class="lr-label">Dernier rapport traité</div>
       <div class="lr-name" title="{{ last_report.original_filename }}">{{ last_report.original_filename|truncatechars:30 }}</div>
       <div class="lr-stats">
-        <div>
-          <div class="lr-stat-val">{{ last_report.total_incidents }}</div>
-          <div class="lr-stat-lbl">Incidents</div>
-        </div>
+        <div><div class="lr-stat-val">{{ last_report.total_incidents }}</div><div class="lr-stat-lbl">Incidents</div></div>
         <div>
           <div class="lr-stat-val" style="color:{% if last_report.unresolved_count > 0 %}#fc8181{% else %}#68d391{% endif %}">{{ last_report.unresolved_count }}</div>
           <div class="lr-stat-lbl">Non résolus</div>
         </div>
-        <div>
-          <div class="lr-stat-val">{{ last_report.processing_time_sec }}s</div>
-          <div class="lr-stat-lbl">Traitement</div>
-        </div>
+        <div><div class="lr-stat-val">{{ last_report.processing_time_sec }}s</div><div class="lr-stat-lbl">Traitement</div></div>
       </div>
       <a href="{% url 'results' last_report.pk %}" class="lr-btn">Voir les résultats →</a>
     </div>
     {% endif %}
 
-    <!-- Actions rapides -->
     <div class="card">
       <div class="sec-title">🚀 Actions rapides</div>
       <div class="qa-list">
-        <a href="{% url 'upload' %}" class="qa-btn">
-          <div class="qa-ico">↑</div>
-          Nouveau traitement
-        </a>
-        <a href="{% url 'statistiques' %}" class="qa-btn">
-          <div class="qa-ico">📊</div>
-          Statistiques
-        </a>
-        <a href="{% url 'history' %}" class="qa-btn">
-          <div class="qa-ico">📋</div>
-          Historique complet
-        </a>
+        <a href="{% url 'upload' %}" class="qa-btn"><div class="qa-ico">↑</div>Nouveau traitement</a>
+        <a href="{% url 'statistiques' %}" class="qa-btn"><div class="qa-ico">📊</div>Statistiques</a>
+        <a href="{% url 'history' %}" class="qa-btn"><div class="qa-ico">📋</div>Historique complet</a>
       </div>
     </div>
 
-    <!-- Comment ça marche -->
     <div class="card">
       <div class="sec-title">💡 Comment ça marche</div>
       <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div>
-            <h4>Importez le fichier Excel</h4>
-            <p>Fichier d'alarmes au format .xlsx</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div>
-            <h4>Choisissez la période</h4>
-            <p>Journalier ou plage de dates</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div>
-            <h4>Analyse automatique</h4>
-            <p>Filtrage, déduplication, MTTR &amp; Outage</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">4</div>
-          <div>
-            <h4>Téléchargez les rapports</h4>
-            <p>Détail + synthèse par escalade en Excel</p>
-          </div>
-        </div>
+        <div class="step"><div class="step-num">1</div><div><h4>Importez le fichier Excel</h4><p>Fichier d'alarmes au format .xlsx</p></div></div>
+        <div class="step"><div class="step-num">2</div><div><h4>Choisissez la période</h4><p>Journalier ou plage de dates</p></div></div>
+        <div class="step"><div class="step-num">3</div><div><h4>Analyse automatique</h4><p>Filtrage, déduplication, MTTR &amp; Outage</p></div></div>
+        <div class="step"><div class="step-num">4</div><div><h4>Téléchargez les rapports</h4><p>Détail + synthèse par escalade en Excel</p></div></div>
       </div>
     </div>
-
   </div>
-</div>
 
+</div>
 {% endblock %}

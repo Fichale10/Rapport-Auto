@@ -3,7 +3,7 @@ import time
 import os
 import math
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from urllib import request
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -34,6 +34,17 @@ NB_SITES = {
 }
 
 
+def _filter_reports_by_period(queryset, period):
+    today = date.today()
+    if period == 'week':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
+    if period == 'month':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=30))
+    if period == 'year':
+        return queryset.filter(uploaded_at__year=today.year)
+    return queryset
+
+
 def _period_label(report):
     start = report.date_rapport
     end = report.date_fin or start
@@ -47,14 +58,6 @@ def home(request):
         all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
         all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
-
-    recent_reports_raw = all_reports[:5]
-    recent_reports = []
-    for r in recent_reports_raw:
-        h = int(r.total_duration_sec // 3600)
-        m = int((r.total_duration_sec % 3600) // 60)
-        r.outage_fmt = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
-        recent_reports.append(r)
 
     total_reports    = all_reports.count()
     total_incidents  = sum(r.total_incidents  for r in all_reports)
@@ -73,8 +76,105 @@ def home(request):
 
     last_report = all_reports.first()
 
+    # ── Synthèse par Escalade agrégée (filtrée par période) ────────────────
+    synth_period = request.GET.get('synth_period', 'week')
+    synth_qs = _filter_reports_by_period(all_reports, synth_period)
+
+    esc_data = defaultdict(lambda: {
+        'inc': 0, 'duree_sec': 0, 'outage_sec': 0,
+        'mttr_sec': 0, 'unresolved': 0, 'has_data': False,
+    })
+
+    def _hms_to_sec(s):
+        try:
+            parts = str(s).split(':')
+            if len(parts) == 3:
+                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+        except Exception:
+            pass
+        return 0
+
+    def _sec_to_hms(sec):
+        h = int(sec // 3600)
+        m = int((sec % 3600) // 60)
+        s = int(sec % 60)
+        return f"{h}:{m:02d}:{s:02d}"
+
+    for r in synth_qs:
+        if not r.synthesis_json:
+            continue
+        for row in r.synthesis_json:
+            esc = row.get('Escalade', '')
+            if not esc or esc == 'TOTAL':
+                continue
+            inc = row.get('Inc count', 0) or 0
+            esc_data[esc]['inc']        += inc
+            esc_data[esc]['duree_sec']  += _hms_to_sec(row.get('DUREE', '0:00:00'))
+            esc_data[esc]['outage_sec'] += _hms_to_sec(row.get('OUTAGE', '0:00:00'))
+            esc_data[esc]['mttr_sec']   += _hms_to_sec(row.get('MTTR', '0:00:00'))
+            if inc > 0:
+                esc_data[esc]['has_data'] = True
+            status = str(row.get('Status', ''))
+            if 'Non resolu' in status:
+                try:
+                    esc_data[esc]['unresolved'] += int(status.split()[0])
+                except Exception:
+                    esc_data[esc]['unresolved'] += 1
+
+    synth_rows = []
+    total_inc = total_duree = total_outage = 0
+    esc_order = [
+        'ENERGIE', 'TRANS FH-FIELD O', 'RAN-FIELD O', 'ENERGIE / TRANS / RAN',
+        'TRANS / RAN', 'INFRA', 'PROJET', 'TRANS FO', 'TRANS FTTM', 'TRANS IP',
+        'ENVIRONNEMENT', 'BSS',
+    ]
+    all_escs = list(esc_order) + [e for e in esc_data if e not in esc_order]
+
+    for esc in all_escs:
+        if esc not in esc_data:
+            continue
+        d = esc_data[esc]
+        inc = d['inc']
+        unres = d['unresolved']
+        if inc == 0:
+            status = 'na'
+        elif unres > 0:
+            status = 'unresolved'
+        else:
+            status = 'resolved'
+
+        synth_rows.append({
+            'escalade':   esc,
+            'inc_count':  inc if inc > 0 else 0,
+            'duree':      _sec_to_hms(d['duree_sec']) if d['duree_sec'] else '0:00:00',
+            'mttr':       _sec_to_hms(d['mttr_sec']) if d['mttr_sec'] else '0:00:00',
+            'outage':     _sec_to_hms(d['outage_sec']) if d['outage_sec'] else '0:00:00',
+            'status':     status,
+            'unresolved': unres,
+            'is_total':   False,
+        })
+        total_inc    += inc
+        total_duree  += d['duree_sec']
+        total_outage += d['outage_sec']
+
+    if synth_rows:
+        synth_rows.append({
+            'escalade':   'TOTAL',
+            'inc_count':  total_inc,
+            'duree':      _sec_to_hms(total_duree),
+            'mttr':       '—',
+            'outage':     _sec_to_hms(total_outage),
+            'status':     '',
+            'unresolved': 0,
+            'is_total':   True,
+        })
+
+    synth_total_inc = total_inc
+
     return render(request, 'reports/home.html', {
-        'recent_reports':   recent_reports,
+        'synth_period':     synth_period,
+        'synth_rows':       synth_rows,
+        'synth_total_inc':  synth_total_inc,
         'total_reports':    total_reports,
         'total_incidents':  total_incidents,
         'total_unresolved': total_unresolved,
