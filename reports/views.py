@@ -137,7 +137,19 @@ def home(request):
             'values': [_inc_for_escalade(r, esc) for r in spark_reports],
         })
 
+    evol_incidents = sum(r.total_incidents for r in spark_reports)
+    evol_unresolved = sum(r.unresolved_count or 0 for r in spark_reports)
+    evol_resolved = evol_incidents - evol_unresolved
+    if spark_reports:
+        evol_period_label = (
+            f"{spark_reports[0].date_rapport.strftime('%d/%m/%Y')}"
+            f" → {spark_reports[-1].date_rapport.strftime('%d/%m/%Y')}"
+        )
+    else:
+        evol_period_label = ''
+
     last_report = all_reports.first()
+    evol_latest_report = spark_reports[-1] if spark_reports else last_report
 
     # ── Synthèse par Escalade agrégée (filtrée par période) ────────────────
     synth_period = request.GET.get('synth_period', 'week')
@@ -250,6 +262,11 @@ def home(request):
         'show_spark_chart':     bool(spark_reports),
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
         'spark_series':         mark_safe(json.dumps(spark_series)),
+        'evol_incidents':       evol_incidents,
+        'evol_resolved':        evol_resolved,
+        'evol_unresolved':      evol_unresolved,
+        'evol_period_label':    evol_period_label,
+        'evol_latest_report':   evol_latest_report,
         'last_report':          last_report,
     })
 

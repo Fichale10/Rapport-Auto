@@ -426,19 +426,24 @@
 
   <!-- ── Sidebar ── -->
   <div class="sidebar">
-    {% if last_report %}
+    {% if show_spark_chart %}
     <div class="last-report-card">
-      <div class="lr-label">Dernier rapport traité</div>
-      <div class="lr-name" title="{{ last_report.original_filename }}">{{ last_report.original_filename|truncatechars:30 }}</div>
+      <div class="lr-label">Évolution des incidents</div>
+      <div class="lr-name">{{ evol_period_label }}</div>
       <div class="lr-stats">
-        <div><div class="lr-stat-val">{{ last_report.total_incidents }}</div><div class="lr-stat-lbl">Incidents</div></div>
+        <div><div class="lr-stat-val">{{ evol_incidents }}</div><div class="lr-stat-lbl">Incidents survenus</div></div>
         <div>
-          <div class="lr-stat-val" style="color:{% if last_report.unresolved_count > 0 %}#fc8181{% else %}#68d391{% endif %}">{{ last_report.unresolved_count }}</div>
-          <div class="lr-stat-lbl">Non résolus</div>
+          <div class="lr-stat-val" style="color:#68d391">{{ evol_resolved }}</div>
+          <div class="lr-stat-lbl">Incidents résolus</div>
         </div>
-        <div><div class="lr-stat-val">{{ last_report.processing_time_sec }}s</div><div class="lr-stat-lbl">Traitement</div></div>
+        <div>
+          <div class="lr-stat-val" style="color:{% if evol_unresolved > 0 %}#fc8181{% else %}#68d391{% endif %}">{{ evol_unresolved }}</div>
+          <div class="lr-stat-lbl">Incidents en cours</div>
+        </div>
       </div>
-      <a href="{% url 'results' last_report.pk %}" class="lr-btn">Voir les résultats →</a>
+      {% if evol_latest_report %}
+      <a href="{% url 'results' evol_latest_report.pk %}" class="lr-btn">Voir les résultats →</a>
+      {% endif %}
     </div>
     {% endif %}
 
