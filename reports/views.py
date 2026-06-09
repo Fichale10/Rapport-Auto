@@ -40,6 +40,14 @@ MOIS_FR_LONG = [
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
 ]
 
+SPARK_ESCALADES = [
+    ('ENERGIE',         '#FFC72C'),
+    ('TRANS FO',        '#e53e3e'),
+    ('TRANS IP',        '#22c55e'),
+    ('RAN-FIELD O',     '#8b5cf6'),
+    ('TRANS FH-FIELD O','#f97316'),
+]
+
 
 def _filter_reports_by_month(queryset, year=None, month=None):
     today = date.today()
@@ -62,6 +70,13 @@ def _filter_reports_by_period(queryset, period):
     if period == 'year':
         return queryset.filter(uploaded_at__year=today.year)
     return queryset
+
+
+def _inc_for_escalade(report, esc):
+    for row in (report.synthesis_json or []):
+        if row.get('Escalade') == esc:
+            return int(row.get('Inc count', 0) or 0)
+    return 0
 
 
 def _period_label(report):
@@ -106,9 +121,21 @@ def home(request):
     elif month_incidents > 0:
         month_trend_pct = 100.0
 
-    spark_reports = list(reversed(list(all_reports[:7])))
-    spark_labels  = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
-    spark_values  = [r.total_incidents for r in spark_reports]
+    spark_reports = sorted(list(all_reports[:7]), key=lambda r: r.date_rapport)
+    spark_labels = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
+    spark_series = [
+        {
+            'name': 'Total',
+            'color': '#003087',
+            'values': [r.total_incidents for r in spark_reports],
+        },
+    ]
+    for esc, color in SPARK_ESCALADES:
+        spark_series.append({
+            'name': esc,
+            'color': color,
+            'values': [_inc_for_escalade(r, esc) for r in spark_reports],
+        })
 
     last_report = all_reports.first()
 
@@ -220,8 +247,9 @@ def home(request):
         'month_resolved':       month_resolved,
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
-        'spark_labels':         spark_labels,
-        'spark_values':         spark_values,
+        'show_spark_chart':     bool(spark_reports),
+        'spark_labels':         mark_safe(json.dumps(spark_labels)),
+        'spark_series':         mark_safe(json.dumps(spark_series)),
         'last_report':          last_report,
     })
 

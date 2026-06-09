@@ -64,9 +64,38 @@
   .sec-title { font-size: 15px; font-weight: 700; color: #003087; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
   .sec-title::after { content: ''; flex: 1; height: 1px; background: #e8edf5; }
 
-  /* ── Sparkline ── */
-  .spark-wrap { margin-bottom: 20px; }
-  .spark-svg { width: 100%; height: 70px; overflow: visible; }
+  /* ── Évolution incidents (lignes séparées) ── */
+  .spark-chart { position: relative; }
+  .spark-rows { display: flex; flex-direction: column; }
+  .spark-row {
+    display: grid;
+    grid-template-columns: 148px 1fr;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e8edf5;
+  }
+  .spark-row:first-child { padding-top: 4px; }
+  .spark-row:last-child { border-bottom: none; padding-bottom: 4px; }
+  .spark-row-name {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700; color: #333; line-height: 1.3;
+  }
+  .spark-row-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .spark-row-svg { width: 100%; height: 48px; display: block; overflow: visible; }
+  .spark-xlabels {
+    display: grid;
+    grid-template-columns: 148px 1fr;
+    gap: 14px;
+    font-size: 11px; color: #aaa; margin-top: 6px; padding-top: 8px;
+    border-top: 1px solid #e8edf5;
+  }
+  .spark-xlabels-inner { display: flex; justify-content: space-between; padding: 0 4px; }
+  .spark-tooltip {
+    position: absolute; background: #003087; color: #fff; padding: 6px 10px;
+    border-radius: 8px; font-size: 11px; pointer-events: none; opacity: 0;
+    transition: opacity .15s; z-index: 10; white-space: nowrap;
+  }
 
   /* ── Synthèse par Escalade ── */
   .synth-period-bar { display: flex; align-items: center; gap: 6px; }
@@ -208,51 +237,116 @@
 
   <div style="display:flex;flex-direction:column;gap:20px;">
 
-    <!-- Sparkline -->
-    {% if spark_values %}
+    <!-- Évolution des incidents (une ligne par courbe) -->
+    {% if show_spark_chart %}
     <div class="card">
       <div class="sec-title">📈 Évolution des incidents</div>
-      <div class="spark-wrap">
-        <svg class="spark-svg" id="sparkSvg" viewBox="0 0 600 70" preserveAspectRatio="none"></svg>
+      <div class="spark-chart" id="sparkChart">
+        <div class="spark-rows" id="sparkRows"></div>
+        <div class="spark-xlabels">
+          <span></span>
+          <div class="spark-xlabels-inner" id="sparkXLabels"></div>
+        </div>
+        <div class="spark-tooltip" id="sparkTooltip"></div>
       </div>
-      <div id="sparkLegend" style="display:flex;justify-content:space-between;font-size:11px;color:#aaa;margin-top:4px;"></div>
     </div>
     <script>
     (function(){
-      const vals = {{ spark_values|safe }}, labels = {{ spark_labels|safe }};
-      if (!vals.length) return;
-      const W=600,H=70,PAD=8, svg=document.getElementById('sparkSvg');
-      const mn=Math.min(...vals), mx=Math.max(...vals)||1;
-      const xs=vals.map((_,i)=>PAD+i*(W-PAD*2)/Math.max(vals.length-1,1));
-      const ys=vals.map(v=>H-PAD-(v-mn)/(mx-mn||1)*(H-PAD*2));
-      const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
-      defs.innerHTML=`<linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#003087" stop-opacity="0.18"/><stop offset="100%" stop-color="#003087" stop-opacity="0.01"/></linearGradient>`;
-      svg.appendChild(defs);
-      const area=document.createElementNS('http://www.w3.org/2000/svg','path');
-      area.setAttribute('d',`M${xs[0]},${H} `+xs.map((x,i)=>`L${x},${ys[i]}`).join(' ')+` L${xs[xs.length-1]},${H} Z`);
-      area.setAttribute('fill','url(#sparkGrad)'); svg.appendChild(area);
-      const line=document.createElementNS('http://www.w3.org/2000/svg','path');
-      line.setAttribute('d',`M${xs[0]},${ys[0]} `+xs.slice(1).map((x,i)=>`L${x},${ys[i+1]}`).join(' '));
-      line.setAttribute('fill','none');line.setAttribute('stroke','#003087');line.setAttribute('stroke-width','2.5');line.setAttribute('stroke-linecap','round');
-      svg.appendChild(line);
-      const tooltip=document.createElement('div');
-      tooltip.style.cssText='position:absolute;background:#003087;color:#fff;padding:6px 12px;border-radius:8px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10;';
-      document.querySelector('.spark-wrap').style.position='relative';
-      document.querySelector('.spark-wrap').appendChild(tooltip);
-      xs.forEach((x,i)=>{
-        const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-        c.setAttribute('cx',x);c.setAttribute('cy',ys[i]);c.setAttribute('r','5');
-        c.setAttribute('fill','#003087');c.setAttribute('stroke','white');c.setAttribute('stroke-width','2');c.style.cursor='pointer';
-        c.addEventListener('mouseenter',function(e){
-          tooltip.textContent=`${labels[i]} : ${vals[i]} incidents`;tooltip.style.opacity='1';
-          const r=document.querySelector('.spark-wrap').getBoundingClientRect();
-          tooltip.style.left=(e.clientX-r.left-40)+'px';tooltip.style.top='-32px';
+      const series = {{ spark_series|safe }};
+      const labels = {{ spark_labels|safe }};
+      if (!labels.length || !series.length) return;
+
+      const W = 600, H = 48, PAD_L = 8, PAD_R = 8, PAD_T = 8, PAD_B = 8;
+      const rowsEl = document.getElementById('sparkRows');
+      const tooltip = document.getElementById('sparkTooltip');
+      const chart = document.getElementById('sparkChart');
+
+      function drawRow(s) {
+        const mx = Math.max(...s.values, 1);
+        const xs = s.values.map((_, i) =>
+          PAD_L + i * (W - PAD_L - PAD_R) / Math.max(s.values.length - 1, 1)
+        );
+        const yAt = v => PAD_T + (H - PAD_T - PAD_B) - (v / mx) * (H - PAD_T - PAD_B);
+        const yBase = H - PAD_B;
+
+        const row = document.createElement('div');
+        row.className = 'spark-row';
+
+        const name = document.createElement('div');
+        name.className = 'spark-row-name';
+        name.innerHTML =
+          `<span class="spark-row-dot" style="background:${s.color}"></span>` +
+          `<span>${s.name}</span>`;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', 'spark-row-svg');
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.setAttribute('preserveAspectRatio', 'none');
+
+        if (s.name === 'Total') {
+          const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+          const gradId = 'sparkGrad-' + s.name.replace(/\s+/g, '-');
+          defs.innerHTML =
+            `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
+            `<stop offset="0%" stop-color="${s.color}" stop-opacity="0.18"/>` +
+            `<stop offset="100%" stop-color="${s.color}" stop-opacity="0.02"/></linearGradient>`;
+          svg.appendChild(defs);
+          const ys = s.values.map(yAt);
+          const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          area.setAttribute('d',
+            `M${xs[0]},${yBase} ` +
+            xs.map((x, i) => `L${x},${ys[i]}`).join(' ') +
+            ` L${xs[xs.length - 1]},${yBase} Z`
+          );
+          area.setAttribute('fill', `url(#${gradId})`);
+          svg.appendChild(area);
+        }
+
+        const ys = s.values.map(yAt);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        line.setAttribute('d',
+          `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x, i) => `L${x},${ys[i + 1]}`).join(' ')
+        );
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', s.color);
+        line.setAttribute('stroke-width', s.name === 'Total' ? '2.5' : '2');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        svg.appendChild(line);
+
+        xs.forEach((x, i) => {
+          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', x);
+          c.setAttribute('cy', ys[i]);
+          c.setAttribute('r', s.name === 'Total' ? '4' : '3');
+          c.setAttribute('fill', s.color);
+          c.setAttribute('stroke', '#fff');
+          c.setAttribute('stroke-width', '1.5');
+          c.style.cursor = 'pointer';
+          c.addEventListener('mouseenter', function(e) {
+            tooltip.textContent = `${labels[i]} — ${s.name} : ${s.values[i]}`;
+            tooltip.style.opacity = '1';
+            const r = chart.getBoundingClientRect();
+            tooltip.style.left = Math.min(e.clientX - r.left - 40, r.width - 160) + 'px';
+            tooltip.style.top = (e.clientY - r.top - 36) + 'px';
+          });
+          c.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+          svg.appendChild(c);
         });
-        c.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});
-        svg.appendChild(c);
+
+        row.appendChild(name);
+        row.appendChild(svg);
+        rowsEl.appendChild(row);
+      }
+
+      series.forEach(drawRow);
+
+      const xlab = document.getElementById('sparkXLabels');
+      labels.forEach(l => {
+        const s = document.createElement('span');
+        s.textContent = l;
+        xlab.appendChild(s);
       });
-      const leg=document.getElementById('sparkLegend');
-      labels.forEach(l=>{const s=document.createElement('span');s.textContent=l;leg.appendChild(s);});
     })();
     </script>
     {% endif %}
