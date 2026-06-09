@@ -218,11 +218,11 @@
   </a>
 
   <div class="nav-links">
-    <a href="{% url 'home' %}"         class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
-    <a href="{% url 'upload' %}"       class="{% if request.resolver_match.url_name == 'upload' %}active{% endif %}">Traiter un fichier</a>
-    <a href="{% url 'history' %}"      class="{% if request.resolver_match.url_name == 'history' %}active{% endif %}">Historique</a>
-    <a href="{% url 'statistiques' %}" class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
-    <a href="{% url 'comparer' %}"     class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
+    <a href="{% url 'home' %}"             class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
+    <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
+    <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
+    <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
+    <a href="{% url 'site_info' %}"          class="{% if request.resolver_match.url_name == 'site_info' %}active{% endif %}">Site Info</a>
   </div>
 
   <div class="nav-user">

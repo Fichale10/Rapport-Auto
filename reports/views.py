@@ -2035,3 +2035,11 @@ def statistiques(request):
         'semaine_labels_js':    mark_safe(_json.dumps(semaine_labels)),
         'dispo_series_js':      mark_safe(_json.dumps(dispo_series_js)),
     })
+
+
+def sites_instables(request):
+    return render(request, 'reports/sites_instables.html')
+
+
+def site_info(request):
+    return render(request, 'reports/site_info.html')
