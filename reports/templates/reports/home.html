@@ -171,31 +171,35 @@
   </div>
 </div>
 
-<!-- ── KPI bar ── -->
+<!-- ── KPI bar (mois en cours) ── -->
 <div class="kpi-bar">
   <div class="kpi-box">
-    <div class="kpi-ico blue">📊</div>
-    <div><div class="kpi-num">{{ total_reports }}</div><div class="kpi-lbl">Rapports traités</div></div>
+    <div class="kpi-ico blue">📅</div>
+    <div>
+      <div class="kpi-num">{{ month_reports_count }}</div>
+      <div class="kpi-lbl">Mois en cours</div>
+      <div style="font-size:11px;margin-top:4px;font-weight:600;color:#003087;">{{ month_label }}</div>
+    </div>
   </div>
   <div class="kpi-box">
     <div class="kpi-ico yellow">🔥</div>
     <div>
-      <div class="kpi-num">{{ total_incidents }}</div>
-      <div class="kpi-lbl">Incidents total</div>
-      {% if trend_pct is not None %}
-        <div style="font-size:11px;margin-top:4px;font-weight:700;color:{% if trend_pct > 0 %}#e53e3e{% elif trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
-          {% if trend_pct > 0 %}▲{% elif trend_pct < 0 %}▼{% else %}—{% endif %} {{ trend_pct }}% vs précédent
+      <div class="kpi-num">{{ month_incidents }}</div>
+      <div class="kpi-lbl">Incidents survenus</div>
+      {% if month_trend_pct is not None %}
+        <div style="font-size:11px;margin-top:4px;font-weight:700;color:{% if month_trend_pct > 0 %}#e53e3e{% elif month_trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
+          {% if month_trend_pct > 0 %}▲{% elif month_trend_pct < 0 %}▼{% else %}—{% endif %} {{ month_trend_pct }}% vs mois précédent
         </div>
       {% endif %}
     </div>
   </div>
   <div class="kpi-box">
-    <div class="kpi-ico red">⚠️</div>
-    <div><div class="kpi-num {% if total_unresolved > 0 %}warn{% endif %}">{{ total_unresolved }}</div><div class="kpi-lbl">Non résolus</div></div>
+    <div class="kpi-ico green">✓</div>
+    <div><div class="kpi-num">{{ month_resolved }}</div><div class="kpi-lbl">Incidents résolus</div></div>
   </div>
   <div class="kpi-box">
-    <div class="kpi-ico green">⏱</div>
-    <div><div class="kpi-num">{{ total_outage_h }}h</div><div class="kpi-lbl">Outage cumulé</div></div>
+    <div class="kpi-ico red">⚠️</div>
+    <div><div class="kpi-num {% if month_unresolved > 0 %}warn{% endif %}">{{ month_unresolved }}</div><div class="kpi-lbl">Incidents en cours</div></div>
   </div>
 </div>
 

@@ -1,3 +1,4 @@
+import calendar
 import json
 import time
 import os
@@ -6,6 +7,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from urllib import request
 
+from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.safestring import mark_safe
 from django.http import FileResponse, Http404, JsonResponse
@@ -32,6 +34,23 @@ NB_SITES = {
     'TRANS FH': 996,
     'TRANS IP': 582,
 }
+
+MOIS_FR_LONG = [
+    '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+]
+
+
+def _filter_reports_by_month(queryset, year=None, month=None):
+    today = date.today()
+    year = year or today.year
+    month = month or today.month
+    month_start = date(year, month, 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    return queryset.filter(date_rapport__lte=month_end).filter(
+        Q(date_fin__gte=month_start)
+        | Q(date_fin__isnull=True, date_rapport__gte=month_start)
+    )
 
 
 def _filter_reports_by_period(queryset, period):
@@ -60,15 +79,32 @@ def home(request):
         all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
 
     total_reports    = all_reports.count()
-    total_incidents  = sum(r.total_incidents  for r in all_reports)
     total_unresolved = sum(r.unresolved_count for r in all_reports if r.unresolved_count)
-    trend_pct = None
-    if all_reports.count() >= 2:
-        last   = all_reports[0].total_incidents
-        before = all_reports[1].total_incidents
-        if before > 0:
-            trend_pct = round((last - before) / before * 100, 1)
     total_outage_h = round(sum(r.total_duration_sec for r in all_reports) / 3600, 1)
+
+    today = date.today()
+    month_reports = list(_filter_reports_by_month(all_reports))
+    month_reports_count = len(month_reports)
+    month_incidents = sum(r.total_incidents for r in month_reports)
+    month_unresolved = sum(r.unresolved_count or 0 for r in month_reports)
+    month_resolved = month_incidents - month_unresolved
+    month_label = f'{MOIS_FR_LONG[today.month]} {today.year}'
+
+    prev_month = today.month - 1
+    prev_year = today.year
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+    prev_month_incidents = sum(
+        r.total_incidents for r in _filter_reports_by_month(all_reports, prev_year, prev_month)
+    )
+    month_trend_pct = None
+    if prev_month_incidents > 0:
+        month_trend_pct = round(
+            (month_incidents - prev_month_incidents) / prev_month_incidents * 100, 1,
+        )
+    elif month_incidents > 0:
+        month_trend_pct = 100.0
 
     spark_reports = list(reversed(list(all_reports[:7])))
     spark_labels  = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
@@ -175,14 +211,18 @@ def home(request):
         'synth_period':     synth_period,
         'synth_rows':       synth_rows,
         'synth_total_inc':  synth_total_inc,
-        'total_reports':    total_reports,
-        'total_incidents':  total_incidents,
-        'total_unresolved': total_unresolved,
-        'total_outage_h':   total_outage_h,
-        'spark_labels':     spark_labels,
-        'spark_values':     spark_values,
-        'last_report':      last_report,
-        'trend_pct':        trend_pct,
+        'total_reports':        total_reports,
+        'total_unresolved':     total_unresolved,
+        'total_outage_h':       total_outage_h,
+        'month_label':          month_label,
+        'month_reports_count':  month_reports_count,
+        'month_incidents':      month_incidents,
+        'month_resolved':       month_resolved,
+        'month_unresolved':     month_unresolved,
+        'month_trend_pct':      month_trend_pct,
+        'spark_labels':         spark_labels,
+        'spark_values':         spark_values,
+        'last_report':          last_report,
     })
 
 
