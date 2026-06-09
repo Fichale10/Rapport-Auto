@@ -626,7 +626,7 @@ def export_pdf(request, pk):
         p('<b>YAS</b>', size=24, color='#003087'),
         Table([
             [p('● RAPPORT D\'INCIDENTS RÉSEAU', size=8, color='#FFC72C')],
-            [p('<b>Rapport Automatique</b>', size=14, color='#003087')],
+            [p('<b>ReportXCare</b>', size=14, color='#003087')],
             [p(f'📅 {_period_label(report)}', size=9, color="#888888")],
         ], colWidths=[W*0.55]),
     ]], colWidths=[W*0.35, W*0.65])
@@ -1212,7 +1212,7 @@ def export_statistiques(request):
     ws0.row_dimensions[1].height = 10
     ws0.merge_cells('B2:G2')
     c = ws0['B2']
-    c.value = 'YAS NOC — RAPPORT AUTOMATIQUE'
+    c.value = 'YAS NOC — REPORTXCARE'
     c.font  = Font(name='Calibri', bold=True, size=20, color=WHITE)
     c.alignment = c_align(); c.fill = h_fill()
     ws0.row_dimensions[2].height = 44

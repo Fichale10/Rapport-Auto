@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Script de démarrage - Rapport Automatique (Production)
+REM  Script de démarrage - ReportXCare (Production)
 REM ============================================================
 
 cd /d "%~dp0"
