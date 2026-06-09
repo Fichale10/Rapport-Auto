@@ -1997,7 +1997,7 @@ def statistiques(request):
         for k, v in degraded_top10
     ]
 
-    # ── Outage par Cause (Durée) ──────────────────────────────────────────
+    # ── Incident par Cause (Durée) ──────────────────────────────────────────
     cause_data = defaultdict(float)
     for r in reports:
         for c in (r.top_causes_json or []):
