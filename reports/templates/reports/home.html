@@ -77,6 +77,14 @@
   }
   .spark-row:first-child { padding-top: 4px; }
   .spark-row:last-child { border-bottom: none; padding-bottom: 4px; }
+  .spark-row.spark-row-total {
+    border-bottom: 3px solid #003087;
+    padding-bottom: 16px;
+    margin-bottom: 6px;
+  }
+  .spark-row.spark-row-total .spark-row-name { font-size: 12px; color: #003087; }
+  .spark-row.spark-row-total .spark-row-svg { height: 58px; }
+  .spark-row:not(.spark-row-total) .spark-row-svg { height: 52px; }
   .spark-row-name {
     display: flex; align-items: center; gap: 8px;
     font-size: 11px; font-weight: 700; color: #333; line-height: 1.3;
@@ -238,9 +246,20 @@
   <div style="display:flex;flex-direction:column;gap:20px;">
 
     <!-- Évolution des incidents (une ligne par courbe) -->
-    {% if show_spark_chart %}
     <div class="card">
-      <div class="sec-title">📈 Évolution des incidents</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+        <div class="sec-title" style="margin-bottom:0;flex:1;">📈 Évolution des incidents</div>
+        <div class="synth-period-bar">
+          <a href="?evol_period=day&synth_period={{ synth_period }}"     class="synth-btn {% if evol_period == 'day'     %}active{% endif %}">Jour</a>
+          <a href="?evol_period=week&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'week'    %}active{% endif %}">Semaine</a>
+          <a href="?evol_period=month&synth_period={{ synth_period }}"   class="synth-btn {% if evol_period == 'month'   %}active{% endif %}">Mois</a>
+          <a href="?evol_period=quarter&synth_period={{ synth_period }}" class="synth-btn {% if evol_period == 'quarter' %}active{% endif %}">3 mois</a>
+          <a href="?evol_period=half&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'half'    %}active{% endif %}">6 mois</a>
+          <a href="?evol_period=year&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'year'    %}active{% endif %}">Année</a>
+        </div>
+      </div>
+
+      {% if show_spark_chart %}
       <div class="spark-chart" id="sparkChart">
         <div class="spark-rows" id="sparkRows"></div>
         <div class="spark-xlabels">
@@ -249,107 +268,133 @@
         </div>
         <div class="spark-tooltip" id="sparkTooltip"></div>
       </div>
-    </div>
-    <script>
-    (function(){
-      const series = {{ spark_series|safe }};
-      const labels = {{ spark_labels|safe }};
-      if (!labels.length || !series.length) return;
+      <script>
+      (function(){
+        const series = {{ spark_series|safe }};
+        const labels = {{ spark_labels|safe }};
+        if (!labels.length || !series.length) return;
 
-      const W = 600, H = 48, PAD_L = 8, PAD_R = 8, PAD_T = 8, PAD_B = 8;
-      const rowsEl = document.getElementById('sparkRows');
-      const tooltip = document.getElementById('sparkTooltip');
-      const chart = document.getElementById('sparkChart');
+        const W = 600, H = 58, PAD_L = 10, PAD_R = 10, PAD_T = 18, PAD_B = 8;
+        const rowsEl = document.getElementById('sparkRows');
+        const tooltip = document.getElementById('sparkTooltip');
+        const chart = document.getElementById('sparkChart');
 
-      function drawRow(s) {
-        const mx = Math.max(...s.values, 1);
-        const xs = s.values.map((_, i) =>
-          PAD_L + i * (W - PAD_L - PAD_R) / Math.max(s.values.length - 1, 1)
-        );
-        const yAt = v => PAD_T + (H - PAD_T - PAD_B) - (v / mx) * (H - PAD_T - PAD_B);
-        const yBase = H - PAD_B;
-
-        const row = document.createElement('div');
-        row.className = 'spark-row';
-
-        const name = document.createElement('div');
-        name.className = 'spark-row-name';
-        name.innerHTML =
-          `<span class="spark-row-dot" style="background:${s.color}"></span>` +
-          `<span>${s.name}</span>`;
-
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('class', 'spark-row-svg');
-        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-        svg.setAttribute('preserveAspectRatio', 'none');
-
-        if (s.name === 'Total') {
-          const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-          const gradId = 'sparkGrad-' + s.name.replace(/\s+/g, '-');
-          defs.innerHTML =
-            `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
-            `<stop offset="0%" stop-color="${s.color}" stop-opacity="0.18"/>` +
-            `<stop offset="100%" stop-color="${s.color}" stop-opacity="0.02"/></linearGradient>`;
-          svg.appendChild(defs);
-          const ys = s.values.map(yAt);
-          const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          area.setAttribute('d',
-            `M${xs[0]},${yBase} ` +
-            xs.map((x, i) => `L${x},${ys[i]}`).join(' ') +
-            ` L${xs[xs.length - 1]},${yBase} Z`
+        function drawRow(s) {
+          const isTotal = !!s.is_total;
+          const mx = Math.max(...s.values, 1);
+          const xs = s.values.map((_, i) =>
+            PAD_L + i * (W - PAD_L - PAD_R) / Math.max(s.values.length - 1, 1)
           );
-          area.setAttribute('fill', `url(#${gradId})`);
-          svg.appendChild(area);
+          const yAt = v => PAD_T + (H - PAD_T - PAD_B) - (v / mx) * (H - PAD_T - PAD_B);
+          const yBase = H - PAD_B;
+
+          const row = document.createElement('div');
+          row.className = 'spark-row' + (isTotal ? ' spark-row-total' : '');
+
+          const name = document.createElement('div');
+          name.className = 'spark-row-name';
+          name.innerHTML =
+            `<span class="spark-row-dot" style="background:${s.color}"></span>` +
+            `<span>${s.name}</span>`;
+
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('class', 'spark-row-svg');
+          svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+          svg.setAttribute('preserveAspectRatio', 'none');
+
+          const ys = s.values.map(yAt);
+
+          if (isTotal) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const gradId = 'sparkGrad-total';
+            defs.innerHTML =
+              `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
+              `<stop offset="0%" stop-color="${s.color}" stop-opacity="0.28"/>` +
+              `<stop offset="100%" stop-color="${s.color}" stop-opacity="0.04"/></linearGradient>`;
+            svg.appendChild(defs);
+            const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            area.setAttribute('d',
+              `M${xs[0]},${yBase} ` +
+              xs.map((x, i) => `L${x},${ys[i]}`).join(' ') +
+              ` L${xs[xs.length - 1]},${yBase} Z`
+            );
+            area.setAttribute('fill', `url(#${gradId})`);
+            svg.appendChild(area);
+          }
+
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          line.setAttribute('d',
+            `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x, i) => `L${x},${ys[i + 1]}`).join(' ')
+          );
+          line.setAttribute('fill', 'none');
+          line.setAttribute('stroke', s.color);
+          line.setAttribute('stroke-width', isTotal ? '3.5' : '2');
+          line.setAttribute('stroke-linecap', 'round');
+          line.setAttribute('stroke-linejoin', 'round');
+          if (isTotal) {
+            line.setAttribute('stroke-dasharray', '10 5');
+          }
+          svg.appendChild(line);
+
+          xs.forEach((x, i) => {
+            const val = s.values[i];
+            const shape = document.createElementNS('http://www.w3.org/2000/svg', isTotal ? 'rect' : 'circle');
+            if (isTotal) {
+              shape.setAttribute('x', x - 4.5);
+              shape.setAttribute('y', ys[i] - 4.5);
+              shape.setAttribute('width', '9');
+              shape.setAttribute('height', '9');
+              shape.setAttribute('rx', '1');
+            } else {
+              shape.setAttribute('cx', x);
+              shape.setAttribute('cy', ys[i]);
+              shape.setAttribute('r', '3.5');
+            }
+            shape.setAttribute('fill', s.color);
+            shape.setAttribute('stroke', '#fff');
+            shape.setAttribute('stroke-width', '1.5');
+            shape.style.cursor = 'pointer';
+            shape.addEventListener('mouseenter', function(e) {
+              tooltip.textContent = `${labels[i]} — ${s.name} : ${val}`;
+              tooltip.style.opacity = '1';
+              const r = chart.getBoundingClientRect();
+              tooltip.style.left = Math.min(e.clientX - r.left - 40, r.width - 160) + 'px';
+              tooltip.style.top = (e.clientY - r.top - 36) + 'px';
+            });
+            shape.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+            svg.appendChild(shape);
+
+            const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            lbl.setAttribute('x', x);
+            lbl.setAttribute('y', ys[i] - (isTotal ? 10 : 8));
+            lbl.setAttribute('text-anchor', 'middle');
+            lbl.setAttribute('font-size', isTotal ? '10' : '9');
+            lbl.setAttribute('font-weight', '700');
+            lbl.setAttribute('fill', s.color);
+            lbl.setAttribute('font-family', 'DM Sans, sans-serif');
+            lbl.textContent = val;
+            svg.appendChild(lbl);
+          });
+
+          row.appendChild(name);
+          row.appendChild(svg);
+          rowsEl.appendChild(row);
         }
 
-        const ys = s.values.map(yAt);
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        line.setAttribute('d',
-          `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x, i) => `L${x},${ys[i + 1]}`).join(' ')
-        );
-        line.setAttribute('fill', 'none');
-        line.setAttribute('stroke', s.color);
-        line.setAttribute('stroke-width', s.name === 'Total' ? '2.5' : '2');
-        line.setAttribute('stroke-linecap', 'round');
-        line.setAttribute('stroke-linejoin', 'round');
-        svg.appendChild(line);
+        series.forEach(drawRow);
 
-        xs.forEach((x, i) => {
-          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          c.setAttribute('cx', x);
-          c.setAttribute('cy', ys[i]);
-          c.setAttribute('r', s.name === 'Total' ? '4' : '3');
-          c.setAttribute('fill', s.color);
-          c.setAttribute('stroke', '#fff');
-          c.setAttribute('stroke-width', '1.5');
-          c.style.cursor = 'pointer';
-          c.addEventListener('mouseenter', function(e) {
-            tooltip.textContent = `${labels[i]} — ${s.name} : ${s.values[i]}`;
-            tooltip.style.opacity = '1';
-            const r = chart.getBoundingClientRect();
-            tooltip.style.left = Math.min(e.clientX - r.left - 40, r.width - 160) + 'px';
-            tooltip.style.top = (e.clientY - r.top - 36) + 'px';
-          });
-          c.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
-          svg.appendChild(c);
+        const xlab = document.getElementById('sparkXLabels');
+        labels.forEach(l => {
+          const sp = document.createElement('span');
+          sp.textContent = l;
+          xlab.appendChild(sp);
         });
-
-        row.appendChild(name);
-        row.appendChild(svg);
-        rowsEl.appendChild(row);
-      }
-
-      series.forEach(drawRow);
-
-      const xlab = document.getElementById('sparkXLabels');
-      labels.forEach(l => {
-        const s = document.createElement('span');
-        s.textContent = l;
-        xlab.appendChild(s);
-      });
-    })();
-    </script>
-    {% endif %}
+      })();
+      </script>
+      {% else %}
+      <div class="empty">Aucun rapport pour cette période.</div>
+      {% endif %}
+    </div>
 
     <!-- ══ SYNTHÈSE PAR ESCALADE ══ -->
     <div class="card" id="syntheseCard">
@@ -357,10 +402,10 @@
         <div class="sec-title" style="margin-bottom:0;flex:1;">📋 Synthèse par Escalade</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="synth-period-bar">
-            <a href="?synth_period=week"  class="synth-btn {% if synth_period == 'week'  %}active{% endif %}">7 jours</a>
-            <a href="?synth_period=month" class="synth-btn {% if synth_period == 'month' %}active{% endif %}">Mois</a>
-            <a href="?synth_period=year"  class="synth-btn {% if synth_period == 'year'  %}active{% endif %}">Année</a>
-            <a href="?synth_period=all"   class="synth-btn {% if synth_period == 'all'   %}active{% endif %}">Tout</a>
+            <a href="?synth_period=week&evol_period={{ evol_period }}"  class="synth-btn {% if synth_period == 'week'  %}active{% endif %}">7 jours</a>
+            <a href="?synth_period=month&evol_period={{ evol_period }}" class="synth-btn {% if synth_period == 'month' %}active{% endif %}">Mois</a>
+            <a href="?synth_period=year&evol_period={{ evol_period }}"  class="synth-btn {% if synth_period == 'year'  %}active{% endif %}">Année</a>
+            <a href="?synth_period=all&evol_period={{ evol_period }}"   class="synth-btn {% if synth_period == 'all'   %}active{% endif %}">Tout</a>
           </div>
           {% if synth_total_inc > 0 %}
           <span class="synth-badge">{{ synth_total_inc }} incidents</span>

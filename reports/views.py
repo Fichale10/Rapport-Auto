@@ -72,6 +72,23 @@ def _filter_reports_by_period(queryset, period):
     return queryset
 
 
+def _filter_reports_by_evol_period(queryset, period):
+    today = date.today()
+    if period == 'day':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=1))
+    if period == 'week':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
+    if period == 'month':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=30))
+    if period == 'quarter':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=90))
+    if period == 'half':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=180))
+    if period == 'year':
+        return queryset.filter(uploaded_at__year=today.year)
+    return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
+
+
 def _inc_for_escalade(report, esc):
     for row in (report.synthesis_json or []):
         if row.get('Escalade') == esc:
@@ -121,12 +138,17 @@ def home(request):
     elif month_incidents > 0:
         month_trend_pct = 100.0
 
-    spark_reports = sorted(list(all_reports[:7]), key=lambda r: r.date_rapport)
+    evol_period = request.GET.get('evol_period', 'week')
+    spark_reports = sorted(
+        list(_filter_reports_by_evol_period(all_reports, evol_period)),
+        key=lambda r: r.date_rapport,
+    )
     spark_labels = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
     spark_series = [
         {
             'name': 'Total',
             'color': '#003087',
+            'is_total': True,
             'values': [r.total_incidents for r in spark_reports],
         },
     ]
@@ -134,6 +156,7 @@ def home(request):
         spark_series.append({
             'name': esc,
             'color': color,
+            'is_total': False,
             'values': [_inc_for_escalade(r, esc) for r in spark_reports],
         })
 
@@ -259,6 +282,7 @@ def home(request):
         'month_resolved':       month_resolved,
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
+        'evol_period':          evol_period,
         'show_spark_chart':     bool(spark_reports),
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
         'spark_series':         mark_safe(json.dumps(spark_series)),
