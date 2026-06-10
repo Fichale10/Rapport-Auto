@@ -48,6 +48,7 @@ class UploadedReport(models.Model):
     # }
     # Valeurs en secondes d'outage cumulé par jour.
     outage_journalier_json = models.JSONField(default=dict, blank=True)
+    region_sites_json      = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ['-uploaded_at']

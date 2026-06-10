@@ -150,10 +150,27 @@
   .lr-stat-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; }
   .lr-btn { display: block; text-align: center; background: #FFC72C; color: #003087; border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; text-decoration: none; transition: box-shadow .15s; }
   .lr-btn:hover { box-shadow: 0 4px 16px rgba(255,199,44,.4); }
-  .qa-list { display: flex; flex-direction: column; gap: 8px; }
-  .qa-btn { display: flex; align-items: center; gap: 12px; background: #f0f4ff; border: 1.5px solid transparent; border-radius: 10px; padding: 11px 14px; color: #003087; text-decoration: none; font-weight: 600; font-size: 13px; transition: border-color .15s, background .15s; }
-  .qa-btn:hover { border-color: #003087; background: #e8f0ff; }
-  .qa-ico { width: 32px; height: 32px; background: #003087; color: #FFC72C; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+
+  /* ── Statut Sites ── */
+  .sites-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .sites-table th {
+    text-align: left; font-size: 10px; font-weight: 700; color: #999;
+    text-transform: uppercase; letter-spacing: .5px;
+    padding: 6px 8px; border-bottom: 2px solid #e8edf5;
+  }
+  .sites-table th.num { text-align: center; }
+  .sites-table td { padding: 9px 8px; border-bottom: 1px solid #f5f7fb; color: #333; vertical-align: middle; }
+  .sites-table td.num { text-align: center; }
+  .sites-table tr:last-child td { border-bottom: none; }
+  .sites-table tr:hover td { background: #fafbff; }
+  .sites-table tr.sites-total td { background: #e8f0ff; font-weight: 700; color: #003087; border-top: 2px solid #003087; }
+  .sites-total-val { font-family: 'Bebas Neue', sans-serif; font-size: 15px; color: #003087; letter-spacing: .5px; }
+  .sites-impacted-val { font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: .5px; }
+  .pct-wrap { display: flex; align-items: center; gap: 5px; }
+  .pct-bar { flex: 1; height: 5px; background: #e8edf5; border-radius: 3px; overflow: hidden; min-width: 30px; }
+  .pct-bar-fill { height: 100%; border-radius: 3px; }
+  .pct-lbl { font-size: 10px; font-weight: 700; color: #555; min-width: 36px; text-align: right; }
+
   .steps { display: flex; flex-direction: column; }
   .step { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f0f4ff; }
   .step:last-child { border-bottom: none; }
@@ -492,12 +509,50 @@
     {% endif %}
 
     <div class="card">
-      <div class="sec-title">🚀 Actions rapides</div>
-      <div class="qa-list">
-        <a href="{% url 'upload' %}" class="qa-btn"><div class="qa-ico">↑</div>Nouveau traitement</a>
-        <a href="{% url 'statistiques' %}" class="qa-btn"><div class="qa-ico">📊</div>Statistiques</a>
-        <a href="{% url 'history' %}" class="qa-btn"><div class="qa-ico">📋</div>Historique complet</a>
-      </div>
+      <div class="sec-title">📡 Statut Sites</div>
+      <table class="sites-table">
+        <thead>
+          <tr>
+            <th>Région</th>
+            <th class="num">Sites</th>
+            <th class="num">Impactés</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in statut_sites %}
+          <tr class="{% if row.is_total %}sites-total{% endif %}">
+            <td style="font-weight:{% if row.is_total %}700{% else %}600{% endif %};color:{% if row.is_total %}#003087{% else %}#111{% endif %};">
+              {{ row.region }}
+            </td>
+            <td class="num">
+              <span class="sites-total-val">{{ row.total }}</span>
+            </td>
+            <td class="num">
+              {% if row.impacted > 0 %}
+                <span class="sites-impacted-val" style="color:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};">
+                  {{ row.impacted }}
+                </span>
+              {% else %}
+                <span style="color:#ccc;">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if row.impacted > 0 %}
+              <div class="pct-wrap">
+                <div class="pct-bar">
+                  <div class="pct-bar-fill" style="width:{{ row.pct }}%;background:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};"></div>
+                </div>
+                <span class="pct-lbl">{{ row.pct }}%</span>
+              </div>
+              {% else %}
+                <span style="color:#ccc;font-size:11px;">0%</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
     <div class="card">

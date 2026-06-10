@@ -35,6 +35,15 @@ NB_SITES = {
     'TRANS IP': 582,
 }
 
+REGION_TOTAL_SITES = [
+    ('LOME',     'Lomé',      398),
+    ('MARITIME', 'Maritime',  201),
+    ('PLATEAUX', 'Plateaux',  169),
+    ('CENTRALE', 'Centrale',  143),
+    ('KARA',     'Kara',      175),
+    ('SAVANES',  'Savanes',   127),
+]
+
 MOIS_FR_LONG = [
     '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
@@ -351,6 +360,35 @@ def home(request):
 
     synth_total_inc = total_inc
 
+    # ── Statut Sites par Région ────────────────────────────────────────────
+    region_impacted_sets = defaultdict(set)
+    for r in all_reports:
+        for region, sites in (r.region_sites_json or {}).items():
+            if isinstance(sites, list):
+                region_impacted_sets[region].update(sites)
+
+    statut_sites = []
+    for key, label, total in REGION_TOTAL_SITES:
+        impacted = len(region_impacted_sets.get(key, set()))
+        pct = round(impacted / total * 100, 1) if total > 0 else 0
+        statut_sites.append({
+            'region':   label,
+            'total':    total,
+            'impacted': impacted,
+            'pct':      pct,
+            'is_total': False,
+        })
+    grand_total  = sum(t for _, _, t in REGION_TOTAL_SITES)
+    grand_impact = sum(r['impacted'] for r in statut_sites)
+    grand_pct    = round(grand_impact / grand_total * 100, 1) if grand_total > 0 else 0
+    statut_sites.append({
+        'region':   'TOTAL',
+        'total':    grand_total,
+        'impacted': grand_impact,
+        'pct':      grand_pct,
+        'is_total': True,
+    })
+
     return render(request, 'reports/home.html', {
         'synth_period':     synth_period,
         'synth_rows':       synth_rows,
@@ -374,6 +412,7 @@ def home(request):
         'evol_period_label':    evol_period_label,
         'evol_latest_report':   evol_latest_report,
         'last_report':          last_report,
+        'statut_sites':         statut_sites,
     })
 
 
@@ -479,6 +518,16 @@ def process_report(request, pk):
         report.top_sites_json = json.loads(json.dumps(top_sites.to_dict('records'), cls=_NpEncoder))
     else:
         report.top_sites_json = []
+
+    region_col = next((c for c in ('Région', 'Region', 'REGION', 'region') if c in df_dedup.columns), None)
+    if region_col and site_col and len(df_dedup) > 0:
+        region_sites = {}
+        for region, grp in df_dedup.groupby(region_col):
+            sites = grp[site_col].dropna().astype(str).unique().tolist()
+            region_sites[str(region).strip()] = sites
+        report.region_sites_json = region_sites
+    else:
+        report.region_sites_json = {}
 
     cause_col = next((c for c in ('Root Cause', 'Cause') if c in df_export.columns), None)
     if cause_col and 'Duration' in df_export.columns:
