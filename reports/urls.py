@@ -17,5 +17,6 @@ urlpatterns = [
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
     path('sites-instables/',                      login_required(views.sites_instables), name='sites_instables'),
     path('site-info/',                            login_required(views.site_info),       name='site_info'),
+    path('site-info/search/',                     login_required(views.site_search_api), name='site_search_api'),
     path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),
 ]

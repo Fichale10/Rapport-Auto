@@ -2282,4 +2282,35 @@ def sites_instables(request):
 
 
 def site_info(request):
-    return render(request, 'reports/site_info.html')
+    from .models import Site
+    query = request.GET.get('q', '').strip()
+    site  = None
+    results = []
+
+    if query:
+        exact = Site.objects.filter(site_name__iexact=query).first()
+        if exact:
+            site = exact
+        else:
+            results = list(
+                Site.objects.filter(site_name__icontains=query)
+                .values('site_name', 'site_id', 'region')[:20]
+            )
+
+    return render(request, 'reports/site_info.html', {
+        'query':   query,
+        'site':    site,
+        'results': results,
+    })
+
+
+def site_search_api(request):
+    from .models import Site
+    q = request.GET.get('q', '').strip()
+    if len(q) < 2:
+        return JsonResponse([], safe=False)
+    hits = list(
+        Site.objects.filter(site_name__icontains=q)
+        .values('site_name', 'site_id', 'region')[:15]
+    )
+    return JsonResponse(hits, safe=False)
