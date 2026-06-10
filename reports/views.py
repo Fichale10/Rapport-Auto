@@ -39,6 +39,10 @@ MOIS_FR_LONG = [
     '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
 ]
+MOIS_FR_SHORT = [
+    '', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+    'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
+]
 
 SPARK_ESCALADES = [
     ('ENERGIE',         '#FFC72C'),
@@ -72,21 +76,119 @@ def _filter_reports_by_period(queryset, period):
     return queryset
 
 
-def _filter_reports_by_evol_period(queryset, period):
-    today = date.today()
+def _shift_month(d, delta):
+    m = d.month - 1 + delta
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, 1)
+
+
+def _evol_time_buckets(period, today=None):
+    """Intervalles fixes : 7 jours, 7 semaines, 3/6/12 mois."""
+    today = today or date.today()
+    buckets = []
+
     if period == 'day':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=1))
-    if period == 'week':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
-    if period == 'month':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=30))
-    if period == 'quarter':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=90))
-    if period == 'half':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=180))
-    if period == 'year':
-        return queryset.filter(uploaded_at__year=today.year)
-    return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        for i in range(6, -1, -1):
+            d = today - timedelta(days=i)
+            buckets.append({'label': d.strftime('%d/%m'), 'start': d, 'end': d})
+    elif period == 'week':
+        week_start = today - timedelta(days=today.weekday())
+        for i in range(6, -1, -1):
+            ws = week_start - timedelta(weeks=i)
+            we = ws + timedelta(days=6)
+            buckets.append({
+                'label': f"S{ws.isocalendar()[1]}",
+                'start': ws,
+                'end': we,
+            })
+    elif period == 'quarter':
+        base = today.replace(day=1)
+        for i in range(2, -1, -1):
+            ms = _shift_month(base, -i)
+            me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
+            buckets.append({
+                'label': f"{MOIS_FR_SHORT[ms.month]} {ms.year}",
+                'start': ms,
+                'end': me,
+            })
+    elif period == 'half':
+        base = today.replace(day=1)
+        for i in range(5, -1, -1):
+            ms = _shift_month(base, -i)
+            me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
+            buckets.append({
+                'label': f"{MOIS_FR_SHORT[ms.month]} {str(ms.year)[2:]}",
+                'start': ms,
+                'end': me,
+            })
+    elif period == 'year':
+        base = today.replace(day=1)
+        for i in range(11, -1, -1):
+            ms = _shift_month(base, -i)
+            me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
+            buckets.append({
+                'label': MOIS_FR_SHORT[ms.month],
+                'start': ms,
+                'end': me,
+            })
+    else:
+        week_start = today - timedelta(days=today.weekday())
+        for i in range(6, -1, -1):
+            ws = week_start - timedelta(weeks=i)
+            we = ws + timedelta(days=6)
+            buckets.append({'label': f"S{ws.isocalendar()[1]}", 'start': ws, 'end': we})
+
+    return buckets
+
+
+def _build_spark_evolution(reports_qs, period):
+    all_reports = list(reports_qs)
+    buckets = _evol_time_buckets(period)
+    labels = []
+    total_vals = []
+    esc_vals = {esc: [] for esc, _ in SPARK_ESCALADES}
+    range_reports = []
+
+    for b in buckets:
+        matching = [
+            r for r in all_reports
+            if b['start'] <= r.date_rapport <= b['end']
+        ]
+        range_reports.extend(matching)
+        labels.append(b['label'])
+        total_vals.append(sum(r.total_incidents for r in matching))
+        for esc, _ in SPARK_ESCALADES:
+            esc_vals[esc].append(sum(_inc_for_escalade(r, esc) for r in matching))
+
+    spark_series = [{
+        'name': 'Total',
+        'color': '#003087',
+        'is_total': True,
+        'values': total_vals,
+    }]
+    for esc, color in SPARK_ESCALADES:
+        spark_series.append({
+            'name': esc,
+            'color': color,
+            'is_total': False,
+            'values': esc_vals[esc],
+        })
+
+    period_label = ''
+    if buckets:
+        period_label = (
+            f"{buckets[0]['start'].strftime('%d/%m/%Y')}"
+            f" → {buckets[-1]['end'].strftime('%d/%m/%Y')}"
+        )
+
+    unique_range = {r.pk: r for r in range_reports}
+    range_list = sorted(unique_range.values(), key=lambda r: r.date_rapport)
+    evol_incidents = sum(r.total_incidents for r in unique_range.values())
+    evol_unresolved = sum(r.unresolved_count or 0 for r in unique_range.values())
+    evol_resolved = evol_incidents - evol_unresolved
+    latest = range_list[-1] if range_list else None
+    return labels, spark_series, period_label, evol_incidents, evol_resolved, evol_unresolved, latest, bool(labels)
 
 
 def _inc_for_escalade(report, esc):
@@ -139,40 +241,20 @@ def home(request):
         month_trend_pct = 100.0
 
     evol_period = request.GET.get('evol_period', 'week')
-    spark_reports = sorted(
-        list(_filter_reports_by_evol_period(all_reports, evol_period)),
-        key=lambda r: r.date_rapport,
-    )
-    spark_labels = [r.date_rapport.strftime('%d/%m') for r in spark_reports]
-    spark_series = [
-        {
-            'name': 'Total',
-            'color': '#003087',
-            'is_total': True,
-            'values': [r.total_incidents for r in spark_reports],
-        },
-    ]
-    for esc, color in SPARK_ESCALADES:
-        spark_series.append({
-            'name': esc,
-            'color': color,
-            'is_total': False,
-            'values': [_inc_for_escalade(r, esc) for r in spark_reports],
-        })
-
-    evol_incidents = sum(r.total_incidents for r in spark_reports)
-    evol_unresolved = sum(r.unresolved_count or 0 for r in spark_reports)
-    evol_resolved = evol_incidents - evol_unresolved
-    if spark_reports:
-        evol_period_label = (
-            f"{spark_reports[0].date_rapport.strftime('%d/%m/%Y')}"
-            f" → {spark_reports[-1].date_rapport.strftime('%d/%m/%Y')}"
-        )
-    else:
-        evol_period_label = ''
+    (
+        spark_labels,
+        spark_series,
+        evol_period_label,
+        evol_incidents,
+        evol_resolved,
+        evol_unresolved,
+        evol_latest_report,
+        show_spark_chart,
+    ) = _build_spark_evolution(all_reports, evol_period)
 
     last_report = all_reports.first()
-    evol_latest_report = spark_reports[-1] if spark_reports else last_report
+    if not evol_latest_report:
+        evol_latest_report = last_report
 
     # ── Synthèse par Escalade agrégée (filtrée par période) ────────────────
     synth_period = request.GET.get('synth_period', 'week')
@@ -283,7 +365,7 @@ def home(request):
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
         'evol_period':          evol_period,
-        'show_spark_chart':     bool(spark_reports),
+        'show_spark_chart':     show_spark_chart,
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
         'spark_series':         mark_safe(json.dumps(spark_series)),
         'evol_incidents':       evol_incidents,
