@@ -14,10 +14,13 @@
 
     /* ── NAVBAR ── */
     .navbar {
-      background: var(--yas-blue); padding: 0 40px;
-      display: flex; align-items: center; justify-content: space-between;
+      background: var(--yas-blue);
       height: 64px; position: sticky; top: 0; z-index: 100;
       box-shadow: 0 2px 20px rgba(0,48,135,0.3);
+    }
+    .nav-inner {
+      max-width: 1440px; margin: 0 auto; padding: 0 40px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
     }
     .nav-brand { display: flex; align-items: center; gap: 14px; text-decoration: none; }
     .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--yas-yellow); letter-spacing: 3px; }
@@ -131,11 +134,12 @@
     .notif-footer-admin:hover { background: #fff0c0; color: #7a5a00; }
 
     /* ── TOPBAR ── */
-    .topbar { background: #fff; border-bottom: 1px solid #e8edf5; padding: 10px 40px; font-size: 13px; color: #888; }
+    .topbar { background: #fff; border-bottom: 1px solid #e8edf5; font-size: 13px; color: #888; }
+    .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 10px 40px; }
     .topbar span { color: var(--yas-blue); font-weight: 600; }
 
     /* ── MAIN ── */
-    .main-content { padding: 32px 40px; max-width: 1280px; margin: 0 auto; }
+    .main-content { padding: 32px 40px; max-width: 1440px; margin: 0 auto; }
     .card { background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5; }
     .messages-container { margin-bottom: 24px; }
     .message { padding: 12px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 8px; border-left: 4px solid; }
@@ -200,10 +204,28 @@
     @media (prefers-reduced-motion:reduce) {
       *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
     }
+    /* ── Large screens (1400px+) ── */
+    @media (min-width:1400px) {
+      .main-content { padding: 36px 48px; }
+      .nav-inner    { padding: 0 48px; }
+      .topbar-inner { padding: 10px 48px; }
+    }
+    @media (min-width:1600px) {
+      .main-content { padding: 40px 56px; }
+      .nav-inner    { padding: 0 56px; }
+      .topbar-inner { padding: 10px 56px; }
+    }
+
+    /* ── Small screens ── */
     @media (max-width:768px) {
-      .navbar { padding:0 20px; }
-      .nav-app { display:none; }
-      .main-content { padding:20px; }
+      .nav-inner    { padding: 0 20px; }
+      .topbar-inner { padding: 8px 20px; }
+      .nav-app      { display:none; }
+      .main-content { padding: 16px 20px; }
+    }
+    @media (max-width:480px) {
+      .nav-inner    { padding: 0 14px; }
+      .main-content { padding: 12px 14px; }
     }
   </style>
   {% block extra_css %}{% endblock %}
@@ -211,73 +233,77 @@
 <body>
 
 <nav class="navbar">
-  <a href="{% url 'home' %}" class="nav-brand">
-    <span class="nav-logo">YAS</span>
-    <div class="nav-divider"></div>
-    <span class="nav-app">ReportXCare</span>
-  </a>
+  <div class="nav-inner">
+    <a href="{% url 'home' %}" class="nav-brand">
+      <span class="nav-logo">YAS</span>
+      <div class="nav-divider"></div>
+      <span class="nav-app">ReportXCare</span>
+    </a>
 
-  <div class="nav-links">
-    <a href="{% url 'home' %}"             class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
-    <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
-    <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
-    <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
-    <a href="{% url 'site_info' %}"          class="{% if request.resolver_match.url_name == 'site_info' %}active{% endif %}">Site Info</a>
-  </div>
+    <div class="nav-links">
+      <a href="{% url 'home' %}"             class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
+      <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
+      <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
+      <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
+      <a href="{% url 'site_info' %}"          class="{% if request.resolver_match.url_name == 'site_info' %}active{% endif %}">Site Info</a>
+    </div>
 
-  <div class="nav-user">
-    {% if user.is_authenticated %}
+    <div class="nav-user">
+      {% if user.is_authenticated %}
 
-      <!-- 🔔 Notifications -->
-      <div class="notif-wrap" id="notifWrap">
-        <div class="notif-btn" id="notifBtn" title="Incidents non résolus">
-          🔔
-          <span class="notif-badge" id="notifBadge">0</span>
-        </div>
-        <div class="notif-dropdown" id="notifDropdown">
-          <div class="notif-header">
-            <div class="notif-header-title">⚠️ Incidents non résolus</div>
-            <span class="notif-header-count" id="notifCount">0</span>
+        <!-- 🔔 Notifications -->
+        <div class="notif-wrap" id="notifWrap">
+          <div class="notif-btn" id="notifBtn" title="Incidents non résolus">
+            🔔
+            <span class="notif-badge" id="notifBadge">0</span>
           </div>
-          <div class="notif-list" id="notifList">
-            <div class="notif-empty">Chargement...</div>
+          <div class="notif-dropdown" id="notifDropdown">
+            <div class="notif-header">
+              <div class="notif-header-title">⚠️ Incidents non résolus</div>
+              <span class="notif-header-count" id="notifCount">0</span>
+            </div>
+            <div class="notif-list" id="notifList">
+              <div class="notif-empty">Chargement...</div>
+            </div>
+            <div class="notif-footer">
+              <a href="{% url 'history' %}?period=all">Voir tout l'historique →</a>
+            </div>
           </div>
-          <div class="notif-footer">
-            <a href="{% url 'history' %}?period=all">Voir tout l'historique →</a>
+        </div>
+
+        <!-- 👤 Badge utilisateur cliquable -->
+        <div class="user-wrap" id="userWrap">
+          <div class="user-badge" id="userBtn">
+            <div class="user-avatar">{{ user.username|first|upper }}</div>
+            {{ user.username }}
+            {% if user.is_superuser %}<span style="font-size:10px;opacity:.7;">(Admin)</span>{% endif %}
+            <span style="font-size:10px;opacity:.5;margin-left:2px;">▾</span>
+          </div>
+          <div class="user-dropdown" id="userDropdown">
+            <a href="{% url 'accounts:profil' %}" class="user-drop-item">
+              <span class="user-drop-icon">👤</span> Profil
+            </a>
+            {% if request.user.is_superuser %}
+            <a href="{% url 'accounts:gestion_users' %}" class="user-drop-item user-drop-admin">
+              <span class="user-drop-icon">👥</span> Gestion utilisateurs
+            </a>
+            {% endif %}
+            <div class="user-drop-divider"></div>
+            <a href="{% url 'accounts:logout' %}" class="user-drop-item user-drop-logout">
+              <span class="user-drop-icon">🚪</span> Déconnexion
+            </a>
           </div>
         </div>
-      </div>
 
-      <!-- 👤 Badge utilisateur cliquable -->
-      <div class="user-wrap" id="userWrap">
-        <div class="user-badge" id="userBtn">
-          <div class="user-avatar">{{ user.username|first|upper }}</div>
-          {{ user.username }}
-          {% if user.is_superuser %}<span style="font-size:10px;opacity:.7;">(Admin)</span>{% endif %}
-          <span style="font-size:10px;opacity:.5;margin-left:2px;">▾</span>
-        </div>
-        <div class="user-dropdown" id="userDropdown">
-          <a href="{% url 'accounts:profil' %}" class="user-drop-item">
-            <span class="user-drop-icon">👤</span> Profil
-          </a>
-          {% if request.user.is_superuser %}
-          <a href="{% url 'accounts:gestion_users' %}" class="user-drop-item user-drop-admin">
-            <span class="user-drop-icon">👥</span> Gestion utilisateurs
-          </a>
-          {% endif %}
-          <div class="user-drop-divider"></div>
-          <a href="{% url 'accounts:logout' %}" class="user-drop-item user-drop-logout">
-            <span class="user-drop-icon">🚪</span> Déconnexion
-          </a>
-        </div>
-      </div>
-
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
 </nav>
 
 <div class="topbar">
-  Yas Togo &rsaquo; ISOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
+  <div class="topbar-inner">
+    Yas Togo &rsaquo; ISOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
+  </div>
 </div>
 
 <div class="main-content">

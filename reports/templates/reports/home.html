@@ -180,12 +180,34 @@
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
   .empty a { color: #003087; font-weight: 600; text-decoration: none; }
 
+  /* ── Grand écran : sidebar plus large, hero plus aéré ── */
+  @media(min-width:1400px){
+    .main-grid        { grid-template-columns: 1fr 380px; gap: 24px; }
+    .kpi-bar          { gap: 20px; }
+    .kpi-box          { padding: 22px 24px; }
+    .kpi-num          { font-size: 32px; }
+    .hero             { padding: 56px 60px; }
+    .hero-title       { font-size: 58px; }
+    .card             { padding: 28px; }
+  }
+  @media(min-width:1600px){
+    .main-grid        { grid-template-columns: 1fr 420px; gap: 28px; }
+    .hero             { padding: 64px 68px; }
+    .hero-title       { font-size: 64px; }
+  }
+
+  /* ── Petit écran ── */
   @media(max-width:900px){
     .kpi-bar { grid-template-columns: repeat(2,1fr); }
     .main-grid { grid-template-columns: 1fr; }
     .hero-visual { display: none; }
     .hero-title { font-size: 38px; }
     .synth-period-bar { flex-wrap: wrap; }
+  }
+  @media(max-width:520px){
+    .kpi-bar  { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .hero     { padding: 28px 24px; }
+    .hero-title { font-size: 30px; }
   }
 </style>
 {% endblock %}
