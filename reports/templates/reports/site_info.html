@@ -418,9 +418,19 @@
     clearTimeout(timer);
     if (q.length < 2) { hideDrop(); return; }
     timer = setTimeout(function () {
-      fetch('{% url "site_search_api" %}?q=' + encodeURIComponent(q))
-        .then(function (r) { return r.json(); })
-        .then(showDrop)
+      fetch('{% url "site_search_api" %}?q=' + encodeURIComponent(q), {
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) {
+          if (r.status === 302 || r.redirected) {
+            window.location.href = '{% url "site_info" %}';
+            return [];
+          }
+          if (!r.ok) { hideDrop(); return []; }
+          return r.json();
+        })
+        .then(function(data) { if (data && data.length !== undefined) showDrop(data); })
         .catch(hideDrop);
     }, 200);
   });
