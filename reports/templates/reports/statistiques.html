@@ -189,11 +189,25 @@
     cursor: pointer; transition: background .15s;
   }
   .popover-apply:hover { background: #0047cc; }
+  @media(min-width:1400px){
+    .kpi-row   { gap:20px; }
+    .kpi       { padding:24px 28px; }
+    .kpi-val   { font-size:34px; }
+    .row-1, .row-2 { gap:24px; }
+    .evolution-card { padding:28px 32px; }
+  }
   @media(max-width:900px){
     .row-1, .row-2 { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: 1fr 1fr; }
     .report-banner-name { max-width: 240px; }
     .period-export-bar { flex-direction: column; align-items: flex-start; }
+  }
+  @media(max-width:520px){
+    .kpi-row { grid-template-columns: 1fr 1fr; gap:10px; }
+    .kpi     { padding:14px 16px; }
+    .kpi-val { font-size:22px; }
+    .period-bar { gap:6px; }
+    .period-btn { padding:6px 14px; font-size:12px; }
   }
 </style>
 

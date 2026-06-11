@@ -145,11 +145,20 @@
   .empty-compare .icon { font-size: 48px; margin-bottom: 16px; }
   .empty-compare p { font-size: 14px; line-height: 1.7; }
 
+  @media(min-width:1400px){
+    .selector-card  { padding:32px 36px; }
+    .kpi-compare    { gap:20px; }
+    .r-header       { padding:22px 28px; }
+  }
   @media(max-width:900px){
     .selector-grid { grid-template-columns: 1fr; }
     .compare-header { grid-template-columns: 1fr; }
     .vs-center { display: none; }
     .kpi-compare { grid-template-columns: 1fr 1fr; }
+  }
+  @media(max-width:520px){
+    .kpi-compare { grid-template-columns: 1fr 1fr; gap:10px; }
+    .selector-card { padding:18px; }
   }
 </style>
 {% endblock %}

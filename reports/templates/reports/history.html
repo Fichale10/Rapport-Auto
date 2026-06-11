@@ -86,7 +86,7 @@
   /* ── Table ── */
   .table-wrap {
     background: #fff; border-radius: 16px; border: 1px solid #e8edf5;
-    box-shadow: 0 1px 4px rgba(0,48,135,.05); overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,48,135,.05); overflow-x: auto;
   }
   table.rtable { width: 100%; border-collapse: collapse; }
   table.rtable th {
@@ -180,11 +180,22 @@
   .btn-confirm-delete:hover { background:#c53030; transform:translateY(-1px); }
   .btn-confirm-delete:disabled { opacity:.6; cursor:not-allowed; transform:none; }
 
+  @media(min-width:1400px){
+    .kpi-row  { gap:20px; }
+    .kpi      { padding:22px 26px; }
+    .kpi-val  { font-size:32px; }
+    .table-wrap table { font-size:14px; }
+  }
   @media(max-width:900px){
     .kpi-row { grid-template-columns:1fr 1fr; }
     .toolbar { flex-direction:column; align-items:stretch; }
     .toolbar-right { margin-left:0; }
     .search-wrap { max-width:100%; }
+  }
+  @media(max-width:520px){
+    .kpi-row { grid-template-columns:1fr 1fr; gap:10px; }
+    .kpi     { padding:14px 16px; }
+    .kpi-val { font-size:22px; }
   }
 </style>
 {% endblock %}
