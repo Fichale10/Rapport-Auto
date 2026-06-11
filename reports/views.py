@@ -2200,7 +2200,8 @@ def statistiques(request):
         for i, d in enumerate(outage_chart)
     ]
 
-    total_reports     = reports.count()
+    total_reports          = reports.count()
+    total_sites_impacted   = len(site_data)
     evolution_reports = list(reports.order_by('uploaded_at'))
     evolution_labels  = [r.uploaded_at.strftime('%d/%m') for r in evolution_reports]
     evolution_incidents = [r.total_incidents for r in evolution_reports]
@@ -2274,6 +2275,7 @@ def statistiques(request):
         'causes_count_chart':   causes_count_chart,
         'total_outage_h':       total_outage_h,
         'total_reports':        total_reports,
+        'total_sites_impacted': total_sites_impacted,
         'donut_svg':            donut_svg,
         'show_evolution_chart': len(evolution_labels) > 1,
         'evolution_labels':     mark_safe(json.dumps(evolution_labels)),
