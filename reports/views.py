@@ -2281,6 +2281,10 @@ def sites_instables(request):
     return render(request, 'reports/sites_instables.html')
 
 
+def stat_dr2(request):
+    return render(request, 'reports/stat_dr2.html')
+
+
 def site_info(request):
     from .models import Site
     query = request.GET.get('q', '').strip()
