@@ -372,6 +372,7 @@ def home(request):
         impacted = len(region_impacted_sets.get(key, set()))
         pct = round(impacted / total * 100, 1) if total > 0 else 0
         statut_sites.append({
+            'key':      key,
             'region':   label,
             'total':    total,
             'impacted': impacted,
@@ -2044,10 +2045,13 @@ def statistiques(request):
             date_from = request.GET.get('date_from')
             date_to   = request.GET.get('date_to')
             if date_from and date_to:
-                reports = base_qs.filter(
-                    uploaded_at__date__gte=date_from,
-                    uploaded_at__date__lte=date_to,
-                )
+                try:
+                    from django.utils import timezone as _tz
+                    dt_from = _tz.make_aware(_dt.datetime.fromisoformat(date_from))
+                    dt_to   = _tz.make_aware(_dt.datetime.fromisoformat(date_to))
+                    reports = base_qs.filter(uploaded_at__gte=dt_from, uploaded_at__lte=dt_to)
+                except (ValueError, TypeError):
+                    reports = base_qs
             else:
                 reports = base_qs
         else:
@@ -2206,8 +2210,8 @@ def statistiques(request):
     if period_filter == 'custom':
         date_from  = request.GET.get('date_from')
         date_to    = request.GET.get('date_to')
-        cutoff     = date.fromisoformat(date_from) if date_from else None
-        cutoff_end = date.fromisoformat(date_to)   if date_to   else None
+        cutoff     = _dt.datetime.fromisoformat(date_from).date() if date_from else None
+        cutoff_end = _dt.datetime.fromisoformat(date_to).date()   if date_to   else None
         semaine_labels, dispo_table, outage_table = _calc_disponibilite(
             base_qs, cutoff_date=cutoff, cutoff_end=cutoff_end
         )
@@ -2251,6 +2255,14 @@ def statistiques(request):
         for s in dispo_series
     ]
 
+    # ── Date range pour les inputs dynamiques ────────────────────────────────
+    first_up = base_qs.order_by('uploaded_at').values_list('uploaded_at', flat=True).first()
+    last_up  = base_qs.order_by('-uploaded_at').values_list('uploaded_at', flat=True).first()
+    date_min_str = first_up.strftime('%Y-%m-%dT%H:%M') if first_up else ''
+    date_max_str = last_up.strftime('%Y-%m-%dT%H:%M')  if last_up  else ''
+    date_from_val = request.GET.get('date_from') or date_min_str
+    date_to_val   = request.GET.get('date_to')   or date_max_str
+
     return render(request, 'reports/statistiques.html', {
         'period_filter':        period_filter,
         'single_report':        single_report,
@@ -2274,6 +2286,10 @@ def statistiques(request):
         'nb_sites':             NB_SITES,
         'semaine_labels_js':    mark_safe(_json.dumps(semaine_labels)),
         'dispo_series_js':      mark_safe(_json.dumps(dispo_series_js)),
+        'date_from_val':        date_from_val,
+        'date_to_val':          date_to_val,
+        'date_min_str':         date_min_str,
+        'date_max_str':         date_max_str,
     })
 
 

@@ -3,6 +3,7 @@
 {% block breadcrumb %}Accueil{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
   :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
 
@@ -171,12 +172,11 @@
   .pct-bar-fill { height: 100%; border-radius: 3px; }
   .pct-lbl { font-size: 10px; font-weight: 700; color: #555; min-width: 36px; text-align: right; }
 
-  .steps { display: flex; flex-direction: column; }
-  .step { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f0f4ff; }
-  .step:last-child { border-bottom: none; }
-  .step-num { width: 28px; height: 28px; flex-shrink: 0; background: #FFC72C; color: #003087; border-radius: 7px; font-weight: 800; font-size: 12px; display: flex; align-items: center; justify-content: center; }
-  .step h4 { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 2px; }
-  .step p  { font-size: 12px; color: #888; line-height: 1.5; }
+  /* ── Map card ── */
+  .map-card { padding: 16px 20px 20px; }
+  #togo-map { height: 320px; border-radius: 10px; overflow: hidden; z-index: 0; border: 1px solid #e8edf5; }
+  .sites-table tbody tr:not(.sites-total) { cursor: pointer; transition: background .12s; }
+  .sites-table tbody tr.row-highlight td { background: #e8f0ff !important; }
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
   .empty a { color: #003087; font-weight: 600; text-decoration: none; }
 
@@ -543,7 +543,8 @@
         </thead>
         <tbody>
           {% for row in statut_sites %}
-          <tr class="{% if row.is_total %}sites-total{% endif %}">
+          <tr class="{% if row.is_total %}sites-total{% endif %}"
+              {% if not row.is_total %}data-region="{{ row.key }}"{% endif %}>
             <td style="font-weight:{% if row.is_total %}700{% else %}600{% endif %};color:{% if row.is_total %}#003087{% else %}#111{% endif %};">
               {{ row.region }}
             </td>
@@ -577,16 +578,135 @@
       </table>
     </div>
 
-    <div class="card">
-      <div class="sec-title">💡 Comment ça marche</div>
-      <div class="steps">
-        <div class="step"><div class="step-num">1</div><div><h4>Importez le fichier Excel</h4><p>Fichier d'alarmes au format .xlsx</p></div></div>
-        <div class="step"><div class="step-num">2</div><div><h4>Choisissez la période</h4><p>Journalier ou plage de dates</p></div></div>
-        <div class="step"><div class="step-num">3</div><div><h4>Analyse automatique</h4><p>Filtrage, déduplication, MTTR &amp; Outage</p></div></div>
-        <div class="step"><div class="step-num">4</div><div><h4>Téléchargez les rapports</h4><p>Détail + synthèse par escalade en Excel</p></div></div>
-      </div>
+    <div class="card map-card">
+      <div class="sec-title">🗺️ Carte des régions</div>
+      <div id="togo-map"></div>
     </div>
   </div>
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/sp38=" crossorigin=""></script>
+<script>
+(function(){
+  // ── Données régions depuis Django ──────────────────────────────────────
+  var REGION_DATA = {
+    {% for row in statut_sites %}{% if not row.is_total %}
+    "{{ row.key }}": { label:"{{ row.region }}", total:{{ row.total }}, impacted:{{ row.impacted }}, pct:{{ row.pct }} },
+    {% endif %}{% endfor %}
+  };
+
+  // ── Polygones simplifiés des 6 régions du Togo ────────────────────────
+  var POLYGONS = {
+    'SAVANES':  [[11.12,0.12],[11.12,1.57],[10.80,1.72],[10.52,1.70],[10.12,1.60],[10.02,0.82],[10.14,0.40],[10.48,0.17],[10.82,0.10]],
+    'KARA':     [[10.02,0.82],[10.12,1.60],[9.80,1.75],[9.52,1.72],[9.12,1.62],[9.02,0.68],[9.22,0.40],[9.62,0.48],[9.88,0.65]],
+    'CENTRALE': [[9.02,0.68],[9.12,1.62],[9.52,1.72],[8.92,1.80],[8.58,1.75],[8.18,1.62],[8.08,0.70],[8.38,0.50],[8.72,0.56]],
+    'PLATEAUX': [[8.08,0.70],[8.18,1.62],[8.58,1.75],[7.98,1.82],[7.42,1.75],[6.92,1.68],[6.85,0.88],[7.10,0.66],[7.58,0.60]],
+    'MARITIME': [[6.85,0.88],[6.92,1.68],[7.42,1.75],[6.68,1.82],[6.38,1.82],[6.18,1.68],[6.14,1.38],[6.30,1.38],[6.30,1.08],[6.14,1.08],[6.12,0.70],[6.48,0.63],[6.72,0.66],[6.78,0.76]],
+    'LOME':     [[6.12,1.08],[6.30,1.08],[6.30,1.38],[6.12,1.38]]
+  };
+
+  var CENTERS = {
+    'SAVANES':  [10.62, 0.90], 'KARA':     [9.55,  1.10],
+    'CENTRALE': [8.55,  1.10], 'PLATEAUX': [7.55,  1.18],
+    'MARITIME': [6.88,  1.28], 'LOME':     [6.21,  1.22]
+  };
+
+  function getColor(pct) {
+    if (pct <= 0)   return '#c8daf5';
+    if (pct < 15)   return '#003087';
+    if (pct < 30)   return '#d97706';
+    return '#e53e3e';
+  }
+  function getStyle(key, highlight) {
+    var d = REGION_DATA[key] || {};
+    var pct = d.pct || 0;
+    return {
+      fillColor:   highlight ? '#FFC72C' : getColor(pct),
+      weight:      highlight ? 2.5 : 1.5,
+      color:       highlight ? '#b07800' : '#fff',
+      fillOpacity: highlight ? 0.85 : (pct <= 0 ? 0.35 : 0.70)
+    };
+  }
+
+  // ── Init carte ────────────────────────────────────────────────────────
+  var map = L.map('togo-map', { zoomControl: true, scrollWheelZoom: false })
+               .setView([8.62, 0.88], 6);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 12, minZoom: 5
+  }).addTo(map);
+
+  var layers    = {};
+  var activeKey = null;
+
+  function popupHtml(key) {
+    var d = REGION_DATA[key];
+    if (!d) return '';
+    var color = getColor(d.pct);
+    return '<div style="min-width:150px;font-family:\'DM Sans\',sans-serif;">' +
+      '<div style="font-size:13px;font-weight:700;color:#003087;margin-bottom:6px;">📍 ' + d.label + '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">' +
+        '<span style="color:#888;">Sites total</span><strong>' + d.total + '</strong></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">' +
+        '<span style="color:#888;">Sites impactés</span><strong style="color:' + color + ';">' + d.impacted + '</strong></div>' +
+      '<div style="background:#f5f5f5;border-radius:4px;height:6px;margin-bottom:4px;">' +
+        '<div style="width:' + Math.min(d.pct,100) + '%;height:100%;border-radius:4px;background:' + color + ';"></div></div>' +
+      '<div style="text-align:right;font-size:11px;font-weight:700;color:' + color + ';">' + d.pct + '%</div>' +
+    '</div>';
+  }
+
+  function highlightRegion(key) {
+    // Réinitialise tout
+    if (activeKey && layers[activeKey]) layers[activeKey].setStyle(getStyle(activeKey, false));
+    // Met en avant
+    activeKey = key;
+    if (layers[key]) {
+      layers[key].setStyle(getStyle(key, true));
+      layers[key].bringToFront();
+      map.flyTo(CENTERS[key], 7, { duration: 0.6 });
+      layers[key].openPopup();
+    }
+    // Sync table
+    document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
+      row.classList.toggle('row-highlight', row.dataset.region === key);
+    });
+  }
+
+  // ── Création des polygones ────────────────────────────────────────────
+  Object.keys(POLYGONS).forEach(function(key){
+    var layer = L.polygon(POLYGONS[key], getStyle(key, false))
+      .bindPopup(popupHtml(key), { maxWidth: 200 })
+      .addTo(map);
+
+    // Label région
+    var d = REGION_DATA[key];
+    if (d) {
+      L.marker(CENTERS[key], {
+        icon: L.divIcon({
+          className: '',
+          html: '<div style="font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;pointer-events:none;">' + d.label + '</div>',
+          iconAnchor: [20, 8]
+        })
+      }).addTo(map);
+    }
+
+    layer.on('click', function(){ highlightRegion(key); });
+    layers[key] = layer;
+  });
+
+  // ── Sync table → carte ────────────────────────────────────────────────
+  document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
+    row.addEventListener('click', function(){
+      highlightRegion(row.dataset.region);
+    });
+  });
+
+  // Rafraîchit la carte après son affichage (évite le bug de tuiles vides)
+  setTimeout(function(){ map.invalidateSize(); }, 200);
+})();
+</script>
 {% endblock %}

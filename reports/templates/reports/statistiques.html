@@ -189,6 +189,64 @@
     cursor: pointer; transition: background .15s;
   }
   .popover-apply:hover { background: #0047cc; }
+
+  /* ── Filter bar (plateforme + période, 1 ligne) ── */
+  .filter-bar {
+    background:#fff; border-radius:14px; border:1px solid #e8edf5;
+    box-shadow:0 1px 4px rgba(0,48,135,.05); margin-bottom:24px;
+    display:flex; align-items:center; gap:14px; padding:12px 20px; flex-wrap:wrap;
+  }
+  /* Dropdown plateforme */
+  .plat-dropdown { position:relative; flex-shrink:0; }
+  .plat-drop-btn {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 16px; border-radius:9px; font-size:13px; font-weight:700;
+    border:1.5px solid #003087; background:#003087; color:#fff;
+    cursor:pointer; white-space:nowrap; transition:background .15s,border-color .15s;
+    font-family:'DM Sans',sans-serif;
+  }
+  .plat-drop-btn:hover { background:#0047cc; border-color:#0047cc; }
+  .plat-drop-arrow { font-size:10px; opacity:.8; transition:transform .2s; }
+  .plat-dropdown.open .plat-drop-arrow { transform:rotate(180deg); }
+  .plat-drop-menu {
+    position:absolute; top:calc(100% + 8px); left:0;
+    background:#fff; border:1px solid #e8edf5; border-radius:12px;
+    box-shadow:0 8px 32px rgba(0,48,135,.15); min-width:220px; z-index:200; overflow:hidden;
+    display:none;
+  }
+  .plat-drop-menu.open { display:block; }
+  .plat-drop-item {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:8px; padding:10px 16px; font-size:13px; font-weight:600; color:#333;
+    cursor:pointer; transition:background .15s;
+  }
+  .plat-drop-item:hover:not(.disabled) { background:#f0f4ff; color:#003087; }
+  .plat-drop-item.active { color:#003087; background:#f0f4ff; }
+  .plat-drop-item.disabled { opacity:.4; cursor:not-allowed; }
+  .plat-soon { font-size:9px; font-weight:700; background:rgba(255,199,44,.3); color:#7a5a00; border-radius:4px; padding:1px 6px; letter-spacing:.3px; }
+  /* Séparateur vertical */
+  .filter-vsep { width:1px; height:30px; background:#e8edf5; flex-shrink:0; }
+  /* Label période */
+  .filter-lbl { font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; flex-shrink:0; }
+  /* Champs date */
+  .period-date-row { display:flex; align-items:flex-end; gap:8px; flex:1; flex-wrap:wrap; }
+  .date-field { display:flex; flex-direction:column; gap:3px; }
+  .date-field label { font-size:10px; font-weight:700; color:#aaa; text-transform:uppercase; letter-spacing:.5px; }
+  .date-field input[type="datetime-local"] {
+    padding:7px 10px; border:1.5px solid #e8edf5; border-radius:8px;
+    font-size:13px; color:#333; font-family:'DM Sans',sans-serif; width:190px; cursor:pointer;
+    transition:border-color .15s;
+  }
+  .date-field input[type="datetime-local"]:focus { outline:none; border-color:#003087; }
+  .date-arrow { font-size:14px; color:#ccc; font-weight:700; padding-bottom:7px; }
+  .filter-apply {
+    padding:8px 20px; background:#003087; color:#fff; border:none;
+    border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;
+    transition:background .15s; white-space:nowrap; font-family:'DM Sans',sans-serif;
+    align-self:flex-end;
+  }
+  .filter-apply:hover { background:#0047cc; }
+
   @media(min-width:1400px){
     .kpi-row   { gap:20px; }
     .kpi       { padding:24px 28px; }
@@ -200,14 +258,16 @@
     .row-1, .row-2 { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: 1fr 1fr; }
     .report-banner-name { max-width: 240px; }
-    .period-export-bar { flex-direction: column; align-items: flex-start; }
+    .filter-bar { gap: 10px; padding: 10px 16px; }
+    .filter-vsep { display: none; }
   }
   @media(max-width:520px){
     .kpi-row { grid-template-columns: 1fr 1fr; gap:10px; }
     .kpi     { padding:14px 16px; }
     .kpi-val { font-size:22px; }
-    .period-bar { gap:6px; }
-    .period-btn { padding:6px 14px; font-size:12px; }
+    .filter-bar { flex-direction: column; align-items: flex-start; gap:8px; padding:10px 14px; }
+    .date-field input[type="datetime-local"] { width: 165px; font-size:12px; }
+    .btn-export-xl { width: 100%; justify-content: center; }
   }
 </style>
 
@@ -240,64 +300,60 @@
 </div>
 {% endif %}
 
-{% if period_filter != 'report' %}
-<div class="period-export-bar">
-  <div class="period-bar">
-    <span>Période :</span>
-    <a href="?period=latest" class="period-btn {% if period_filter == 'latest' %}active{% endif %}">Dernier rapport</a>
-    <a href="?period=week"    class="period-btn {% if period_filter == 'week'    %}active{% endif %}">Semaine</a>
-    <a href="?period=month"   class="period-btn {% if period_filter == 'month'   %}active{% endif %}">Mois</a>
-    <div class="custom-period-wrap">
-  <button class="period-btn {% if period_filter in '3days,2weeks,quarter,half,custom' %}active{% endif %}"
-          onclick="document.getElementById('periodPopover').classList.toggle('open')" type="button">
-    {% if period_filter == '3days' %}3 jours
-    {% elif period_filter == '2weeks' %}2 semaines
-    {% elif period_filter == 'quarter' %}3 mois
-    {% elif period_filter == 'half' %}6 mois
-    {% elif period_filter == 'custom' %}{{ request.GET.date_from|default:"" }} → {{ request.GET.date_to|default:"" }}
-    {% else %}Personnalisé ▾{% endif %}
-  </button>
+<form method="get" class="filter-bar" id="filterBarForm">
+  {% if period_filter == 'report' %}<input type="hidden" name="report" value="{{ single_report.pk }}">{% endif %}
+  <input type="hidden" name="period" value="custom">
 
-  <div class="period-popover" id="periodPopover">
-    <div class="popover-title">Période prédéfinie</div>
-    <div class="popover-presets">
-      <a href="?period=3days"   class="preset-btn {% if period_filter == '3days'   %}active{% endif %}">3 jours</a>
-      <a href="?period=2weeks"  class="preset-btn {% if period_filter == '2weeks'  %}active{% endif %}">2 semaines</a>
-      <a href="?period=quarter" class="preset-btn {% if period_filter == 'quarter' %}active{% endif %}">3 mois</a>
-      <a href="?period=half"    class="preset-btn {% if period_filter == 'half'    %}active{% endif %}">6 mois</a>
+  <!-- Dropdown Plateforme -->
+  <div class="plat-dropdown" id="platDropWrap">
+    <button type="button" class="plat-drop-btn" id="platDropBtn">
+      <span id="platLabel">📡 RÉSEAU MOBILE</span>
+      <span class="plat-drop-arrow">▾</span>
+    </button>
+    <div class="plat-drop-menu" id="platDropMenu">
+      <div class="plat-drop-item active">📡 RÉSEAU MOBILE</div>
+      <div class="plat-drop-item disabled">🔌 RÉSEAU FIXE <span class="plat-soon">Bientôt</span></div>
+      <div class="plat-drop-item disabled">⚙️ CORE ET IGW <span class="plat-soon">Bientôt</span></div>
+      <div class="plat-drop-item disabled">📶 TRANSMISSION <span class="plat-soon">Bientôt</span></div>
     </div>
-    <div class="popover-divider"></div>
-    <div class="popover-title">Période personnalisée</div>
-    <form method="get" class="popover-custom-form">
-      <input type="hidden" name="period" value="custom">
-      <div class="popover-dates">
-        <div>
-          <label>Du</label>
-          <input type="date" name="date_from" value="{{ request.GET.date_from|default:'' }}" required>
-        </div>
-        <div>
-          <label>Au</label>
-          <input type="date" name="date_to" value="{{ request.GET.date_to|default:'' }}" required>
-        </div>
-      </div>
-      <button type="submit" class="popover-apply">Appliquer</button>
-    </form>
   </div>
-</div>
-    <a href="?period=year"    class="period-btn {% if period_filter == 'year'    %}active{% endif %}">Année</a>
-    <a href="?period=all"     class="period-btn {% if period_filter == 'all'     %}active{% endif %}">Tout</a>
+
+  <div class="filter-vsep"></div>
+
+  <!-- Période : date range dynamique -->
+  <span class="filter-lbl">Période :</span>
+  <div class="period-date-row">
+    <div class="date-field">
+      <label>Du</label>
+      <input type="datetime-local" name="date_from"
+             value="{{ date_from_val }}"
+             {% if date_min_str %}min="{{ date_min_str }}"{% endif %}
+             {% if date_max_str %}max="{{ date_max_str }}"{% endif %}>
+    </div>
+    <span class="date-arrow">→</span>
+    <div class="date-field">
+      <label>Au</label>
+      <input type="datetime-local" name="date_to"
+             value="{{ date_to_val }}"
+             {% if date_min_str %}min="{{ date_min_str }}"{% endif %}
+             {% if date_max_str %}max="{{ date_max_str }}"{% endif %}>
+    </div>
+    <button type="submit" class="filter-apply">Appliquer</button>
   </div>
-  <a href="{% url 'export_statistiques' %}?period={{ period_filter }}{% if request.GET.report %}&report={{ request.GET.report }}{% endif %}" class="btn-export-xl">
+
+  <div style="flex:1;"></div>
+
+  <!-- Export -->
+  {% if period_filter == 'report' %}
+  <a href="{% url 'export_statistiques' %}?report={{ single_report.pk }}" class="btn-export-xl" style="flex-shrink:0;">
     📥 Exporter Excel
   </a>
-</div>
-{% else %}
-<div style="display:flex; justify-content:flex-end; margin-bottom:20px;">
-  <a href="{% url 'export_statistiques' %}?report={{ single_report.pk }}" class="btn-export-xl">
+  {% else %}
+  <a href="{% url 'export_statistiques' %}?period={{ period_filter }}&date_from={{ date_from_val }}&date_to={{ date_to_val }}" class="btn-export-xl" style="flex-shrink:0;">
     📥 Exporter Excel
   </a>
-</div>
-{% endif %}
+  {% endif %}
+</form>
 
 <!-- KPIs -->
 <div class="kpi-row">
@@ -696,13 +752,36 @@
 })();
 </script>
 <script>
-// Ferme le popover si on clique ailleurs
-document.addEventListener('click', function(e) {
-  const wrap = document.querySelector('.custom-period-wrap');
-  if (wrap && !wrap.contains(e.target)) {
-    document.getElementById('periodPopover')?.classList.remove('open');
-  }
-});
+// Dropdown Plateforme
+(function(){
+  var wrap = document.getElementById('platDropWrap');
+  var btn  = document.getElementById('platDropBtn');
+  var menu = document.getElementById('platDropMenu');
+  if (!btn || !menu) return;
+
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var open = menu.classList.toggle('open');
+    wrap.classList.toggle('open', open);
+  });
+
+  menu.querySelectorAll('.plat-drop-item:not(.disabled)').forEach(function(item){
+    item.addEventListener('click', function(){
+      menu.querySelectorAll('.plat-drop-item').forEach(function(i){ i.classList.remove('active'); });
+      item.classList.add('active');
+      document.getElementById('platLabel').textContent = item.textContent.trim().replace(/Bientôt/g,'').trim();
+      menu.classList.remove('open');
+      wrap.classList.remove('open');
+    });
+  });
+
+  document.addEventListener('click', function(e){
+    if (!wrap.contains(e.target)){
+      menu.classList.remove('open');
+      wrap.classList.remove('open');
+    }
+  });
+})();
 </script>
 
 {% endblock %}
