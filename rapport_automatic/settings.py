@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     'reports',
     'accounts',
     'axes',
+    'django_apscheduler',
 ]
 
 MIDDLEWARE = [
@@ -85,6 +86,12 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── API Ticketing ──────────────────────────────────────────────────────────────
+TICKETING_API_URL      = os.environ.get('TICKETING_API_URL', '').rstrip('/')
+TICKETING_API_USERNAME = os.environ.get('TICKETING_API_USERNAME', '')
+TICKETING_API_PASSWORD = os.environ.get('TICKETING_API_PASSWORD', '')
+TICKETING_API_IMPORT_INTERVAL_HOURS = int(os.environ.get('TICKETING_API_IMPORT_INTERVAL_HOURS', '3'))
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 LOGIN_URL           = '/accounts/login/'

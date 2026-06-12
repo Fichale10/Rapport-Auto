@@ -418,6 +418,7 @@ def home(request):
 
 
 def upload(request):
+    from datetime import timedelta
     if request.method == 'POST':
         form = UploadForm(request.POST, request.FILES)
         if form.is_valid():
@@ -428,7 +429,15 @@ def upload(request):
             return redirect('process_report', pk=report.pk)
     else:
         form = UploadForm()
-    return render(request, 'reports/upload.html', {'form': form})
+    today      = date.today()
+    yesterday  = today - timedelta(days=1)
+    active_tab = request.GET.get('tab', 'excel')
+    return render(request, 'reports/upload.html', {
+        'form':       form,
+        'today':      today,
+        'yesterday':  yesterday,
+        'active_tab': active_tab,
+    })
 
 
 def process_report(request, pk):
@@ -2336,3 +2345,92 @@ def site_search_api(request):
         .values('site_name', 'site_id', 'region')[:15]
     )
     return JsonResponse(hits, safe=False)
+
+
+# ── Import API manuel ─────────────────────────────────────────────────────────
+
+def api_import_view(request):
+    """Récupère les données API, sauvegarde en Excel et redirige vers process_report."""
+    import datetime as _dt
+    from django.utils import timezone as _tz
+    from .api_import import fetch_and_save_api
+
+    if request.method == 'POST':
+        date_debut = request.POST.get('date_debut', '').strip()
+        date_fin   = request.POST.get('date_fin', '').strip()
+
+        # Défaut : hier 00:00 → aujourd'hui 23:59
+        if not date_debut or not date_fin:
+            now        = _tz.now()
+            date_fin   = now.strftime('%Y-%m-%dT23:59')
+            date_debut = (now - _dt.timedelta(days=1)).strftime('%Y-%m-%dT00:00')
+
+        # Normalise : extrait juste la partie date
+        try:
+            date_debut_d = _dt.datetime.fromisoformat(date_debut).strftime('%Y-%m-%d')
+            date_fin_d   = _dt.datetime.fromisoformat(date_fin).strftime('%Y-%m-%d')
+        except ValueError:
+            messages.error(request, "Format de date invalide.")
+            return redirect('/upload/?tab=api')
+
+        try:
+            report = fetch_and_save_api(date_debut_d, date_fin_d, user=request.user)
+            return redirect('process_report', pk=report.pk)
+        except Exception as exc:
+            messages.error(request, f"Erreur import API : {exc}")
+            return redirect('/upload/?tab=api')
+
+    return redirect('/upload/?tab=api')
+
+
+# ── Audit admin ───────────────────────────────────────────────────────────────
+
+def audit_view(request):
+    """Audit admin : ré-importe une période depuis l'API (mois par mois si > 1 mois)."""
+    if not request.user.is_superuser:
+        messages.error(request, "Accès réservé aux administrateurs.")
+        return redirect('home')
+
+    if request.method == 'POST':
+        from .api_import import run_import_months
+        import datetime as _dt
+
+        date_debut = request.POST.get('date_debut', '').strip()
+        date_fin   = request.POST.get('date_fin', '').strip()
+        overwrite  = request.POST.get('overwrite') == '1'
+
+        if not date_debut or not date_fin:
+            messages.error(request, "Les deux dates sont obligatoires.")
+            return redirect('audit')
+
+        try:
+            _dt.date.fromisoformat(date_debut)
+            _dt.date.fromisoformat(date_fin)
+        except ValueError:
+            messages.error(request, "Format de date invalide (YYYY-MM-DD attendu).")
+            return redirect('audit')
+
+        if date_fin < date_debut:
+            messages.error(request, "La date de fin doit être >= la date de début.")
+            return redirect('audit')
+
+        try:
+            result = run_import_months(date_debut, date_fin, triggered_by=request.user, overwrite=overwrite)
+            msg_parts = []
+            if result['created']:
+                msg_parts.append(f"{result['created']} rapport(s) importé(s)")
+            if result['skipped']:
+                msg_parts.append(f"{result['skipped']} ignoré(s) (déjà existants)")
+            if result['errors']:
+                msg_parts.append(f"{len(result['errors'])} erreur(s)")
+                messages.error(request, f"Audit terminé avec erreurs : {'; '.join(result['errors'][:3])}")
+            if msg_parts:
+                messages.success(request, "Audit terminé — " + ", ".join(msg_parts) + ".")
+            else:
+                messages.info(request, "Audit terminé — aucune donnée retournée.")
+        except Exception as exc:
+            messages.error(request, f"Erreur durant l'audit : {exc}")
+
+        return redirect('audit')
+
+    return render(request, 'reports/audit.html')

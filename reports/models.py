@@ -18,7 +18,7 @@ class UploadedReport(models.Model):
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user             = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     original_filename= models.CharField(max_length=255)
-    file             = models.FileField(upload_to='uploads/')
+    file             = models.FileField(upload_to='uploads/', blank=True, null=True)
     date_rapport     = models.DateField()
     date_fin         = models.DateField(null=True, blank=True)
     period_type      = models.CharField(max_length=10, choices=PERIOD_CHOICES, default=PERIOD_DAY)
@@ -49,6 +49,11 @@ class UploadedReport(models.Model):
     # Valeurs en secondes d'outage cumulé par jour.
     outage_journalier_json = models.JSONField(default=dict, blank=True)
     region_sites_json      = models.JSONField(default=dict, blank=True)
+
+    SOURCE_EXCEL = 'excel'
+    SOURCE_API   = 'api'
+    SOURCE_CHOICES = [(SOURCE_EXCEL, 'Excel'), (SOURCE_API, 'API')]
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_EXCEL)
 
     class Meta:
         ordering = ['-uploaded_at']

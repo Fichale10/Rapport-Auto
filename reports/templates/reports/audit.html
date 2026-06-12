@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Audit API — YAS{% endblock %}
+{% block breadcrumb %}Audit API{% endblock %}
+
+{% block extra_css %}
+<style>
+  .audit-card { max-width: 640px; margin: 0 auto; }
+  .audit-title { font-size: 22px; font-weight: 700; color: #003087; margin-bottom: 6px; }
+  .audit-sub   { font-size: 13px; color: #888; margin-bottom: 28px; }
+  .form-row    { display: flex; gap: 16px; margin-bottom: 20px; }
+  .form-group  { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; font-weight: 700; color: #003087; text-transform: uppercase; letter-spacing: .5px; }
+  .form-group input[type="date"] {
+    border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 14px;
+    font-size: 14px; font-family: 'DM Sans', sans-serif; color: #111;
+    transition: border-color .2s;
+  }
+  .form-group input[type="date"]:focus { outline: none; border-color: #003087; }
+  .overwrite-row { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .overwrite-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+  .overwrite-row label { font-size: 13px; color: #444; cursor: pointer; }
+  .overwrite-hint { font-size: 11px; color: #888; margin-top: 3px; }
+  .btn-audit {
+    background: #003087; color: #fff; border: none;
+    padding: 12px 28px; border-radius: 10px; font-size: 14px; font-weight: 700;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-audit:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,48,135,.25); }
+  .info-box {
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 24px;
+    font-size: 13px; color: #1e40af;
+  }
+  .info-box strong { font-weight: 700; }
+  .info-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+  .info-row:last-child { margin-bottom: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="audit-card">
+  <div class="card">
+    <div class="audit-title">🔧 Audit API</div>
+    <div class="audit-sub">Récupère et ré-importe les données depuis l'API ticketing pour une période donnée.</div>
+
+    <div class="info-box">
+      <div class="info-row"><strong>ℹ️</strong><span>Si la période dépasse 1 mois, l'import est découpé automatiquement mois par mois.</span></div>
+      <div class="info-row"><strong>⚠️</strong><span>Cocher "Écraser" remplace les rapports existants pour cette période.</span></div>
+    </div>
+
+    <form method="post" action="{% url 'audit' %}">
+      {% csrf_token %}
+      <div class="form-row">
+        <div class="form-group">
+          <label for="date_debut">Date de début</label>
+          <input type="date" name="date_debut" id="date_debut" required
+                 value="{{ request.POST.date_debut|default:'' }}">
+        </div>
+        <div class="form-group">
+          <label for="date_fin">Date de fin</label>
+          <input type="date" name="date_fin" id="date_fin" required
+                 value="{{ request.POST.date_fin|default:'' }}">
+        </div>
+      </div>
+
+      <div class="overwrite-row">
+        <input type="checkbox" name="overwrite" id="overwrite" value="1"
+               {% if request.POST.overwrite == '1' %}checked{% endif %}>
+        <div>
+          <label for="overwrite">Écraser les rapports existants</label>
+          <div class="overwrite-hint">Par défaut, les rapports déjà importés pour cette période sont ignorés.</div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-audit">
+        ▶ Lancer l'audit
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

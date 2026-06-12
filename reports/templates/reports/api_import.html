@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Import API{% endblock %}
+{% block breadcrumb %}Import API{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto;text-align:center;padding:40px;">
+  <div style="font-size:40px;margin-bottom:16px;">⬇️</div>
+  <div style="font-size:20px;font-weight:700;color:#003087;margin-bottom:8px;">Import API immédiat</div>
+  <div style="font-size:13px;color:#888;margin-bottom:28px;">Lance un import des 24 dernières heures depuis l'API ticketing.</div>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn-primary">Importer maintenant</button>
+  </form>
+</div>
+{% endblock %}
