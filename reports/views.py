@@ -2014,6 +2014,22 @@ def statistiques(request):
     from datetime import timedelta
     import datetime as _dt
 
+    platform = request.GET.get('platform', 'mobile')
+    PLATFORM_LABELS = {
+        'all':          '🌐 TOUTES LES PLATEFORMES',
+        'mobile':       '📡 RÉSEAU MOBILE',
+        'fixe':         '🔌 RÉSEAU FIXE',
+        'core':         '⚙️ CORE ET IGW',
+        'transmission': '📶 TRANSMISSION',
+    }
+    # Plateformes sans données : retour rapide avec carte "bientôt"
+    if platform not in ('mobile', 'all'):
+        return render(request, 'reports/statistiques.html', {
+            'platform':       platform,
+            'platform_label': PLATFORM_LABELS.get(platform, platform.upper()),
+            'platform_labels': PLATFORM_LABELS,
+        })
+
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
@@ -2301,6 +2317,9 @@ def statistiques(request):
         'date_to_val':          date_to_val,
         'date_min_str':         date_min_str,
         'date_max_str':         date_max_str,
+        'platform':             platform,
+        'platform_label':       PLATFORM_LABELS.get(platform, '📡 RÉSEAU MOBILE'),
+        'platform_labels':      PLATFORM_LABELS,
     })
 
 

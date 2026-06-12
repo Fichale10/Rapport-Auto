@@ -304,18 +304,21 @@
 <form method="get" class="filter-bar" id="filterBarForm">
   {% if period_filter == 'report' %}<input type="hidden" name="report" value="{{ single_report.pk }}">{% endif %}
   <input type="hidden" name="period" value="custom">
+  <input type="hidden" name="platform" value="{{ platform }}" id="platHidden">
 
   <!-- Dropdown Plateforme -->
   <div class="plat-dropdown" id="platDropWrap">
     <button type="button" class="plat-drop-btn" id="platDropBtn">
-      <span id="platLabel">📡 RÉSEAU MOBILE</span>
+      <span id="platLabel">{% if platform_label %}{{ platform_label }}{% else %}📡 RÉSEAU MOBILE{% endif %}</span>
       <span class="plat-drop-arrow">▾</span>
     </button>
     <div class="plat-drop-menu" id="platDropMenu">
-      <div class="plat-drop-item active">📡 RÉSEAU MOBILE</div>
-      <div class="plat-drop-item disabled">🔌 RÉSEAU FIXE <span class="plat-soon">Bientôt</span></div>
-      <div class="plat-drop-item disabled">⚙️ CORE ET IGW <span class="plat-soon">Bientôt</span></div>
-      <div class="plat-drop-item disabled">📶 TRANSMISSION <span class="plat-soon">Bientôt</span></div>
+      <div class="plat-drop-item {% if platform == 'all' %}active{% endif %}" data-platform="all" data-label="🌐 TOUTES LES PLATEFORMES">🌐 TOUTES LES PLATEFORMES</div>
+      <div style="height:1px;background:#f0f4ff;margin:4px 0;"></div>
+      <div class="plat-drop-item {% if platform == 'mobile' or not platform %}active{% endif %}" data-platform="mobile" data-label="📡 RÉSEAU MOBILE">📡 RÉSEAU MOBILE</div>
+      <div class="plat-drop-item {% if platform == 'fixe' %}active{% endif %}" data-platform="fixe" data-label="🔌 RÉSEAU FIXE">🔌 RÉSEAU FIXE <span class="plat-soon">Bientôt</span></div>
+      <div class="plat-drop-item {% if platform == 'core' %}active{% endif %}" data-platform="core" data-label="⚙️ CORE ET IGW">⚙️ CORE ET IGW <span class="plat-soon">Bientôt</span></div>
+      <div class="plat-drop-item {% if platform == 'transmission' %}active{% endif %}" data-platform="transmission" data-label="📶 TRANSMISSION">📶 TRANSMISSION <span class="plat-soon">Bientôt</span></div>
     </div>
   </div>
 
@@ -355,6 +358,8 @@
   </a>
   {% endif %}
 </form>
+
+{% if platform != 'fixe' and platform != 'core' and platform != 'transmission' %}
 
 <!-- KPIs -->
 <div class="kpi-row" style="grid-template-columns:repeat(2,1fr);">
@@ -742,6 +747,20 @@
   });
 })();
 </script>
+
+{% else %}
+<div class="card" style="text-align:center;padding:64px 24px;margin-top:8px;">
+  <div style="font-size:56px;margin-bottom:20px;">🚧</div>
+  <h2 style="font-size:22px;font-weight:700;color:#003087;margin-bottom:10px;">{{ platform_label }}</h2>
+  <p style="color:#888;font-size:14px;max-width:440px;margin:0 auto 28px;">
+    Cette section est en cours de développement. Les statistiques pour cette plateforme seront disponibles prochainement.
+  </p>
+  <a href="{% url 'statistiques' %}?platform=mobile" style="display:inline-flex;align-items:center;gap:8px;background:#003087;color:#fff;padding:11px 24px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
+    ← Retour au Réseau Mobile
+  </a>
+</div>
+{% endif %}
+
   <script>
 (function(){
   const sel = document.querySelector('.period-select');
@@ -762,13 +781,22 @@
     wrap.classList.toggle('open', open);
   });
 
-  menu.querySelectorAll('.plat-drop-item:not(.disabled)').forEach(function(item){
+  menu.querySelectorAll('.plat-drop-item').forEach(function(item){
     item.addEventListener('click', function(){
+      var plat  = item.getAttribute('data-platform');
+      var label = item.getAttribute('data-label');
+      if (!plat) return;
+      // Mettre à jour le bouton immédiatement
+      document.getElementById('platLabel').textContent = label || plat.toUpperCase();
       menu.querySelectorAll('.plat-drop-item').forEach(function(i){ i.classList.remove('active'); });
       item.classList.add('active');
-      document.getElementById('platLabel').textContent = item.textContent.trim().replace(/Bientôt/g,'').trim();
       menu.classList.remove('open');
       wrap.classList.remove('open');
+      // Naviguer vers la plateforme (conserver date_from/date_to)
+      var params = new URLSearchParams(window.location.search);
+      params.set('platform', plat);
+      params.delete('report');
+      window.location.href = '/statistiques/?' + params.toString();
     });
   });
 
