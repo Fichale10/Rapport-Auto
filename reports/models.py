@@ -83,6 +83,8 @@ class Site(models.Model):
     config_4g           = models.CharField(max_length=100, blank=True, default='')
     classif_tech        = models.CharField(max_length=30,  blank=True, default='')
     type_site           = models.CharField(max_length=30,  blank=True, default='')
+    hauteur_pylone      = models.CharField(max_length=20,  blank=True, default='')
+    typologie_pylone    = models.CharField(max_length=30,  blank=True, default='')
     numero_agent        = models.CharField(max_length=30,  blank=True, default='')
     societe_gardiens    = models.CharField(max_length=50,  blank=True, default='')
     contacts_surveillants = models.CharField(max_length=100, blank=True, default='')

@@ -99,9 +99,57 @@
   .sbadge-yellow { background:rgba(255,199,44,.25); border-color:rgba(255,199,44,.5); color:var(--yellow); }
 
   /* ── Sections ── */
-  .site-body { padding:28px 32px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-  @media(max-width:700px){ .site-body { grid-template-columns:1fr; } }
+  .site-body { padding:28px 32px; display:flex; align-items:stretch; gap:28px; }
+  @media(max-width:900px){ .site-body { flex-direction:column; } }
+  .site-body-left { flex:1.2; display:flex; flex-direction:column; gap:24px; min-width:0; }
+  .site-body-right { flex:1; display:flex; flex-direction:column; gap:14px; min-width:0; }
+  .site-body-right .site-section:first-child { flex:1 1 0; display:flex; flex-direction:column; min-height:0; }
   .site-section { }
+
+  /* ── Localisation : architecture du site + mini-infos ── */
+  .site-archi-display { flex:1 1 0; min-height:280px; width:100%; display:flex; flex-direction:column; gap:10px; }
+  .site-archi-display-title { font-size:12px; font-weight:700; color:#003087; }
+  .site-archi-display-body {
+    flex:1 1 0; min-height:0;
+    display:flex; align-items:center; justify-content:center;
+    color:#bbb; font-size:14px; font-style:italic;
+    border:2px dashed #e8edf5; border-radius:10px; background:#fff;
+  }
+  .site-loc-box {
+    background:#f8faff; border:1px solid #e8edf5; border-radius:12px;
+    padding:14px 16px; display:flex; flex-direction:column; gap:8px;
+  }
+  .site-loc-row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+  .site-loc-row .site-field-lbl { font-size:12px; color:#888; }
+  .site-loc-row .site-field-val { font-size:13px; font-weight:600; color:#111; font-family:'DM Mono',monospace,sans-serif; }
+  .site-archi-btn {
+    margin-top:4px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    background:#003087; color:#fff; font-size:13px; font-weight:700;
+    padding:9px 16px; border-radius:10px; text-decoration:none; border:none; cursor:pointer;
+    transition:background .15s;
+  }
+  .site-archi-btn:hover { background:#0047cc; }
+
+  /* ── Modal stats rapides ── */
+  .site-stats-modal-overlay {
+    position:fixed; inset:0; background:rgba(0,16,48,.55); display:none;
+    align-items:center; justify-content:center; z-index:1000; padding:24px;
+  }
+  .site-stats-modal-overlay.show { display:flex; }
+  .site-stats-modal {
+    background:#fff; border-radius:16px; max-width:520px; width:100%;
+    padding:28px 30px; box-shadow:0 20px 60px rgba(0,16,48,.3);
+  }
+  .site-stats-modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+  .site-stats-modal-title { font-size:17px; font-weight:700; color:#003087; }
+  .site-stats-modal-close { background:none; border:none; font-size:20px; color:#999; cursor:pointer; line-height:1; }
+  .site-stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .site-stat-chip {
+    background:#f8faff; border:1px solid #e8edf5; border-radius:10px;
+    padding:10px 12px; display:flex; flex-direction:column; gap:4px;
+  }
+  .site-stat-chip span { font-size:11px; color:#888; }
+  .site-stat-chip strong { font-size:13px; color:#111; }
   .site-section-title {
     font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
     color:#003087; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid #e8f0ff;
@@ -188,6 +236,8 @@
 
   <div class="site-body">
 
+  <div class="site-body-left">
+
     <!-- Identification -->
     <div class="site-section">
       <div class="site-section-title">🏷️ Identification</div>
@@ -200,7 +250,7 @@
         <span class="site-field-val mono">{{ site.site_id|default:"—" }}</span>
       </div>
       <div class="site-field">
-        <span class="site-field-lbl">Région</span>
+        <span class="site-field-lbl">Région admin.</span>
         <span class="site-field-val">
           {% if site.region %}<span class="tag-reg">{{ site.region }}</span>{% else %}<span class="empty">—</span>{% endif %}
         </span>
@@ -221,40 +271,13 @@
         <span class="site-field-lbl">Type de site</span>
         <span class="site-field-val">{{ site.type_site|default:"—" }}</span>
       </div>
-    </div>
-
-    <!-- Localisation -->
-    <div class="site-section">
-      <div class="site-section-title">📍 Localisation</div>
       <div class="site-field">
-        <span class="site-field-lbl">Longitude</span>
-        <span class="site-field-val mono">
-          {% if site.longitude %}{{ site.longitude }}{% else %}<span class="empty">N/D</span>{% endif %}
-        </span>
+        <span class="site-field-lbl">Hauteur pylône</span>
+        <span class="site-field-val">{{ site.hauteur_pylone|default:"—" }}</span>
       </div>
       <div class="site-field">
-        <span class="site-field-lbl">Latitude</span>
-        <span class="site-field-val mono">
-          {% if site.latitude %}{{ site.latitude }}{% else %}<span class="empty">N/D</span>{% endif %}
-        </span>
-      </div>
-      {% if site.longitude and site.latitude %}
-      <div class="site-field">
-        <span class="site-field-lbl">Carte</span>
-        <span class="site-field-val">
-          <a class="map-link" href="https://www.google.com/maps?q={{ site.latitude }},{{ site.longitude }}" target="_blank" rel="noopener">
-            📌 Voir sur Google Maps
-          </a>
-        </span>
-      </div>
-      {% endif %}
-      <div class="site-field">
-        <span class="site-field-lbl">OLT</span>
-        <span class="site-field-val">
-          {% if site.olt == 'OUI' %}<span class="tag-ok">OUI</span>
-          {% elif site.olt == 'NON' %}<span class="tag-no">NON</span>
-          {% else %}{{ site.olt|default:"—" }}{% endif %}
-        </span>
+        <span class="site-field-lbl">Typologie Pylône</span>
+        <span class="site-field-val">{{ site.typologie_pylone|default:"—" }}</span>
       </div>
     </div>
 
@@ -262,8 +285,16 @@
     <div class="site-section">
       <div class="site-section-title">⚙️ Configuration technique</div>
       <div class="site-field">
-        <span class="site-field-lbl">Technologies</span>
+        <span class="site-field-lbl">Technologie Mobile</span>
         <span class="site-field-val">{{ site.techno|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Technologie FTTH</span>
+        <span class="site-field-val">
+          {% if site.olt == 'OUI' %}<span class="tag-ok">OUI</span>
+          {% elif site.olt == 'NON' %}<span class="tag-no">NON</span>
+          {% else %}{{ site.olt|default:"—" }}{% endif %}
+        </span>
       </div>
       <div class="site-field">
         <span class="site-field-lbl">Type de transport</span>
@@ -284,14 +315,6 @@
       <div class="site-field">
         <span class="site-field-lbl">Config 4G</span>
         <span class="site-field-val mono">{{ site.config_4g|default:"—" }}</span>
-      </div>
-      <div class="site-field">
-        <span class="site-field-lbl">Site ESM</span>
-        <span class="site-field-val">
-          {% if site.site_esm == 'YES' or site.site_esm == 'OUI' %}<span class="tag-ok">{{ site.site_esm }}</span>
-          {% elif site.site_esm == 'NO' or site.site_esm == 'NON' %}<span class="tag-no">{{ site.site_esm }}</span>
-          {% else %}{{ site.site_esm|default:"—" }}{% endif %}
-        </span>
       </div>
     </div>
 
@@ -318,15 +341,23 @@
           {% else %}{{ site.site_lithium|default:"—" }}{% endif %}
         </span>
       </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Site ESM</span>
+        <span class="site-field-val">
+          {% if site.site_esm == 'YES' or site.site_esm == 'OUI' %}<span class="tag-ok">{{ site.site_esm }}</span>
+          {% elif site.site_esm == 'NO' or site.site_esm == 'NON' %}<span class="tag-no">{{ site.site_esm }}</span>
+          {% else %}{{ site.site_esm|default:"—" }}{% endif %}
+        </span>
+      </div>
 
-      <!-- Gardiennage -->
-      <div class="site-section-title" style="margin-top:18px;">👮 Gardiennage</div>
+      <!-- Sécurité -->
+      <div class="site-section-title" style="margin-top:18px;">👮 Sécurité</div>
       <div class="site-field">
         <span class="site-field-lbl">Société</span>
         <span class="site-field-val">{{ site.societe_gardiens|default:"—" }}</span>
       </div>
       <div class="site-field">
-        <span class="site-field-lbl">N° Agent</span>
+        <span class="site-field-lbl">Contacts Agent</span>
         <span class="site-field-val mono">{{ site.numero_agent|default:"—" }}</span>
       </div>
       <div class="site-field">
@@ -335,6 +366,51 @@
       </div>
     </div>
 
+  </div>
+
+  <div class="site-body-right">
+    <!-- Localisation -->
+    <div class="site-section">
+      <div class="site-section-title">📍 Localisation</div>
+      <div class="site-archi-display">
+        <div class="site-archi-display-title">🏗️ Architecture du site</div>
+        <div class="site-archi-display-body">Contenu à définir</div>
+      </div>
+    </div>
+
+    <div class="site-loc-box">
+      <div class="site-loc-row">
+        <span class="site-field-lbl">Longitude</span>
+        <span class="site-field-val">{% if site.longitude %}{{ site.longitude }}{% else %}<span class="empty">N/D</span>{% endif %}</span>
+      </div>
+      <div class="site-loc-row">
+        <span class="site-field-lbl">Latitude</span>
+        <span class="site-field-val">{% if site.latitude %}{{ site.latitude }}{% else %}<span class="empty">N/D</span>{% endif %}</span>
+      </div>
+      <button type="button" class="site-archi-btn" id="statsBtn">📊 Voir détails</button>
+    </div>
+  </div>
+
+  </div>
+</div>
+
+<div class="site-stats-modal-overlay" id="statsModalOverlay">
+  <div class="site-stats-modal">
+    <div class="site-stats-modal-head">
+      <div class="site-stats-modal-title">📊 Aperçu — {{ site.site_name }}</div>
+      <button type="button" class="site-stats-modal-close" id="statsModalClose">✕</button>
+    </div>
+    <div class="site-stats-grid">
+      <div class="site-stat-chip"><span>Région</span><strong>{{ site.region|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Techno Mobile</span><strong>{{ site.techno|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Classification</span><strong>{{ site.classif_tech|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Type de site</span><strong>{{ site.type_site|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Type d'énergie</span><strong>{{ site.typ_energie|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>GE Auto</span><strong>{{ site.ge_auto|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Site Lithium</span><strong>{{ site.site_lithium|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Site ESM</span><strong>{{ site.site_esm|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Technologie FTTH</span><strong>{{ site.olt|default:"—" }}</strong></div>
+    </div>
   </div>
 </div>
 
@@ -467,4 +543,21 @@
   });
 })();
 </script>
+
+{% if site %}
+<script>
+(function () {
+  var statsBtn      = document.getElementById('statsBtn');
+  var statsOverlay  = document.getElementById('statsModalOverlay');
+  var statsClose    = document.getElementById('statsModalClose');
+  if (statsBtn && statsOverlay) {
+    statsBtn.addEventListener('click', function () { statsOverlay.classList.add('show'); });
+    statsClose.addEventListener('click', function () { statsOverlay.classList.remove('show'); });
+    statsOverlay.addEventListener('click', function (e) {
+      if (e.target === statsOverlay) statsOverlay.classList.remove('show');
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

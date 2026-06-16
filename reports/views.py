@@ -390,6 +390,23 @@ def home(request):
         'is_total': True,
     })
 
+    # ── Points de sites réels pour la carte (depuis Site, importés du KML) ──
+    from .models import Site
+    impacted_names = set()
+    for sites in region_impacted_sets.values():
+        impacted_names.update(sites)
+
+    sites_geo = [
+        {
+            'name':     s.site_name,
+            'lat':      s.latitude,
+            'lon':      s.longitude,
+            'region':   s.region,
+            'impacted': s.site_name in impacted_names,
+        }
+        for s in Site.objects.exclude(latitude__isnull=True).exclude(longitude__isnull=True)
+    ]
+
     return render(request, 'reports/home.html', {
         'synth_period':     synth_period,
         'synth_rows':       synth_rows,
@@ -414,6 +431,7 @@ def home(request):
         'evol_latest_report':   evol_latest_report,
         'last_report':          last_report,
         'statut_sites':         statut_sites,
+        'sites_geo_json':       mark_safe(json.dumps(sites_geo)),
     })
 
 
@@ -2327,8 +2345,29 @@ def sites_instables(request):
     return render(request, 'reports/sites_instables.html')
 
 
-def stat_dr2(request):
-    return render(request, 'reports/stat_dr2.html')
+REPORTING_NETWORKS = {
+    'mobile-dr2':    'Réseau mobile & DR2',
+    'fixe':          'Réseau Fixe',
+    'core':          'Core',
+    'igw':           'IGW',
+    'transmission':  'Transmission',
+}
+
+
+def reporting(request):
+    return render(request, 'reports/reporting.html', {
+        'networks': [{'key': k, 'label': v} for k, v in REPORTING_NETWORKS.items()],
+    })
+
+
+def reporting_network(request, network):
+    label = REPORTING_NETWORKS.get(network)
+    if not label:
+        raise Http404('Réseau de reporting inconnu')
+    return render(request, 'reports/reporting_network.html', {
+        'network': network,
+        'network_label': label,
+    })
 
 
 def site_info(request):

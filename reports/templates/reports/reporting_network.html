@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ network_label }} — Reporting — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / {{ network_label }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .rptn-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px; flex-wrap: wrap; gap: 16px;
+  }
+  .rptn-title { font-size: 22px; font-weight: 700; color: #003087; }
+  .rptn-subtitle { font-size: 13px; color: #888; margin-top: 4px; }
+  .rptn-back {
+    font-size: 13px; font-weight: 600; color: #003087; text-decoration: none;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rptn-back:hover { text-decoration: underline; }
+
+  .rptn-section {
+    background: #fff; border-radius: 16px; padding: 28px;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.06);
+  }
+  .placeholder-body {
+    min-height: 160px;
+    display: flex; align-items: center; justify-content: center;
+    color: #bbb; font-size: 14px; font-style: italic;
+    border: 2px dashed #e8edf5; border-radius: 10px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rptn-header">
+  <div>
+    <div class="rptn-title">{{ network_label }}</div>
+    <div class="rptn-subtitle">Reporting — {{ network_label }}</div>
+  </div>
+  <a href="{% url 'reporting' %}" class="rptn-back">← Retour à Reporting</a>
+</div>
+
+<div class="rptn-section">
+  <div class="placeholder-body">Contenu à définir</div>
+</div>
+{% endblock %}

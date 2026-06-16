@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Reporting — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting{% endblock %}
+
+{% block extra_css %}
+<style>
+  .rpt-header { margin-bottom: 28px; }
+  .rpt-title { font-size: 22px; font-weight: 700; color: #003087; }
+  .rpt-subtitle { font-size: 13px; color: #888; margin-top: 4px; }
+
+  .rpt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+  }
+  .rpt-card {
+    background: #fff; border-radius: 16px; padding: 28px 24px;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.06);
+    display: flex; flex-direction: column; gap: 10px;
+    text-decoration: none; color: inherit;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .rpt-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,48,135,.12);
+    border-color: #c8daf5;
+  }
+  .rpt-card-icon { font-size: 30px; }
+  .rpt-card-label { font-size: 16px; font-weight: 700; color: #003087; }
+  .rpt-card-sub { font-size: 12px; color: #999; }
+
+  @media (max-width:900px) {
+    .rpt-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width:520px) {
+    .rpt-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rpt-header">
+  <div class="rpt-title">Reporting</div>
+  <div class="rpt-subtitle">Choisissez un réseau pour accéder à son reporting</div>
+</div>
+
+<div class="rpt-grid">
+  {% for net in networks %}
+  <a href="{% url 'reporting_network' net.key %}" class="rpt-card">
+    <div class="rpt-card-icon">
+      {% if net.key == 'mobile-dr2' %}📡{% elif net.key == 'fixe' %}☎️{% elif net.key == 'core' %}🌐{% elif net.key == 'igw' %}🔌{% else %}🔗{% endif %}
+    </div>
+    <div class="rpt-card-label">{{ net.label }}</div>
+    <div class="rpt-card-sub">Voir le reporting</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

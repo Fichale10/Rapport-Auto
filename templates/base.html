@@ -246,7 +246,7 @@
       <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
       <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
       <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
-      <a href="{% url 'stat_dr2' %}"           class="{% if request.resolver_match.url_name == 'stat_dr2' %}active{% endif %}">Stats DR2</a>
+      <a href="{% url 'reporting' %}"          class="{% if request.resolver_match.url_name == 'reporting' or request.resolver_match.url_name == 'reporting_network' %}active{% endif %}">Reporting</a>
     </div>
 
     <div class="nav-user">
