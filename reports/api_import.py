@@ -55,9 +55,10 @@ def fetch_and_save_api(
     date_debut: str,
     date_fin: str,
     user: Any = None,
+    network: str = "mobile",
 ) -> "UploadedReport":
     """
-    Récupère les données API pour la période donnée, les sauvegarde en Excel
+    Récupère les données API pour la période et le réseau donnés, sauvegarde en Excel
     et crée un UploadedReport **non traité** (processed=False).
 
     Retourne le rapport créé (à rediriger vers process_report).
@@ -76,20 +77,64 @@ def fetch_and_save_api(
 
     client = TicketingApiClient(api_url)
     client.login(api_user, api_pass)
-    logger.info("API login OK — fetch %s → %s", date_debut, date_fin)
+    logger.info("API login OK — fetch %s → %s (réseau: %s)", date_debut, date_fin, network)
 
-    rows = client.export_data(date_debut, date_fin)
+    # Élargir la plage d'un jour de chaque côté pour capturer les tickets
+    # créés ET fermés pendant la journée (l'API semble filtrer les tickets
+    # "ouverts avant date_debut", pas les tickets actifs pendant la journée).
+    _d_start = _dt.date.fromisoformat(date_debut[:10])
+    _d_end   = _dt.date.fromisoformat(date_fin[:10])
+    api_date_debut = (_d_start - _dt.timedelta(days=1)).isoformat()
+    api_date_fin   = (_d_end   + _dt.timedelta(days=1)).isoformat()
+    logger.info("Plage API élargie : %s → %s (pour capter tickets intraday)", api_date_debut, api_date_fin)
+
+    rows = client.export_data(api_date_debut, api_date_fin, network=network)
     if not rows:
-        raise ValueError(f"Aucune donnée retournée par l'API pour {date_debut} → {date_fin}")
+        raise ValueError(
+            f"Aucune donnée retournée par l'API pour {date_debut} → {date_fin} "
+            f"(réseau: {network})"
+        )
 
     df = json_to_dataframe(rows)
+    logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
+
+    # Pré-filtrer avant sauvegarde : ne garder que les tickets qui chevauchent
+    # la période cible [date_debut 00:00 … date_fin 23:59].
+    # Cela élimine les tickets fermés AVANT date_debut (Jan 8-9 révolus) et ceux
+    # ouverts APRÈS date_fin — qui seraient de toute façon supprimés par treatement.py
+    # mais alourdissent inutilement le fichier (surtout pour un import mensuel).
+    debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
+    fin_dt   = pd.Timestamp(f"{date_fin[:10]}  23:59:59")
+    if "Alarm Time" in df.columns:
+        at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
+        ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
+                            dayfirst=True, format="mixed", errors="coerce")
+        mask = (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
+        avant = len(df)
+        df = df[mask].copy()
+        logger.info("Pré-filtre date : %d → %d lignes (-%d tickets hors période)",
+                    avant, len(df), avant - len(df))
 
     # Sauvegarde en Excel dans media/uploads/
-    label      = f"API_{date_debut[:10]}_{date_fin[:10]}"
-    filename   = f"{label}.xlsx"
+    net_label   = network.upper() if network and network != "all" else "ALL"
+    label       = f"API_{net_label}_{date_debut[:10]}_{date_fin[:10]}"
+    filename    = f"{label}.xlsx"
     uploads_dir = os.path.join(settings.MEDIA_ROOT, "uploads")
     os.makedirs(uploads_dir, exist_ok=True)
-    file_path  = os.path.join(uploads_dir, filename)
+    file_path   = os.path.join(uploads_dir, filename)
+
+    # Supprimer l'ancien fichier s'il existe pour éviter les erreurs de permission
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except PermissionError:
+            # Fichier ouvert ailleurs (ex: Excel) — utiliser un nom unique avec timestamp
+            import time as _time
+            ts       = int(_time.time())
+            filename  = f"{label}_{ts}.xlsx"
+            file_path = os.path.join(uploads_dir, filename)
+            logger.warning("Fichier verrouillé, utilisation du nom alternatif : %s", filename)
+
     df.to_excel(file_path, index=False)
     logger.info("Fichier API sauvegardé : %s (%d lignes)", file_path, len(df))
 
@@ -119,6 +164,7 @@ def run_import(
     date_fin: str,
     triggered_by: Any = None,
     overwrite: bool = False,
+    network: str = "mobile",
 ) -> dict[str, Any]:
     """
     Importe les données de l'API pour la période date_debut → date_fin.
@@ -142,21 +188,45 @@ def run_import(
 
     client = TicketingApiClient(api_url)
     client.login(api_user, api_pass)
-    logger.info("API login OK — import %s → %s", date_debut, date_fin)
+    logger.info("API login OK — import %s → %s (réseau: %s)", date_debut, date_fin, network)
 
-    rows = client.export_data(date_debut, date_fin)
+    # Élargir la plage d'un jour de chaque côté pour capturer les tickets
+    # créés ET fermés pendant la journée (l'API semble filtrer les tickets
+    # "ouverts avant date_debut", pas les tickets actifs pendant la journée).
+    d_start = date.fromisoformat(date_debut[:10])
+    d_end   = date.fromisoformat(date_fin[:10])
+    api_date_debut = (d_start - timedelta(days=1)).isoformat()
+    api_date_fin   = (d_end   + timedelta(days=1)).isoformat()
+    logger.info("Plage API élargie : %s → %s (rapport: %s → %s)", api_date_debut, api_date_fin, date_debut, date_fin)
+
+    rows = client.export_data(api_date_debut, api_date_fin, network=network)
     if not rows:
-        logger.info("Aucune donnée retournée par l'API pour %s → %s", date_debut, date_fin)
+        logger.info("Aucune donnée retournée par l'API pour %s → %s (réseau: %s)", date_debut, date_fin, network)
         return result
 
     df = json_to_dataframe(rows)
+    logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
 
-    # Détermine le label de fichier
-    label = f"API_{date_debut[:10]}_{date_fin[:10]}"
+    # Pré-filtrer : ne garder que les tickets qui chevauchent [date_debut … date_fin]
+    debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
+    fin_dt   = pd.Timestamp(f"{date_fin[:10]}  23:59:59")
+    if "Alarm Time" in df.columns:
+        at   = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
+        ct   = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
+                              dayfirst=True, format="mixed", errors="coerce")
+        mask = (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
+        avant = len(df)
+        df = df[mask].copy()
+        logger.info("Pré-filtre date : %d → %d lignes (-%d tickets hors période)",
+                    avant, len(df), avant - len(df))
 
-    # Vérifie si un rapport pour cette période existe déjà
+    # Détermine le label de fichier (inclut le réseau)
+    net_label = network.upper() if network and network != "all" else "ALL"
+    label = f"API_{net_label}_{date_debut[:10]}_{date_fin[:10]}"
+
+    # Vérifie si un rapport pour cette période et ce réseau existe déjà
     existing = UploadedReport.objects.filter(
-        original_filename__startswith="API_",
+        original_filename__startswith=f"API_{net_label}_",
         date_rapport=date_debut[:10],
         date_fin=date_fin[:10] if date_fin[:10] != date_debut[:10] else None,
     ).first()
@@ -296,6 +366,7 @@ def run_import_months(
     date_fin: str,
     triggered_by: Any = None,
     overwrite: bool = False,
+    network: str = "mobile",
 ) -> dict[str, Any]:
     """
     Si la période > 1 mois, découpe mois par mois.
@@ -310,7 +381,7 @@ def run_import_months(
     cumul = {"created": 0, "skipped": 0, "errors": []}
 
     if delta <= 31:
-        res = run_import(date_debut, date_fin, triggered_by, overwrite)
+        res = run_import(date_debut, date_fin, triggered_by, overwrite, network=network)
         _merge_results(cumul, res)
         return cumul
 
@@ -329,6 +400,7 @@ def run_import_months(
             chunk_end.isoformat(),
             triggered_by,
             overwrite,
+            network=network,
         )
         _merge_results(cumul, res)
         current = chunk_end + timedelta(days=1)

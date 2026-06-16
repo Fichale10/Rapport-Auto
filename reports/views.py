@@ -2374,9 +2374,14 @@ def api_import_view(request):
     from django.utils import timezone as _tz
     from .api_import import fetch_and_save_api
 
+    VALID_NETWORKS = {"mobile", "fixe", "transmission", "core", "all"}
+
     if request.method == 'POST':
         date_debut = request.POST.get('date_debut', '').strip()
         date_fin   = request.POST.get('date_fin', '').strip()
+        network    = request.POST.get('network', 'mobile').strip().lower()
+        if network not in VALID_NETWORKS:
+            network = 'mobile'
 
         # Défaut : hier 00:00 → aujourd'hui 23:59
         if not date_debut or not date_fin:
@@ -2393,7 +2398,7 @@ def api_import_view(request):
             return redirect('/upload/?tab=api')
 
         try:
-            report = fetch_and_save_api(date_debut_d, date_fin_d, user=request.user)
+            report = fetch_and_save_api(date_debut_d, date_fin_d, user=request.user, network=network)
             return redirect('process_report', pk=report.pk)
         except Exception as exc:
             messages.error(request, f"Erreur import API : {exc}")

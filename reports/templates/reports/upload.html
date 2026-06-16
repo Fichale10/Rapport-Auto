@@ -137,6 +137,7 @@
     color: #111; outline: none; transition: border-color .2s, background .2s; width: 100%;
   }
   .api-form-group input[type="datetime-local"]:focus { border-color: var(--yas-blue); background: #fff; }
+  .api-form-group select:focus { border-color: var(--yas-blue); background: #fff; }
   .overwrite-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
   .overwrite-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
   .overwrite-row label { font-size: 13px; color: #444; cursor: pointer; }
@@ -316,6 +317,19 @@
 
       <form method="post" action="{% url 'api_import' %}" id="apiForm">
         {% csrf_token %}
+
+        <div class="api-form-row" style="margin-bottom:16px;">
+          <div class="api-form-group" style="flex:0 0 auto;min-width:200px;">
+            <label for="api_network">Réseau</label>
+            <select name="network" id="api_network" style="padding:11px 14px;background:#f0f4ff;border:2px solid transparent;border-radius:10px;font-size:14px;font-family:'DM Sans',sans-serif;color:#111;outline:none;transition:border-color .2s,background .2s;width:100%;cursor:pointer;">
+              <option value="mobile">📡 Réseau Mobile</option>
+              <option value="fixe">🔌 Réseau Fixe</option>
+              <option value="transmission">📶 Transmission</option>
+              <option value="core">⚙️ Core / IGW</option>
+              <option value="all">🌐 Toutes les plateformes</option>
+            </select>
+          </div>
+        </div>
 
         <div class="api-form-row">
           <div class="api-form-group">

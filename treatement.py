@@ -9,13 +9,9 @@ def process_file(input_file, date_rapport, date_fin=None):
         date_fin: date de fin inclusive (str YYYY-MM-DD ou date).
                   Si None, la plage porte uniquement sur date_rapport (rapport journalier).
     """
-    # Charger le fichier Excel ou accepter un DataFrame directement
-    if isinstance(input_file, pd.DataFrame):
-        df = input_file.copy()
-        print("Chargement depuis DataFrame (import API)")
-    else:
-        print(f"Chargement du fichier: {input_file}")
-        df = pd.read_excel(input_file)
+    # Charger le fichier Excel
+    print(f"Chargement du fichier: {input_file}")
+    df = pd.read_excel(input_file)
     
     # Filtrage des alarmes
     alarmes_a_garder = [
@@ -38,8 +34,8 @@ def process_file(input_file, date_rapport, date_fin=None):
 
     # Utiliser dayfirst=True pour parser le format jj-mm-aaaa HH:MM:SS
     # On garde les colonnes originales intactes pour l'affichage final, on crée des colonnes temporaires pour le calcul
-    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, format='mixed', errors='coerce')
-    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, format='mixed', errors='coerce')
+    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, errors='coerce')
+    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
 
     # Remplir les Cancel Time NaT (toujours ouvert) par une date dans le futur éloignée pour simplifier la logique
     # ou on peut traiter les NaT en utilisant la fonction mask
@@ -151,7 +147,7 @@ def process_file(input_file, date_rapport, date_fin=None):
         # Formatage Secondes -> HH:MM:SS
         def format_sec(secs):
             if pd.isna(secs): return "0:00:00"
-            return f"{int(secs // 3600)}:{int((secs % 3600) // 60):02d}:{int(secs % 60):02d}"
+            return f"{(secs // 3600)}:{int((secs % 3600) // 60):02d}:{int(secs % 60):02d}"
             
         rapport_lignes.append({
             "Escalade": esc,

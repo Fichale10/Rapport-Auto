@@ -17,6 +17,23 @@ FILTER_RESOURCES = {
     "plateformes": "/api/plateformes/",
 }
 
+# domaine_id par réseau (tel que retourné par /api/plateformes/)
+NETWORK_DOMAINE_IDS: dict[str, int] = {
+    "mobile":       42,
+    "transmission": 43,
+    "fixe":         44,
+    "core":         45,
+    "energie":      8,
+}
+
+# Filtre additionnel sur le libellé de la plateforme (après filtre domaine_id).
+# Pour le réseau mobile, seule la plateforme SBTS (Nokia base stations) correspond
+# aux alarmes traitées dans treatement.py — les autres (RNC, MSS, LIEN …) ont
+# le même domaine_id=42 mais ne doivent pas être inclus dans les exports mobiles.
+NETWORK_PLATFORM_NAMES: dict[str, list[str]] = {
+    "mobile": ["SBTS"],
+}
+
 
 class TicketingApiClient:
     def __init__(self, base_url: str, timeout: int = 120) -> None:
@@ -76,16 +93,60 @@ class TicketingApiClient:
             return items
         raise RuntimeError(f"Réponse inattendue pour {resource_path}: {type(data)}")
 
+    def get_plateformes_for_network(self, network: str | None = None) -> list[dict[str, Any]]:
+        """Retourne la liste des plateformes du réseau donné.
+        Filtre par domaine_id côté serveur si possible, sinon côté client.
+        Applique ensuite un filtre sur le libellé si NETWORK_PLATFORM_NAMES le définit."""
+        domaine_id    = NETWORK_DOMAINE_IDS.get(network) if (network and network != "all") else None
+        name_filter   = NETWORK_PLATFORM_NAMES.get(network) if network else None
+        name_filter_u = [n.upper() for n in name_filter] if name_filter else None
+
+        # Essaie le filtre côté serveur d'abord (plus fiable)
+        if domaine_id is not None:
+            try:
+                plateformes = self.get_all(f"/api/plateformes/?domaine_id={domaine_id}")
+                if plateformes:
+                    if name_filter_u:
+                        plateformes = [
+                            p for p in plateformes
+                            if str(p.get("libelle", "")).upper() in name_filter_u
+                        ]
+                    return plateformes
+            except Exception:
+                pass  # Fallback : filtre client ci-dessous
+
+        # Filtre client : récupère tout et filtre par domaine_id puis par libellé
+        plateformes = self.get_all("/api/plateformes/")
+        if domaine_id is not None:
+            plateformes = [p for p in plateformes if p.get("domaine_id") == domaine_id]
+        if name_filter_u:
+            plateformes = [
+                p for p in plateformes
+                if str(p.get("libelle", "")).upper() in name_filter_u
+            ]
+        return plateformes
+
+    def get_plateformes_ids_for_network(self, network: str | None = None) -> str:
+        """Retourne les IDs des plateformes du réseau donné (comma-separated)."""
+        plateformes = self.get_plateformes_for_network(network)
+        return ",".join(str(p["id"]) for p in plateformes if p.get("id"))
+
     def export_data(
         self,
         date_debut: str,
         date_fin: str,
         plateformes_id: str | None = None,
+        network: str | None = None,
         extra_params: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        import logging as _logging
+        log = _logging.getLogger(__name__)
+
+        # Filtrer les plateformes par réseau (mobile → domaine_id=42 → SBTS uniquement).
+        # Les tickets ENERGIE/TRANS sur SBTS sont bien inclus : la plateforme est SBTS
+        # et l'escalade est un champ séparé — filtrer par domaine mobile n'exclut pas ENERGIE.
         if not plateformes_id:
-            plateformes = self.get_all("/api/plateformes/")
-            plateformes_id = ",".join(str(p["id"]) for p in plateformes if p.get("id"))
+            plateformes_id = self.get_plateformes_ids_for_network(network)
 
         params: dict[str, Any] = {
             "date_debut": date_debut,
@@ -96,14 +157,42 @@ class TicketingApiClient:
         if extra_params:
             params.update(extra_params)
 
-        response = self.session.get(
+        resp = self.session.get(
             self._url("/api/exports/data"),
             params=params,
             headers=self._headers(),
             timeout=self.timeout,
         )
-        response.raise_for_status()
-        data = response.json()
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Format liste directe — retour immédiat (pas de pagination implicite)
         if isinstance(data, list):
+            log.info("export_data: %d lignes (liste) — %s → %s (réseau: %s)",
+                     len(data), date_debut, date_fin, network or "all")
             return data
+
+        # Format dict paginé {"data": [...], "totalPage": N, "currentPage": N}
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            all_items: list[dict[str, Any]] = list(data["data"])
+            total_page = int(data.get("totalPage") or 1)
+            current_page = int(data.get("currentPage") or 1)
+            log.info("export_data: page %d/%d (%d items) — réseau: %s",
+                     current_page, total_page, len(all_items), network or "all")
+            while current_page < total_page:
+                current_page += 1
+                page_r = self.session.get(
+                    self._url("/api/exports/data"),
+                    params={**params, "page": current_page},
+                    headers=self._headers(),
+                    timeout=self.timeout,
+                )
+                page_r.raise_for_status()
+                page_data = page_r.json()
+                new_items = page_data.get("data", []) if isinstance(page_data, dict) else page_data
+                all_items.extend(new_items)
+                log.info("export_data: page %d/%d (+%d items)", current_page, total_page, len(new_items))
+            log.info("export_data: total %d lignes", len(all_items))
+            return all_items
+
         raise RuntimeError(f"Réponse export inattendue: {type(data)}")
