@@ -1,312 +1,360 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="fr">
+<html class="dark" lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Inscription — ReportXCare | Yas</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "tertiary":               "#FFC72C",
+          "primary":                "#FFC72C",
+          "on-secondary-fixed":     "#060d2e",
+          "primary-container":      "#060d2e",
+          "on-secondary-container": "#FFC72C",
+          "surface-dim":            "#060d2e",
+          "secondary-container":    "#204399",
+          "on-surface":             "#e2e2e2",
+          "background":             "#060d2e",
+          "surface":                "#060d2e",
+          "on-surface-variant":     "#c7c5cf",
+          "outline-variant":        "#46464e",
+          "error":                  "#ffb4ab",
+        },
+        fontFamily: {
+          "headline-lg":        ["Sora"],
+          "body-md":            ["Inter"],
+          "label-sm":           ["Space Mono"],
+          "display-lg":         ["Sora"],
+          "tagline-uppercase":  ["Space Mono"],
+        },
+        fontSize: {
+          "headline-lg":        ["32px", {lineHeight:"1.2",  fontWeight:"600"}],
+          "body-md":            ["16px", {lineHeight:"24px", fontWeight:"400"}],
+          "label-sm":           ["11px", {lineHeight:"14px", fontWeight:"400"}],
+          "display-lg":         ["48px", {lineHeight:"1.1",  letterSpacing:"-0.02em", fontWeight:"700"}],
+          "headline-lg-mobile": ["24px", {lineHeight:"1.2",  fontWeight:"600"}],
+          "tagline-uppercase":  ["12px", {lineHeight:"16px", letterSpacing:"0.2em",   fontWeight:"700"}],
+        },
+        spacing: {
+          "unit":              "8px",
+          "container-padding": "32px",
+          "stack-lg":          "48px",
+          "stack-sm":          "12px",
+          "gutter":            "24px",
+          "stack-md":          "24px",
+        },
+        borderRadius: {
+          DEFAULT: "0.25rem",
+          lg:      "0.5rem",
+          xl:      "0.75rem",
+          full:    "9999px",
+        },
+      },
+    },
+  }
+</script>
+<style>
+  .glass-panel {
+    background: rgba(6,13,46,.45);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,199,44,.18);
+    box-shadow: 0 8px 40px rgba(0,0,0,.65);
+  }
+  .btn-gradient {
+    background: linear-gradient(135deg,#FFC72C 0%,#D4A017 100%);
+    transition: all .3s ease;
+  }
+  .btn-gradient:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 24px rgba(255,199,44,.55);
+  }
+  .input-focus:focus-within {
+    border-color: #FFC72C !important;
+    box-shadow: 0 0 8px rgba(255,199,44,.3);
+  }
+  .scanline {
+    width:100%; height:120px; z-index:5;
+    background: linear-gradient(0deg,rgba(0,0,0,0) 0%,rgba(255,199,44,.04) 50%,rgba(0,0,0,0) 100%);
+    opacity:.2; position:absolute; bottom:100%;
+    animation: scanline 10s linear infinite;
+  }
+  @keyframes scanline {
+    0%   { bottom:100%; }
+    100% { bottom:-120px; }
+  }
+  .divider-gradient {
+    background: linear-gradient(to right,transparent,rgba(255,199,44,.3),transparent);
+  }
+  @keyframes scaleIn {
+    from { transform:scale(.96); opacity:0; }
+    to   { transform:scale(1);   opacity:1; }
+  }
+  @keyframes fadeIn {
+    from { opacity:0; transform:translateY(-10px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  .animate-fade-in  { animation: fadeIn  .8s ease-out; }
+  .animate-scale-in { animation: scaleIn .5s ease-out; }
+  input:focus { outline:none !important; box-shadow:none !important; }
 
-    :root {
-      --yas-blue:   #003087;
-      --yas-yellow: #FFC72C;
-      --yas-dark:   #001a4d;
-      --yas-light:  #e8f0ff;
-    }
-
-    body {
-      min-height: 100vh;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      font-family: 'DM Sans', sans-serif;
-      background: var(--yas-blue);
-    }
-
-    /* Panneau gauche */
-    .brand-panel {
-      background: var(--yas-blue);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: flex-start;
-      padding: 60px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .brand-panel::before {
-      content: '';
-      position: absolute; top: -120px; right: -120px;
-      width: 400px; height: 400px;
-      background: var(--yas-yellow);
-      border-radius: 50%; opacity: 0.08;
-    }
-    .brand-panel::after {
-      content: '';
-      position: absolute; bottom: -80px; left: -80px;
-      width: 300px; height: 300px;
-      background: var(--yas-yellow);
-      border-radius: 50%; opacity: 0.06;
-    }
-
-    .yas-logo {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 72px; color: var(--yas-yellow);
-      letter-spacing: 4px; line-height: 1; margin-bottom: 8px;
-    }
-
-    .yas-tagline {
-      color: rgba(255,255,255,0.5);
-      font-size: 13px; letter-spacing: 3px;
-      text-transform: uppercase; margin-bottom: 60px;
-    }
-
-    .brand-title {
-      color: #fff; font-size: 32px; font-weight: 600;
-      line-height: 1.2; margin-bottom: 16px;
-    }
-    .brand-title span { color: var(--yas-yellow); }
-
-    .brand-desc {
-      color: rgba(255,255,255,0.55);
-      font-size: 15px; line-height: 1.7; max-width: 340px;
-    }
-
-    .steps-mini { margin-top: 48px; display: flex; flex-direction: column; gap: 14px; }
-    .step-mini  { display: flex; align-items: center; gap: 12px; }
-    .step-mini-num {
-      width: 28px; height: 28px; border-radius: 7px;
-      background: var(--yas-yellow); color: var(--yas-blue);
-      font-weight: 800; font-size: 13px;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    .step-mini-txt { font-size: 13px; color: rgba(255,255,255,0.7); }
-
-    /* Panneau droit */
-    .form-panel {
-      background: #fff;
-      display: flex; flex-direction: column; justify-content: center;
-      padding: 50px 64px;
-      border-radius: 32px 0 0 32px;
-      overflow-y: auto;
-    }
-
-    .form-header { margin-bottom: 28px; }
-    .form-header h2 { font-size: 26px; font-weight: 700; color: var(--yas-blue); margin-bottom: 6px; }
-    .form-header p  { color: #888; font-size: 14px; }
-
-    .alert {
-      border-radius: 8px; padding: 11px 14px;
-      font-size: 13.5px; margin-bottom: 18px; border-left: 4px solid;
-    }
-    .alert-error   { background: #fff0f0; border-color: #e53e3e; color: #c53030; }
-    .alert-success { background: #f0fff4; border-color: #22c55e; color: #166534; }
-
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-
-    .field { margin-bottom: 16px; }
-
-    label {
-      display: block; font-size: 12px; font-weight: 700;
-      color: var(--yas-blue); letter-spacing: .5px;
-      text-transform: uppercase; margin-bottom: 6px;
-    }
-
-    input[type="text"],
-    input[type="email"],
-    input[type="password"] {
-      width: 100%; padding: 12px 14px;
-      background: var(--yas-light);
-      border: 2px solid transparent;
-      border-radius: 10px; color: #111;
-      font-size: 14px; font-family: 'DM Sans', sans-serif;
-      outline: none; transition: border-color .2s, background .2s;
-    }
-    input:focus { border-color: var(--yas-blue); background: #fff; }
-    input::placeholder { color: #aab; }
-
-    /* Force mot de passe */
-    .pwd-bar { height: 4px; background: #e8edf5; border-radius: 2px; margin-top: 6px; overflow: hidden; }
-    .pwd-fill { height: 100%; border-radius: 2px; width: 0; transition: width .3s, background .3s; }
-    .pwd-hint { font-size: 11px; color: #aaa; margin-top: 3px; }
-
-    button[type="submit"] {
-      width: 100%; padding: 14px;
-      background: var(--yas-yellow); border: none;
-      border-radius: 10px; color: var(--yas-blue);
-      font-size: 15px; font-weight: 700;
-      font-family: 'DM Sans', sans-serif; cursor: pointer;
-      transition: transform .15s, box-shadow .15s;
-      margin-top: 4px;
-    }
-    button[type="submit"]:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(255,199,44,.4);
-    }
-
-    .form-footer {
-      margin-top: 24px; padding-top: 20px;
-      border-top: 1px solid #eee;
-      text-align: center;
-      font-size: 14px; color: #888;
-    }
-    .form-footer a { color: var(--yas-blue); font-weight: 700; text-decoration: none; }
-    .form-footer a:hover { text-decoration: underline; }
-
-    @media (max-width: 768px) {
-      body { grid-template-columns: 1fr; }
-      .brand-panel { display: none; }
-      .form-panel { border-radius: 0; padding: 36px 24px; }
-      .form-row { grid-template-columns: 1fr; }
-    }
-  </style>
+  /* Barre de force mot de passe */
+  .pwd-bar  { height:3px; background:rgba(255,255,255,.1); border-radius:2px; margin-top:6px; overflow:hidden; }
+  .pwd-fill { height:100%; border-radius:2px; width:0; transition:width .3s, background .3s; }
+  .pwd-hint { font-size:11px; margin-top:4px; font-family:'Space Mono',monospace; }
+</style>
 </head>
-<body>
+<body class="bg-background text-on-surface font-body-md min-h-screen relative overflow-x-hidden flex flex-col">
 
-  <!-- Panneau gauche -->
-  <div class="brand-panel">
-    <div class="yas-logo">YAS</div>
-    <div class="yas-tagline">Mobile Network</div>
-    <div class="brand-title">
-      Rejoignez<br>l'équipe <span>ISOC</span>
-    </div>
-    <p class="brand-desc">
-      Créez votre compte pour accéder à la plateforme de traitement
-      automatisé des rapports réseau Yas.
-    </p>
-    <div class="steps-mini">
-      <div class="step-mini">
-        <div class="step-mini-num">1</div>
-        <div class="step-mini-txt">Créez votre compte en quelques secondes</div>
-      </div>
-      <div class="step-mini">
-        <div class="step-mini-num">2</div>
-        <div class="step-mini-txt">Connectez-vous avec vos identifiants</div>
-      </div>
-      <div class="step-mini">
-        <div class="step-mini-num">3</div>
-        <div class="step-mini-txt">Traitez vos rapports réseau instantanément</div>
-      </div>
-    </div>
-  </div>
+<!-- ── Fond plein écran ── -->
+<div class="fixed inset-0 z-0 bg-[#060d2e]">
+  <img alt="NOC Background"
+       class="w-full h-full"
+       src="{% static 'reports/login_bg_corridor_yas.svg' %}"
+       style="object-fit:fill; opacity:.80; filter:brightness(1.15) saturate(1.9) contrast(1.15); transition:transform .2s ease-out;">
+  <div class="absolute inset-0 bg-gradient-to-b from-[#060d2e]/50 via-transparent to-transparent"></div>
+  <div class="scanline"></div>
+</div>
 
-  <!-- Panneau droit -->
-  <div class="form-panel">
-    <div class="form-header">
-      <h2>Créer un compte</h2>
-      <p>Remplissez le formulaire pour rejoindre la plateforme</p>
+<!-- ── Contenu ── -->
+<main class="relative z-10 flex-1 flex flex-col items-center justify-center px-container-padding py-stack-lg">
+
+  <!-- Logo YAS -->
+  <header class="mb-stack-lg animate-fade-in text-center">
+    <div style="font-family:'Bebas Neue',sans-serif; font-size:80px; letter-spacing:14px; line-height:1;
+                color:#FFC72C; text-shadow:0 0 60px rgba(255,199,44,.45), 0 4px 20px rgba(0,0,0,.8);">
+      YAS
+    </div>
+    <div style="font-family:'Space Mono',monospace; font-size:11px; letter-spacing:6px;
+                color:rgba(255,255,255,.55); text-transform:uppercase; margin-top:6px;
+                text-shadow:0 2px 8px rgba(0,0,0,.9);">
+      Mobile Network
+    </div>
+  </header>
+
+  <!-- Carte formulaire -->
+  <div class="w-full max-w-lg glass-panel rounded-xl p-stack-md flex flex-col gap-stack-sm animate-scale-in">
+
+    <!-- En-tête carte -->
+    <div class="space-y-unit">
+      <span class="font-label-sm text-label-sm text-tertiary uppercase tracking-widest block opacity-90 font-bold">
+        ReportXCare
+      </span>
+      <h2 class="font-headline-lg-mobile text-headline-lg-mobile text-white font-bold">
+        Créer un compte
+      </h2>
+      <p class="font-body-md text-on-surface-variant">
+        Rejoignez la plateforme ISOC
+      </p>
     </div>
 
+    <!-- Messages Django -->
     {% if messages %}
       {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">
-          {% if message.tags == 'success' %}✅{% else %}⚠{% endif %}
-          {{ message }}
+        <div class="flex items-start gap-3 px-4 py-3 rounded-lg text-sm"
+             style="{% if message.tags == 'success' %}background:rgba(34,197,94,.12); border-left:3px solid #22c55e; color:rgba(134,239,172,.95);{% else %}background:rgba(255,199,44,.12); border-left:3px solid #FFC72C; color:rgba(255,199,44,.95);{% endif %}">
+          {% if message.tags == 'success' %}✅{% else %}⚠️{% endif %} {{ message }}
         </div>
       {% endfor %}
     {% endif %}
 
-    <form method="POST">
+    <!-- Formulaire -->
+    <form method="POST" class="flex flex-col gap-4">
       {% csrf_token %}
 
-      <!-- Prénom / Nom -->
-      <div class="form-row">
-        <div class="field">
-          <label for="first_name">Prénom</label>
-          <input type="text" id="first_name" name="first_name"
-            placeholder="Votre prénom"
-            value="{{ request.POST.first_name|default:'' }}">
+      <!-- Prénom + Nom -->
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Prénom</label>
+          <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+            <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">badge</span>
+            <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                   type="text" name="first_name" placeholder="Prénom"
+                   value="{{ request.POST.first_name|default:'' }}">
+          </div>
         </div>
-        <div class="field">
-          <label for="last_name">Nom</label>
-          <input type="text" id="last_name" name="last_name"
-            placeholder="Votre nom"
-            value="{{ request.POST.last_name|default:'' }}">
+        <div>
+          <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Nom</label>
+          <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+            <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">person</span>
+            <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                   type="text" name="last_name" placeholder="Nom"
+                   value="{{ request.POST.last_name|default:'' }}">
+          </div>
         </div>
       </div>
 
       <!-- Identifiant -->
-      <div class="field">
-        <label for="username">Identifiant *</label>
-        <input type="text" id="username" name="username"
-          placeholder="Choisissez un identifiant unique"
-          value="{{ request.POST.username|default:'' }}"
-          autofocus required>
+      <div>
+        <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Identifiant *</label>
+        <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+          <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">alternate_email</span>
+          <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                 type="text" id="username" name="username"
+                 placeholder="Choisissez un identifiant unique"
+                 value="{{ request.POST.username|default:'' }}"
+                 autofocus required>
+        </div>
       </div>
 
       <!-- Email -->
-      <div class="field">
-        <label for="email">Adresse email</label>
-        <input type="email" id="email" name="email"
-          placeholder="votre@email.com"
-          value="{{ request.POST.email|default:'' }}">
+      <div>
+        <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Adresse e-mail</label>
+        <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+          <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">mail</span>
+          <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                 type="email" name="email" placeholder="votre@email.com"
+                 value="{{ request.POST.email|default:'' }}">
+        </div>
       </div>
 
       <!-- Mot de passe -->
-      <div class="field">
-        <label for="password1">Mot de passe *</label>
-        <input type="password" id="password1" name="password1"
-          placeholder="Min. 8 caractères" required>
+      <div>
+        <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Mot de passe *</label>
+        <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+          <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">lock</span>
+          <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                 type="password" id="password1" name="password1"
+                 placeholder="Min. 8 caractères" required>
+          <button type="button" onclick="togglePwd('password1','eye1')" class="ml-2 hover:text-tertiary transition-colors">
+            <span class="material-symbols-outlined text-on-surface-variant text-[18px]" id="eye1">visibility</span>
+          </button>
+        </div>
         <div class="pwd-bar"><div class="pwd-fill" id="pwdFill"></div></div>
-        <div class="pwd-hint" id="pwdHint">Entrez un mot de passe</div>
+        <div class="pwd-hint text-on-surface-variant/50" id="pwdHint">Entrez un mot de passe</div>
       </div>
 
-      <div class="field">
-        <label for="password2">Confirmer le mot de passe *</label>
-        <input type="password" id="password2" name="password2"
-          placeholder="Répétez le mot de passe" required>
+      <!-- Confirmation -->
+      <div>
+        <label class="block font-label-sm text-label-sm text-on-surface-variant mb-1 ml-1">Confirmer le mot de passe *</label>
+        <div class="input-focus transition-all duration-300 border border-white/10 bg-white/5 rounded-lg flex items-center px-3 py-3">
+          <span class="material-symbols-outlined text-tertiary text-[18px] mr-2">lock_reset</span>
+          <input class="bg-transparent border-none w-full text-on-surface placeholder:text-on-surface-variant/40 text-sm font-body-md"
+                 type="password" id="password2" name="password2"
+                 placeholder="Répétez le mot de passe" required>
+          <button type="button" onclick="togglePwd('password2','eye2')" class="ml-2 hover:text-tertiary transition-colors">
+            <span class="material-symbols-outlined text-on-surface-variant text-[18px]" id="eye2">visibility</span>
+          </button>
+        </div>
         <div class="pwd-hint" id="pwdMatch"></div>
       </div>
 
-      <button type="submit">✓ Créer mon compte</button>
+      <!-- Bouton -->
+      <button class="btn-gradient w-full py-4 rounded-lg flex items-center justify-center gap-unit text-[#060d2e] font-bold font-body-md active:scale-95" type="submit">
+        Créer mon compte
+        <span class="material-symbols-outlined font-bold">arrow_forward</span>
+      </button>
     </form>
 
-    <div class="form-footer">
-      Déjà un compte ? <a href="{% url 'accounts:login' %}">Se connecter →</a>
+    <div class="h-[1px] w-full divider-gradient"></div>
+
+    <div class="text-center">
+      <p class="font-body-md text-on-surface-variant">
+        Déjà un compte ?
+        <a class="text-on-surface hover:text-tertiary font-semibold transition-colors ml-1"
+           href="{% url 'accounts:login' %}">Se connecter →</a>
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Barre statut -->
+  <div class="mt-stack-lg flex items-center gap-gutter opacity-75">
+    <div class="flex items-center gap-unit">
+      <span class="flex h-2 w-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_rgba(255,199,44,.6)]"></span>
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">NOC STATUS : ACTIVE</span>
+    </div>
+    <div class="flex items-center gap-unit border-l border-white/10 pl-gutter">
+      <span class="material-symbols-outlined text-on-surface-variant text-[14px]">encrypted</span>
+      <span class="font-label-sm text-label-sm text-on-surface-variant uppercase">256-BIT SECURED</span>
     </div>
   </div>
 
-</body>
+</main>
+
+<!-- Pied de page -->
+<footer class="relative z-10 w-full px-container-padding pb-stack-md">
+  <div class="flex flex-col md:flex-row justify-between items-center gap-unit border-t border-white/10 pt-4">
+    <span class="font-tagline-uppercase text-tagline-uppercase text-tertiary/80">
+      © 2026 YAS Mobile Network — NOC Operations
+    </span>
+    <div class="flex gap-gutter items-center">
+      <span class="font-label-sm text-label-sm text-on-surface-variant">Système interne ISOC</span>
+      <span class="font-label-sm text-label-sm text-on-surface-variant">{{ request.META.SERVER_NAME }}</span>
+    </div>
+  </div>
+</footer>
+
 <script>
-(function(){
-  var pwd1  = document.getElementById('password1');
-  var pwd2  = document.getElementById('password2');
-  var fill  = document.getElementById('pwdFill');
-  var hint  = document.getElementById('pwdHint');
-  var match = document.getElementById('pwdMatch');
-
-  var levels = [
-    { w:'0%',   bg:'#e8edf5', txt:'Entrez un mot de passe', c:'#aaa' },
-    { w:'25%',  bg:'#e53e3e', txt:'Trop faible',            c:'#e53e3e' },
-    { w:'50%',  bg:'#FF9800', txt:'Faible',                 c:'#FF9800' },
-    { w:'75%',  bg:'#FFC72C', txt:'Moyen',                  c:'#FFC72C' },
-    { w:'100%', bg:'#22c55e', txt:'Fort ✓',                 c:'#22c55e' },
-  ];
-
-  pwd1.addEventListener('input', function(){
-    var v = this.value, s = 0;
-    if (v.length >= 8)          s++;
-    if (/[A-Z]/.test(v))        s++;
-    if (/[0-9]/.test(v))        s++;
-    if (/[^A-Za-z0-9]/.test(v)) s++;
-    var l = v.length === 0 ? levels[0] : levels[s];
-    fill.style.width = l.w; fill.style.background = l.bg;
-    hint.textContent = l.txt; hint.style.color = l.c;
-    checkMatch();
-  });
-
-  function checkMatch(){
-    if (!pwd2.value){ match.textContent = ''; return; }
-    if (pwd1.value === pwd2.value){
-      match.textContent = '✓ Les mots de passe correspondent';
-      match.style.color = '#22c55e';
+  /* Toggle visibilité mot de passe */
+  function togglePwd(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+    if (input.type === 'password') {
+      input.type     = 'text';
+      icon.innerText = 'visibility_off';
     } else {
-      match.textContent = '✗ Les mots de passe ne correspondent pas';
-      match.style.color = '#e53e3e';
+      input.type     = 'password';
+      icon.innerText = 'visibility';
     }
   }
-  pwd2.addEventListener('input', checkMatch);
-})();
+
+  /* Force du mot de passe */
+  (function () {
+    const pwd1  = document.getElementById('password1');
+    const pwd2  = document.getElementById('password2');
+    const fill  = document.getElementById('pwdFill');
+    const hint  = document.getElementById('pwdHint');
+    const match = document.getElementById('pwdMatch');
+
+    const levels = [
+      { w:'0%',   bg:'rgba(255,255,255,.1)', txt:'Entrez un mot de passe', c:'rgba(255,255,255,.3)' },
+      { w:'25%',  bg:'#e53e3e',              txt:'Trop faible',            c:'#e53e3e'              },
+      { w:'50%',  bg:'#FF9800',              txt:'Faible',                 c:'#FF9800'              },
+      { w:'75%',  bg:'#FFC72C',              txt:'Moyen',                  c:'#FFC72C'              },
+      { w:'100%', bg:'#22c55e',              txt:'Fort ✓',                 c:'#22c55e'              },
+    ];
+
+    pwd1.addEventListener('input', function () {
+      const v = this.value; let s = 0;
+      if (v.length >= 8)          s++;
+      if (/[A-Z]/.test(v))        s++;
+      if (/[0-9]/.test(v))        s++;
+      if (/[^A-Za-z0-9]/.test(v)) s++;
+      const l = v.length === 0 ? levels[0] : levels[s];
+      fill.style.width = l.w; fill.style.background = l.bg;
+      hint.textContent = l.txt; hint.style.color = l.c;
+      checkMatch();
+    });
+
+    function checkMatch() {
+      if (!pwd2.value) { match.textContent = ''; return; }
+      if (pwd1.value === pwd2.value) {
+        match.textContent = '✓ Les mots de passe correspondent';
+        match.style.color = '#22c55e';
+      } else {
+        match.textContent = '✗ Les mots de passe ne correspondent pas';
+        match.style.color = '#e53e3e';
+      }
+    }
+    pwd2.addEventListener('input', checkMatch);
+  })();
+
+  /* Parallaxe fond */
+  document.addEventListener('mousemove', function (e) {
+    const amount = 12;
+    const x = (e.clientX / window.innerWidth  - .5) * amount;
+    const y = (e.clientY / window.innerHeight - .5) * amount;
+    const bg = document.querySelector('img[alt="NOC Background"]');
+    if (bg) bg.style.transform = `scale(1.05) translate(${x}px,${y}px)`;
+  });
 </script>
+</body>
 </html>
