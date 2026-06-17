@@ -116,11 +116,11 @@
 <body class="bg-background text-on-surface font-body-md min-h-screen relative overflow-x-hidden flex flex-col">
 
 <!-- ── Fond plein écran ── -->
-<div class="fixed inset-0 z-0 bg-[#060d2e]">
-  <img alt="NOC Background"
-       class="w-full h-full"
+<div class="fixed inset-0 z-0 bg-[#060d2e] overflow-hidden">
+  <img id="noc-bg"
        src="{% static 'reports/login_bg_corridor_yas.svg' %}"
-       style="object-fit:fill; opacity:.80; filter:brightness(1.15) saturate(1.9) contrast(1.15); transition:transform .2s ease-out;">
+       alt=""
+       style="position:absolute; top:0; left:0; width:100%; height:100%; display:block; filter:brightness(1.15) saturate(1.9) contrast(1.15); transition:transform .2s ease-out;">
   <div class="absolute inset-0 bg-gradient-to-b from-[#060d2e]/50 via-transparent to-transparent"></div>
   <div class="scanline"></div>
 </div>
@@ -262,8 +262,8 @@
     const amount = 12;
     const x = (e.clientX / window.innerWidth  - .5) * amount;
     const y = (e.clientY / window.innerHeight - .5) * amount;
-    const bg = document.querySelector('img[alt="NOC Background"]');
-    if (bg) bg.style.transform = `scale(1.05) translate(${x}px,${y}px)`;
+    const bg = document.getElementById('noc-bg');
+    if (bg) bg.style.transform = `scale(1.06) translate(${x}px,${y}px)`;
   });
 </script>
 </body>
