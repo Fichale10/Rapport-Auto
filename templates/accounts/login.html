@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -24,96 +25,35 @@
 
     /* ══ PANNEAU GAUCHE ══════════════════════════════════════════════ */
     .brand-panel {
-      background: linear-gradient(160deg, #001a4d 0%, #003087 50%, #0047cc 100%);
+      background: url("{% static 'reports/login_bg_corridor_yas.svg' %}") center / cover no-repeat;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: flex-start;
       padding: 52px 60px;
       position: relative;
       overflow: hidden;
     }
-
-    /* Cercles décoratifs */
+    /* vignette subtil uniquement en haut pour garder le logo lisible */
     .brand-panel::before {
       content: '';
-      position: absolute; top: -140px; right: -100px;
-      width: 420px; height: 420px;
-      background: var(--yas-yellow);
-      border-radius: 50%; opacity: 0.07;
-      animation: floatA 8s ease-in-out infinite;
-    }
-    .brand-panel::after {
-      content: '';
-      position: absolute; bottom: -100px; left: -80px;
-      width: 340px; height: 340px;
-      background: var(--yas-yellow);
-      border-radius: 50%; opacity: 0.05;
-      animation: floatB 10s ease-in-out infinite;
-    }
-    .deco-circle {
-      position: absolute; top: 45%; right: -60px;
-      width: 200px; height: 200px;
-      border: 2px solid rgba(255,199,44,0.12);
-      border-radius: 50%;
-      animation: floatB 12s ease-in-out infinite;
-    }
-    @keyframes floatA {
-      0%,100% { transform: translate(0,0) scale(1); }
-      50%      { transform: translate(-20px,30px) scale(1.05); }
-    }
-    @keyframes floatB {
-      0%,100% { transform: translate(0,0) scale(1); }
-      50%      { transform: translate(15px,-20px) scale(1.03); }
+      position: absolute; inset: 0; z-index: 0;
+      background:
+        linear-gradient(to bottom,  rgba(4,11,37,.75) 0%, rgba(4,11,37,.0) 35%),
+        linear-gradient(to right,   rgba(4,11,37,.4)  0%, rgba(4,11,37,.0) 50%);
     }
 
     /* Logo */
     .brand-top { position: relative; z-index: 1; }
     .yas-logo {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 68px; color: var(--yas-yellow);
-      letter-spacing: 6px; line-height: 1;
+      font-size: 80px; color: var(--yas-yellow);
+      letter-spacing: 10px; line-height: 1;
+      text-shadow: 0 0 40px rgba(255,199,44,.5), 0 2px 12px rgba(0,0,0,.8);
     }
     .yas-tagline {
-      color: rgba(255,255,255,0.4); font-size: 11px;
-      letter-spacing: 4px; text-transform: uppercase; margin-top: 4px;
-    }
-
-    /* Contenu central */
-    .brand-center { position: relative; z-index: 1; }
-    .brand-title {
-      color: #fff; font-size: 40px; font-weight: 700;
-      line-height: 1.15; margin-bottom: 18px;
-    }
-    .brand-title span { color: var(--yas-yellow); }
-    .brand-desc {
-      color: rgba(255,255,255,0.5); font-size: 15px;
-      line-height: 1.75; max-width: 340px;
-    }
-
-    /* Feature pills */
-    .feature-pills {
-      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px;
-    }
-    .pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(255,255,255,0.07);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 20px; padding: 6px 14px;
-      color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600;
-    }
-    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--yas-yellow); }
-
-    /* Stats bas */
-    .brand-bottom { position: relative; z-index: 1; }
-    .stats-row { display: flex; gap: 36px; }
-    .stat { border-left: 3px solid var(--yas-yellow); padding-left: 14px; }
-    .stat-num {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 30px; color: #fff; letter-spacing: 1px;
-    }
-    .stat-label {
-      color: rgba(255,255,255,0.35); font-size: 10px;
-      letter-spacing: 2px; text-transform: uppercase;
+      color: rgba(255,255,255,0.65); font-size: 11px;
+      letter-spacing: 5px; text-transform: uppercase; margin-top: 6px;
+      text-shadow: 0 1px 6px rgba(0,0,0,.9);
     }
 
     /* ══ PANNEAU DROIT ═══════════════════════════════════════════════ */
@@ -132,16 +72,6 @@
       from { opacity: 0; transform: translateX(30px); }
       to   { opacity: 1; transform: translateX(0); }
     }
-
-    /* Petite pastille déco en haut à droite */
-    .form-deco {
-      position: absolute; top: 40px; right: 48px;
-      display: flex; align-items: center; gap: 6px;
-      background: #f0f4ff; border-radius: 20px; padding: 6px 14px;
-    }
-    .form-deco-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    .form-deco span { font-size: 11px; font-weight: 600; color: #003087; }
 
     .form-header { margin-bottom: 36px; }
     .form-header h2 {
@@ -213,28 +143,6 @@
     button[type="submit"]:hover::after { opacity: 1; }
     button[type="submit"]:active { transform: translateY(0); }
 
-    /* Séparateur */
-    .divider {
-      display: flex; align-items: center; gap: 14px;
-      margin: 28px 0 20px; color: #ddd; font-size: 12px;
-    }
-    .divider::before, .divider::after {
-      content: ''; flex: 1; height: 1px; background: #eee;
-    }
-
-    /* Footer */
-    .form-footer {
-      text-align: center; color: #bbb; font-size: 12px;
-    }
-    .form-footer a {
-      color: var(--yas-blue); font-weight: 600; text-decoration: none;
-    }
-    .form-footer a:hover { color: #0047cc; text-decoration: underline; }
-
-    .form-meta {
-      text-align: center; color: #ddd; font-size: 11px; margin-top: 24px;
-    }
-
     @media (max-width: 768px) {
       body { grid-template-columns: 1fr; }
       .brand-panel { display: none; }
@@ -251,117 +159,63 @@
       <div class="yas-logo">YAS</div>
       <div class="yas-tagline">Mobile Network</div>
     </div>
-
-    <div class="brand-center">
-      <div class="brand-title">
-        Report<span>XCare</span><br>Réseau YAS
-      </div>
-      <p class="brand-desc">
-        Plateforme de traitement automatisé des alarmes réseau.
-        Analyses, synthèses et rapports en quelques secondes.
-      </p>
-      <div class="feature-pills">
-        <div class="pill"><div class="pill-dot"></div> Statistiques avancées</div>
-        <div class="pill"><div class="pill-dot"></div> Export Excel & PDF</div>
-        <div class="pill"><div class="pill-dot"></div> Disponibilité en temps réel</div>
-        <div class="pill"><div class="pill-dot"></div> Comparaison de rapports</div>
-      </div>
-    </div>
-
-    <div class="brand-bottom">
-      <div class="stats-row">
-        <div class="stat">
-          <div class="stat-num">24/7</div>
-          <div class="stat-label">Monitoring</div>
-        </div>
-        <div class="stat">
-          <div class="stat-num">ISOC</div>
-          <div class="stat-label">Automation</div>
-        </div>
-        <div class="stat">
-          <div class="stat-num">FK10</div>
-          <div class="stat-label">Système</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="deco-circle"></div>
   </div>
 
   <!-- ── Panneau droit ── -->
   <div class="form-panel">
-
-    <div class="form-deco">
-      <div class="form-deco-dot"></div>
-      <span>Système en ligne</span>
-    </div>
-
     <div class="form-inner">
 
-    <div class="form-header">
-      <h2>Connexion</h2>
-      <p>Accédez à votre espace ISOC</p>
-    </div>
-
-    {% if messages %}
-      {% for message in messages %}
-        <div class="alert">⚠️ {{ message }}</div>
-      {% endfor %}
-    {% endif %}
-
-    <form method="POST">
-      {% csrf_token %}
-
-      <div class="field">
-        <label for="username">Identifiant</label>
-        <div class="input-wrap">
-          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-          </svg>
-          <input type="text" id="username" name="username"
-                 placeholder="Votre identifiant" autofocus required>
-        </div>
+      <div class="form-header">
+        <h2>Connexion</h2>
+        <p>Accédez à votre espace ISOC</p>
       </div>
 
-      <div class="field">
-        <label for="password">Mot de passe</label>
-        <div class="input-wrap">
-          <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          <input type="password" id="password" name="password"
-                 placeholder="••••••••" required>
-          <button type="button" class="eye-btn" id="eyeBtn" title="Afficher/masquer">
-            <!-- Œil fermé (par défaut) -->
-            <svg id="eyeOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert">⚠️ {{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <form method="POST">
+        {% csrf_token %}
+
+        <div class="field">
+          <label for="username">Identifiant</label>
+          <div class="input-wrap">
+            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
             </svg>
-            <!-- Œil ouvert (caché) -->
-            <svg id="eyeOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
+            <input type="text" id="username" name="username"
+                   placeholder="Votre identifiant" autofocus required>
+          </div>
         </div>
-      </div>
 
-      <button type="submit">Se connecter →</button>
-    </form>
+        <div class="field">
+          <label for="password">Mot de passe</label>
+          <div class="input-wrap">
+            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input type="password" id="password" name="password"
+                   placeholder="••••••••" required>
+            <button type="button" class="eye-btn" id="eyeBtn" title="Afficher/masquer">
+              <svg id="eyeOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+              <svg id="eyeOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
 
-    <div class="divider">ou</div>
+        <button type="submit">Se connecter →</button>
+      </form>
 
-    <div class="form-footer">
-      Pas encore de compte ?
-      <a href="{% url 'accounts:register' %}">S'inscrire →</a>
     </div>
-
-    <div class="form-meta">
-      Yas Togo &bull; Système interne ISOC &bull; {{ request.META.SERVER_NAME }}
-    </div>
-
-    </div><!-- /form-inner -->
   </div>
 
 <script>
