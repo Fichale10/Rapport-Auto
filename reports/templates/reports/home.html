@@ -47,18 +47,25 @@
   .mini-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #fff; letter-spacing: 1px; line-height: 1; }
   .mini-stat-lbl { font-size: 10px; color: rgba(255,255,255,.45); text-transform: uppercase; letter-spacing: .5px; }
 
-  /* ── KPI bar ── */
-  .kpi-bar { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
-  .kpi-box { background: #fff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e8edf5; display: flex; align-items: center; gap: 14px; transition: box-shadow .2s, transform .2s; }
-  .kpi-box:hover { box-shadow: 0 4px 20px rgba(0,48,135,.1); transform: translateY(-2px); }
-  .kpi-ico { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-  .kpi-ico.blue   { background: #e8f0ff; }
-  .kpi-ico.yellow { background: #fff8e1; }
-  .kpi-ico.red    { background: #fff0f0; }
-  .kpi-ico.green  { background: #f0fff4; }
-  .kpi-num { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #003087; letter-spacing: 1px; line-height: 1; }
-  .kpi-num.warn { color: #e53e3e; }
-  .kpi-lbl { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+  /* ── KPI row dans le hero ── */
+  .hero-kpi-row {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+    margin-top: 28px; padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,.12); position: relative; z-index: 1;
+  }
+  .hero-kpi {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.13);
+    border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+  }
+  .hero-kpi-ico {
+    width: 36px; height: 36px; background: rgba(255,199,44,.18); border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+  }
+  .hero-kpi-num { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: #fff; letter-spacing: 1px; line-height: 1; }
+  .hero-kpi-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+  .hero-kpi-sub { font-size: 11px; margin-top: 3px; font-weight: 600; }
+  @media(max-width:900px){ .hero-kpi-row { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:520px){ .hero-kpi-row { grid-template-columns: 1fr 1fr; gap:8px; } }
 
   /* ── Main grid ── */
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
@@ -107,8 +114,18 @@
     transition: opacity .15s; z-index: 10; white-space: nowrap;
   }
 
+  /* ── Sélecteur de période unifié ── */
+  .period-bar-wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #fff; border: 1px solid #e8edf5; border-radius: 14px;
+    padding: 12px 20px; margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,48,135,.05);
+  }
+  .period-bar-label { font-size: 13px; font-weight: 700; color: #003087; }
+  .period-bar-label span { font-weight: 400; color: #888; margin-left: 6px; font-size: 12px; }
+  .period-bar { display: flex; align-items: center; gap: 6px; }
+
   /* ── Synthèse par Escalade ── */
-  .synth-period-bar { display: flex; align-items: center; gap: 6px; }
   .synth-btn {
     padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600;
     border: 1.5px solid #e8edf5; background: #fff; color: #666;
@@ -143,7 +160,7 @@
   .badge-warn { background: #fff8e1; color: #7a5a00; }
 
   /* ── Sidebar ── */
-  .sidebar { display: flex; flex-direction: column; gap: 20px; }
+  .sidebar { display: flex; flex-direction: column; gap: 20px; height: 100%; }
   .last-report-card { background: linear-gradient(135deg,#003087,#0047cc); border-radius: 14px; padding: 20px; }
   .lr-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #FFC72C; text-transform: uppercase; margin-bottom: 8px; }
   .lr-name  { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -175,7 +192,8 @@
 
   /* ── Map card ── */
   .map-card { padding: 16px 20px 20px; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
-  #togo-map { flex: 1 1 0; min-height: 320px; border-radius: 10px; overflow: hidden; z-index: 0; border: 1px solid #e8edf5; }
+  #togo-map { flex: 1 1 0; min-height: 420px; border-radius: 10px; overflow: hidden; z-index: 0; border: 1px solid #e8edf5; background: #f8fafc; }
+  #togo-map .leaflet-container { background: #f8fafc; }
   .sites-table tbody tr:not(.sites-total) { cursor: pointer; transition: background .12s; }
   .sites-table tbody tr.row-highlight td { background: #e8f0ff !important; }
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
@@ -203,7 +221,7 @@
     .main-grid { grid-template-columns: 1fr; }
     .hero-visual { display: none; }
     .hero-title { font-size: 38px; }
-    .synth-period-bar { flex-wrap: wrap; }
+
   }
   @media(max-width:520px){
     .kpi-bar  { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -221,62 +239,66 @@
     <div class="hero-text">
       <div class="hero-badge">ISOC Automation</div>
       <h1 class="hero-title">Rapport <span>Automatique</span><br>Réseau YAS</h1>
-      <p class="hero-desc">
-        Importez vos fichiers Excel et obtenez en quelques secondes
-        statistiques, synthèses par escalade et rapports prêts à l'emploi.
-      </p>
       <div class="hero-actions">
         <a href="{% url 'upload' %}" class="btn-hero">↑ Traiter un fichier</a>
         <a href="{% url 'statistiques' %}" class="btn-hero-ghost">📊 Statistiques</a>
         <a href="{% url 'history' %}" class="btn-hero-ghost">📋 Historique</a>
       </div>
     </div>
-    <div class="hero-visual">
-      <div class="mini-stat">
-        <div class="mini-stat-icon">📋</div>
-        <div><div class="mini-stat-val">{{ total_reports }}</div><div class="mini-stat-lbl">Rapports</div></div>
+  </div>
+
+  <!-- ── KPI row (mois en cours) dans le hero ── -->
+  <div class="hero-kpi-row">
+    <div class="hero-kpi">
+      <div class="hero-kpi-ico">📅</div>
+      <div>
+        <div class="hero-kpi-num">{{ month_reports_count }}</div>
+        <div class="hero-kpi-lbl">Mois en cours</div>
+        <div class="hero-kpi-sub" style="color:#FFC72C;">{{ month_label }}</div>
       </div>
-      <div class="mini-stat">
-        <div class="mini-stat-icon">⚠️</div>
-        <div><div class="mini-stat-val">{{ total_unresolved }}</div><div class="mini-stat-lbl">Non résolus</div></div>
+    </div>
+    <div class="hero-kpi">
+      <div class="hero-kpi-ico">🔥</div>
+      <div>
+        <div class="hero-kpi-num">{{ month_incidents }}</div>
+        <div class="hero-kpi-lbl">Incidents survenus</div>
+        {% if month_trend_pct is not None %}
+          <div class="hero-kpi-sub" style="color:{% if month_trend_pct > 0 %}#fc8181{% elif month_trend_pct < 0 %}#68d391{% else %}rgba(255,255,255,.4){% endif %}">
+            {% if month_trend_pct > 0 %}▲{% elif month_trend_pct < 0 %}▼{% else %}—{% endif %} {{ month_trend_pct }}% vs mois préc.
+          </div>
+        {% endif %}
       </div>
-      <div class="mini-stat">
-        <div class="mini-stat-icon">⏱</div>
-        <div><div class="mini-stat-val">{{ total_outage_h }}h</div><div class="mini-stat-lbl">Outage total</div></div>
+    </div>
+    <div class="hero-kpi">
+      <div class="hero-kpi-ico">✓</div>
+      <div>
+        <div class="hero-kpi-num" style="color:#68d391;">{{ month_resolved }}</div>
+        <div class="hero-kpi-lbl">Incidents résolus</div>
+      </div>
+    </div>
+    <div class="hero-kpi">
+      <div class="hero-kpi-ico">⚠️</div>
+      <div>
+        <div class="hero-kpi-num" style="color:{% if month_unresolved > 0 %}#fc8181{% else %}#fff{% endif %};">{{ month_unresolved }}</div>
+        <div class="hero-kpi-lbl">Incidents en cours</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── KPI bar (mois en cours) ── -->
-<div class="kpi-bar">
-  <div class="kpi-box">
-    <div class="kpi-ico blue">📅</div>
-    <div>
-      <div class="kpi-num">{{ month_reports_count }}</div>
-      <div class="kpi-lbl">Mois en cours</div>
-      <div style="font-size:11px;margin-top:4px;font-weight:600;color:#003087;">{{ month_label }}</div>
-    </div>
+<!-- ── Sélecteur de période unifié ── -->
+<div class="period-bar-wrap">
+  <div class="period-bar-label">
+    Période d'analyse
+    <span>s'applique à Évolution des incidents &amp; Synthèse par Escalade</span>
   </div>
-  <div class="kpi-box">
-    <div class="kpi-ico yellow">🔥</div>
-    <div>
-      <div class="kpi-num">{{ month_incidents }}</div>
-      <div class="kpi-lbl">Incidents survenus</div>
-      {% if month_trend_pct is not None %}
-        <div style="font-size:11px;margin-top:4px;font-weight:700;color:{% if month_trend_pct > 0 %}#e53e3e{% elif month_trend_pct < 0 %}#22c55e{% else %}#888{% endif %}">
-          {% if month_trend_pct > 0 %}▲{% elif month_trend_pct < 0 %}▼{% else %}—{% endif %} {{ month_trend_pct }}% vs mois précédent
-        </div>
-      {% endif %}
-    </div>
-  </div>
-  <div class="kpi-box">
-    <div class="kpi-ico green">✓</div>
-    <div><div class="kpi-num">{{ month_resolved }}</div><div class="kpi-lbl">Incidents résolus</div></div>
-  </div>
-  <div class="kpi-box">
-    <div class="kpi-ico red">⚠️</div>
-    <div><div class="kpi-num {% if month_unresolved > 0 %}warn{% endif %}">{{ month_unresolved }}</div><div class="kpi-lbl">Incidents en cours</div></div>
+  <div class="period-bar">
+    <a href="?period=week"    class="synth-btn {% if period == 'week'    %}active{% endif %}">7 jours</a>
+    <a href="?period=month"   class="synth-btn {% if period == 'month'   %}active{% endif %}">Mois</a>
+    <a href="?period=quarter" class="synth-btn {% if period == 'quarter' %}active{% endif %}">3 mois</a>
+    <a href="?period=half"    class="synth-btn {% if period == 'half'    %}active{% endif %}">6 mois</a>
+    <a href="?period=year"    class="synth-btn {% if period == 'year'    %}active{% endif %}">Année</a>
+    <a href="?period=all"     class="synth-btn {% if period == 'all'     %}active{% endif %}">Tout</a>
   </div>
 </div>
 
@@ -285,19 +307,9 @@
 
   <div style="display:flex;flex-direction:column;gap:20px;">
 
-    <!-- Évolution des incidents (une ligne par courbe) -->
+    <!-- Évolution des incidents -->
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
-        <div class="sec-title" style="margin-bottom:0;flex:1;">📈 Évolution des incidents</div>
-        <div class="synth-period-bar">
-          <a href="?evol_period=day&synth_period={{ synth_period }}"     class="synth-btn {% if evol_period == 'day'     %}active{% endif %}">Jour</a>
-          <a href="?evol_period=week&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'week'    %}active{% endif %}">Semaine</a>
-          <a href="?evol_period=quarter&synth_period={{ synth_period }}" class="synth-btn {% if evol_period == 'quarter' %}active{% endif %}">3 mois</a>
-          <a href="?evol_period=half&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'half'    %}active{% endif %}">6 mois</a>
-          <a href="?evol_period=year&synth_period={{ synth_period }}"    class="synth-btn {% if evol_period == 'year'    %}active{% endif %}">Année</a>
-        </div>
-      </div>
-
+      <div class="sec-title">📈 Évolution des incidents</div>
       {% if show_spark_chart %}
       <div class="spark-chart" id="sparkChart">
         <div class="spark-rows" id="sparkRows"></div>
@@ -312,122 +324,73 @@
         const series = {{ spark_series|safe }};
         const labels = {{ spark_labels|safe }};
         if (!labels.length || !series.length) return;
-
         const W = 600, H = 58, PAD_L = 10, PAD_R = 10, PAD_T = 18, PAD_B = 8;
         const rowsEl = document.getElementById('sparkRows');
         const tooltip = document.getElementById('sparkTooltip');
-        const chart = document.getElementById('sparkChart');
-
+        const chart   = document.getElementById('sparkChart');
         function drawRow(s) {
           const isTotal = !!s.is_total;
           const mx = Math.max(...s.values, 1);
-          const xs = s.values.map((_, i) =>
-            PAD_L + i * (W - PAD_L - PAD_R) / Math.max(s.values.length - 1, 1)
-          );
+          const xs = s.values.map((_, i) => PAD_L + i * (W - PAD_L - PAD_R) / Math.max(s.values.length - 1, 1));
           const yAt = v => PAD_T + (H - PAD_T - PAD_B) - (v / mx) * (H - PAD_T - PAD_B);
           const yBase = H - PAD_B;
-
           const row = document.createElement('div');
           row.className = 'spark-row' + (isTotal ? ' spark-row-total' : '');
-
           const name = document.createElement('div');
           name.className = 'spark-row-name';
-          name.innerHTML =
-            `<span class="spark-row-dot" style="background:${s.color}"></span>` +
-            `<span>${s.name}</span>`;
-
+          name.innerHTML = `<span class="spark-row-dot" style="background:${s.color}"></span><span>${s.name}</span>`;
           const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
           svg.setAttribute('class', 'spark-row-svg');
           svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
           svg.setAttribute('preserveAspectRatio', 'none');
-
           const ys = s.values.map(yAt);
-
           if (isTotal) {
             const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
             const gradId = 'sparkGrad-total';
-            defs.innerHTML =
-              `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
-              `<stop offset="0%" stop-color="${s.color}" stop-opacity="0.28"/>` +
-              `<stop offset="100%" stop-color="${s.color}" stop-opacity="0.04"/></linearGradient>`;
+            defs.innerHTML = `<linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${s.color}" stop-opacity="0.28"/><stop offset="100%" stop-color="${s.color}" stop-opacity="0.04"/></linearGradient>`;
             svg.appendChild(defs);
             const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            area.setAttribute('d',
-              `M${xs[0]},${yBase} ` +
-              xs.map((x, i) => `L${x},${ys[i]}`).join(' ') +
-              ` L${xs[xs.length - 1]},${yBase} Z`
-            );
+            area.setAttribute('d', `M${xs[0]},${yBase} ` + xs.map((x, i) => `L${x},${ys[i]}`).join(' ') + ` L${xs[xs.length-1]},${yBase} Z`);
             area.setAttribute('fill', `url(#${gradId})`);
             svg.appendChild(area);
           }
-
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          line.setAttribute('d',
-            `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x, i) => `L${x},${ys[i + 1]}`).join(' ')
-          );
+          line.setAttribute('d', `M${xs[0]},${ys[0]} ` + xs.slice(1).map((x, i) => `L${x},${ys[i+1]}`).join(' '));
           line.setAttribute('fill', 'none');
           line.setAttribute('stroke', s.color);
           line.setAttribute('stroke-width', isTotal ? '3.5' : '2');
           line.setAttribute('stroke-linecap', 'round');
           line.setAttribute('stroke-linejoin', 'round');
-          if (isTotal) {
-            line.setAttribute('stroke-dasharray', '10 5');
-          }
+          if (isTotal) line.setAttribute('stroke-dasharray', '10 5');
           svg.appendChild(line);
-
           xs.forEach((x, i) => {
             const val = s.values[i];
             const shape = document.createElementNS('http://www.w3.org/2000/svg', isTotal ? 'rect' : 'circle');
-            if (isTotal) {
-              shape.setAttribute('x', x - 4.5);
-              shape.setAttribute('y', ys[i] - 4.5);
-              shape.setAttribute('width', '9');
-              shape.setAttribute('height', '9');
-              shape.setAttribute('rx', '1');
-            } else {
-              shape.setAttribute('cx', x);
-              shape.setAttribute('cy', ys[i]);
-              shape.setAttribute('r', '3.5');
-            }
-            shape.setAttribute('fill', s.color);
-            shape.setAttribute('stroke', '#fff');
-            shape.setAttribute('stroke-width', '1.5');
+            if (isTotal) { shape.setAttribute('x', x-4.5); shape.setAttribute('y', ys[i]-4.5); shape.setAttribute('width','9'); shape.setAttribute('height','9'); shape.setAttribute('rx','1'); }
+            else { shape.setAttribute('cx', x); shape.setAttribute('cy', ys[i]); shape.setAttribute('r','3.5'); }
+            shape.setAttribute('fill', s.color); shape.setAttribute('stroke','#fff'); shape.setAttribute('stroke-width','1.5');
             shape.style.cursor = 'pointer';
             shape.addEventListener('mouseenter', function(e) {
               tooltip.textContent = `${labels[i]} — ${s.name} : ${val}`;
               tooltip.style.opacity = '1';
               const r = chart.getBoundingClientRect();
               tooltip.style.left = Math.min(e.clientX - r.left - 40, r.width - 160) + 'px';
-              tooltip.style.top = (e.clientY - r.top - 36) + 'px';
+              tooltip.style.top  = (e.clientY - r.top - 36) + 'px';
             });
             shape.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
             svg.appendChild(shape);
-
             const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            lbl.setAttribute('x', x);
-            lbl.setAttribute('y', ys[i] - (isTotal ? 10 : 8));
-            lbl.setAttribute('text-anchor', 'middle');
-            lbl.setAttribute('font-size', isTotal ? '10' : '9');
-            lbl.setAttribute('font-weight', '700');
-            lbl.setAttribute('fill', s.color);
-            lbl.setAttribute('font-family', 'DM Sans, sans-serif');
-            lbl.textContent = val;
+            lbl.setAttribute('x', x); lbl.setAttribute('y', ys[i] - (isTotal ? 10 : 8));
+            lbl.setAttribute('text-anchor','middle'); lbl.setAttribute('font-size', isTotal ? '10' : '9');
+            lbl.setAttribute('font-weight','700'); lbl.setAttribute('fill', s.color);
+            lbl.setAttribute('font-family','DM Sans, sans-serif'); lbl.textContent = val;
             svg.appendChild(lbl);
           });
-
-          row.appendChild(name);
-          row.appendChild(svg);
-          rowsEl.appendChild(row);
+          row.appendChild(name); row.appendChild(svg); rowsEl.appendChild(row);
         }
-
         series.forEach(drawRow);
-
         const xlab = document.getElementById('sparkXLabels');
-        labels.forEach(l => {
-          const sp = document.createElement('span');
-          sp.textContent = l;
-          xlab.appendChild(sp);
-        });
+        labels.forEach(l => { const sp = document.createElement('span'); sp.textContent = l; xlab.appendChild(sp); });
       })();
       </script>
       {% else %}
@@ -437,19 +400,11 @@
 
     <!-- ══ SYNTHÈSE PAR ESCALADE ══ -->
     <div class="card" id="syntheseCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
         <div class="sec-title" style="margin-bottom:0;flex:1;">📋 Synthèse par Escalade</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div class="synth-period-bar">
-            <a href="?synth_period=week&evol_period={{ evol_period }}"  class="synth-btn {% if synth_period == 'week'  %}active{% endif %}">7 jours</a>
-            <a href="?synth_period=month&evol_period={{ evol_period }}" class="synth-btn {% if synth_period == 'month' %}active{% endif %}">Mois</a>
-            <a href="?synth_period=year&evol_period={{ evol_period }}"  class="synth-btn {% if synth_period == 'year'  %}active{% endif %}">Année</a>
-            <a href="?synth_period=all&evol_period={{ evol_period }}"   class="synth-btn {% if synth_period == 'all'   %}active{% endif %}">Tout</a>
-          </div>
-          {% if synth_total_inc > 0 %}
-          <span class="synth-badge">{{ synth_total_inc }} incidents</span>
-          {% endif %}
-        </div>
+        {% if synth_total_inc > 0 %}
+        <span class="synth-badge">{{ synth_total_inc }} incidents</span>
+        {% endif %}
       </div>
 
       {% if synth_rows %}
@@ -510,27 +465,6 @@
 
   <!-- ── Sidebar ── -->
   <div class="sidebar">
-    {% if show_spark_chart %}
-    <div class="last-report-card">
-      <div class="lr-label">Évolution des incidents</div>
-      <div class="lr-name">{{ evol_period_label }}</div>
-      <div class="lr-stats">
-        <div><div class="lr-stat-val">{{ evol_incidents }}</div><div class="lr-stat-lbl">Incidents survenus</div></div>
-        <div>
-          <div class="lr-stat-val" style="color:#68d391">{{ evol_resolved }}</div>
-          <div class="lr-stat-lbl">Incidents résolus</div>
-        </div>
-        <div>
-          <div class="lr-stat-val" style="color:{% if evol_unresolved > 0 %}#fc8181{% else %}#68d391{% endif %}">{{ evol_unresolved }}</div>
-          <div class="lr-stat-lbl">Incidents en cours</div>
-        </div>
-      </div>
-      {% if evol_latest_report %}
-      <a href="{% url 'results' evol_latest_report.pk %}" class="lr-btn">Voir les résultats →</a>
-      {% endif %}
-    </div>
-    {% endif %}
-
     <div class="card">
       <div class="sec-title">📡 Statut Sites</div>
       <table class="sites-table">
@@ -549,29 +483,19 @@
             <td style="font-weight:{% if row.is_total %}700{% else %}600{% endif %};color:{% if row.is_total %}#003087{% else %}#111{% endif %};">
               {{ row.region }}
             </td>
-            <td class="num">
-              <span class="sites-total-val">{{ row.total }}</span>
-            </td>
+            <td class="num"><span class="sites-total-val">{{ row.total }}</span></td>
             <td class="num">
               {% if row.impacted > 0 %}
-                <span class="sites-impacted-val" style="color:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};">
-                  {{ row.impacted }}
-                </span>
-              {% else %}
-                <span style="color:#ccc;">—</span>
-              {% endif %}
+                <span class="sites-impacted-val" style="color:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};">{{ row.impacted }}</span>
+              {% else %}<span style="color:#ccc;">—</span>{% endif %}
             </td>
             <td>
               {% if row.impacted > 0 %}
               <div class="pct-wrap">
-                <div class="pct-bar">
-                  <div class="pct-bar-fill" style="width:{{ row.pct }}%;background:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};"></div>
-                </div>
+                <div class="pct-bar"><div class="pct-bar-fill" style="width:{{ row.pct }}%;background:{% if row.pct >= 30 %}#e53e3e{% elif row.pct >= 15 %}#d97706{% else %}#003087{% endif %};"></div></div>
                 <span class="pct-lbl">{{ row.pct }}%</span>
               </div>
-              {% else %}
-                <span style="color:#ccc;font-size:11px;">0%</span>
-              {% endif %}
+              {% else %}<span style="color:#ccc;font-size:11px;">0%</span>{% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -623,127 +547,106 @@
     'LOME': [6.1631, 1.2869]
   };
 
-  function getColor(pct) {
-    if (pct <= 0)   return '#c8daf5';
-    if (pct < 15)   return '#003087';
-    if (pct < 30)   return '#d97706';
-    return '#e53e3e';
-  }
-  function getStyle(key, highlight) {
-    var d = REGION_DATA[key] || {};
-    var pct = d.pct || 0;
-    return {
-      fillColor:   highlight ? '#FFC72C' : getColor(pct),
-      weight:      highlight ? 2.5 : 1.5,
-      color:       highlight ? '#b07800' : '#fff',
-      fillOpacity: highlight ? 0.85 : (pct <= 0 ? 0.35 : 0.70)
-    };
-  }
+  // ── Init carte — fond blanc, Togo seul ───────────────────────────────
+  var map = L.map('togo-map', {
+    zoomControl: false, scrollWheelZoom: false, attributionControl: false,
+    preferCanvas: true
+  });
 
-  // ── Init carte ────────────────────────────────────────────────────────
-  var map = L.map('togo-map', { zoomControl: true, scrollWheelZoom: false })
-               .setView([8.62, 0.88], 6);
+  // Pas de tuile de fond — fond blanc CSS, seul le Togo est dessiné
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-    maxZoom: 12, minZoom: 5
-  }).addTo(map);
+  // Centrage exact sur le Togo
+  map.fitBounds([[6.05, -0.15], [11.15, 1.85]], { padding: [10, 10] });
 
-  var layers    = {};
+  // Couleurs douces par région
+  var REGION_COLORS = {
+    'SAVANES':  '#d4e9c7',
+    'KARA':     '#c7dff0',
+    'CENTRALE': '#f5e6c8',
+    'PLATEAUX': '#ddd3ec',
+    'MARITIME': '#c7e8e0',
+    'LOME':     '#f0d4c8'
+  };
+
+  // ── Régions colorées + interactives (clic table → surbrillance) ────────
+  var layers = {};
   var activeKey = null;
 
-  function popupHtml(key) {
-    var d = REGION_DATA[key];
-    if (!d) return '';
-    var color = getColor(d.pct);
-    return '<div style="min-width:150px;font-family:\'DM Sans\',sans-serif;">' +
-      '<div style="font-size:13px;font-weight:700;color:#003087;margin-bottom:6px;">📍 ' + d.label + '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">' +
-        '<span style="color:#888;">Sites total</span><strong>' + d.total + '</strong></div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">' +
-        '<span style="color:#888;">Sites impactés</span><strong style="color:' + color + ';">' + d.impacted + '</strong></div>' +
-      '<div style="background:#f5f5f5;border-radius:4px;height:6px;margin-bottom:4px;">' +
-        '<div style="width:' + Math.min(d.pct,100) + '%;height:100%;border-radius:4px;background:' + color + ';"></div></div>' +
-      '<div style="text-align:right;font-size:11px;font-weight:700;color:' + color + ';">' + d.pct + '%</div>' +
-    '</div>';
-  }
-
   function highlightRegion(key) {
-    // Fait défiler jusqu'à la carte si elle n'est pas visible
-    document.getElementById('togo-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Réinitialise tout
-    if (activeKey && layers[activeKey]) layers[activeKey].setStyle(getStyle(activeKey, false));
-    // Met en avant
-    activeKey = key;
+    Object.keys(layers).forEach(function(k) {
+      layers[k].setStyle({
+        color: '#3a6090', weight: 2.5, opacity: 1,
+        fillColor: REGION_COLORS[k] || '#e8edf5', fillOpacity: 0.85
+      });
+    });
     if (layers[key]) {
-      layers[key].setStyle(getStyle(key, true));
+      layers[key].setStyle({ color: '#003087', weight: 4, fillColor: '#FFC72C', fillOpacity: 0.75 });
       layers[key].bringToFront();
-      map.invalidateSize();
-      map.flyTo(CENTERS[key], 7, { duration: 0.6 });
-      layers[key].openPopup();
+      map.flyTo(CENTERS[key], 7, { duration: 0.5 });
     }
-    // Sync table
     document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
       row.classList.toggle('row-highlight', row.dataset.region === key);
     });
   }
 
-  // ── Création des polygones ────────────────────────────────────────────
-  Object.keys(POLYGONS).forEach(function(key){
-    var layer = L.polygon(POLYGONS[key], getStyle(key, false))
-      .bindPopup(popupHtml(key), { maxWidth: 200 })
-      .addTo(map);
-
-    // Label région
-    var d = REGION_DATA[key];
-    if (d) {
-      L.marker(CENTERS[key], {
-        icon: L.divIcon({
-          className: '',
-          html: '<div style="font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;pointer-events:none;">' + d.label + '</div>',
-          iconAnchor: [20, 8]
-        })
-      }).addTo(map);
-    }
-
+  Object.keys(POLYGONS).forEach(function(key) {
+    var layer = L.polygon(POLYGONS[key], {
+      color:       '#3a6090',
+      weight:      2.5,
+      opacity:     1,
+      fillColor:   REGION_COLORS[key] || '#e8edf5',
+      fillOpacity: 0.85
+    }).addTo(map);
     layer.on('click', function(){ highlightRegion(key); });
     layers[key] = layer;
   });
 
-  // ── Points de sites réels (depuis le KML) ───────────────────────────────
+  // ── Labels des régions — bien visibles ────────────────────────────────
+  Object.keys(CENTERS).forEach(function(key) {
+    var d = REGION_DATA[key];
+    var label = d ? d.label : key;
+    L.marker(CENTERS[key], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="font-size:11px;font-weight:800;color:#003087;' +
+              'background:rgba(255,255,255,0.95);padding:3px 8px;border-radius:4px;' +
+              'white-space:nowrap;border:1.5px solid rgba(0,48,135,.4);' +
+              'box-shadow:0 1px 5px rgba(0,0,0,.18);letter-spacing:.2px;">' + label + '</div>',
+        iconAnchor: [24, 9]
+      }),
+      interactive: false
+    }).addTo(map);
+  });
+
+  // ── Sync clic table → carte ───────────────────────────────────────────
+  document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
+    row.addEventListener('click', function(){ highlightRegion(row.dataset.region); });
+  });
+
+  // ── Sites impactés uniquement ─────────────────────────────────────────
   var sitesLayer = L.layerGroup();
   SITES_GEO.forEach(function(s){
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
-    var color = s.impacted ? '#e53e3e' : '#003087';
     var marker = L.circleMarker([s.lat, s.lon], {
-      radius:      s.impacted ? 5 : 3,
-      color:       '#fff',
-      weight:      1,
-      fillColor:   color,
-      fillOpacity: s.impacted ? 0.95 : 0.6
+      radius: 6, color: '#fff', weight: 1.5,
+      fillColor: '#e53e3e', fillOpacity: 0.92
     });
     marker.bindPopup(
       '<div style="font-family:\'DM Sans\',sans-serif;min-width:130px;">' +
-        '<div style="font-size:12px;font-weight:700;color:#003087;margin-bottom:4px;">📡 ' + s.name + '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:#e53e3e;margin-bottom:4px;">⚠️ ' + s.name + '</div>' +
         (s.region ? '<div style="font-size:11px;color:#888;">' + s.region + '</div>' : '') +
-        '<div style="font-size:11px;font-weight:700;color:' + color + ';margin-top:4px;">' +
-          (s.impacted ? 'Impacté' : 'OK') +
-        '</div>' +
+        '<div style="font-size:11px;font-weight:700;color:#e53e3e;margin-top:4px;">Site impacté</div>' +
       '</div>'
     );
     sitesLayer.addLayer(marker);
   });
   sitesLayer.addTo(map);
 
-  // ── Sync table → carte ────────────────────────────────────────────────
-  document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
-    row.addEventListener('click', function(){
-      highlightRegion(row.dataset.region);
-    });
-  });
+  // Fond blanc sur le conteneur Leaflet
+  var lc = document.querySelector('#togo-map .leaflet-container');
+  if (lc) lc.style.background = '#f8fafc';
 
-  // Rafraîchit la carte après son affichage (évite le bug de tuiles vides/grises
-  // quand le conteneur n'a pas encore sa taille finale au moment de l'init).
+  // Rafraîchit la carte après son affichage
   [0, 200, 600, 1200].forEach(function(delay){
     setTimeout(function(){ map.invalidateSize(); }, delay);
   });

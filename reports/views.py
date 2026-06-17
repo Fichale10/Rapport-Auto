@@ -1,6 +1,6 @@
 import calendar
 import json
-import time
+import time  # noqa
 import os
 import math
 from collections import defaultdict
@@ -80,9 +80,13 @@ def _filter_reports_by_period(queryset, period):
         return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
     if period == 'month':
         return queryset.filter(uploaded_at__date__gte=today - timedelta(days=30))
+    if period == 'quarter':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=90))
+    if period == 'half':
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=180))
     if period == 'year':
         return queryset.filter(uploaded_at__year=today.year)
-    return queryset
+    return queryset  # 'all'
 
 
 def _shift_month(d, delta):
@@ -101,6 +105,12 @@ def _evol_time_buckets(period, today=None):
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             buckets.append({'label': d.strftime('%d/%m'), 'start': d, 'end': d})
+    elif period == 'month':
+        week_start = today - timedelta(days=today.weekday())
+        for i in range(3, -1, -1):
+            ws = week_start - timedelta(weeks=i)
+            we = ws + timedelta(days=6)
+            buckets.append({'label': f"S{ws.isocalendar()[1]}", 'start': ws, 'end': we})
     elif period == 'week':
         week_start = today - timedelta(days=today.weekday())
         for i in range(6, -1, -1):
@@ -249,7 +259,9 @@ def home(request):
     elif month_incidents > 0:
         month_trend_pct = 100.0
 
-    evol_period = request.GET.get('evol_period', 'week')
+    # ── Période unifiée pour Évolution + Synthèse ──────────────────────────
+    period = request.GET.get('period', 'month')
+
     (
         spark_labels,
         spark_series,
@@ -259,15 +271,14 @@ def home(request):
         evol_unresolved,
         evol_latest_report,
         show_spark_chart,
-    ) = _build_spark_evolution(all_reports, evol_period)
+    ) = _build_spark_evolution(all_reports, period)
 
     last_report = all_reports.first()
     if not evol_latest_report:
         evol_latest_report = last_report
 
-    # ── Synthèse par Escalade agrégée (filtrée par période) ────────────────
-    synth_period = request.GET.get('synth_period', 'week')
-    synth_qs = _filter_reports_by_period(all_reports, synth_period)
+    # ── Synthèse par Escalade agrégée (même période) ───────────────────────
+    synth_qs = _filter_reports_by_period(all_reports, period)
 
     esc_data = defaultdict(lambda: {
         'inc': 0, 'duree_sec': 0, 'outage_sec': 0,
@@ -398,17 +409,17 @@ def home(request):
 
     sites_geo = [
         {
-            'name':     s.site_name,
-            'lat':      s.latitude,
-            'lon':      s.longitude,
-            'region':   s.region,
-            'impacted': s.site_name in impacted_names,
+            'name':   s.site_name,
+            'lat':    s.latitude,
+            'lon':    s.longitude,
+            'region': s.region,
         }
         for s in Site.objects.exclude(latitude__isnull=True).exclude(longitude__isnull=True)
+        if s.site_name in impacted_names
     ]
 
     return render(request, 'reports/home.html', {
-        'synth_period':     synth_period,
+        'period':           period,
         'synth_rows':       synth_rows,
         'synth_total_inc':  synth_total_inc,
         'total_reports':        total_reports,
@@ -420,7 +431,7 @@ def home(request):
         'month_resolved':       month_resolved,
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
-        'evol_period':          evol_period,
+        'evol_period':          period,
         'show_spark_chart':     show_spark_chart,
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
         'spark_series':         mark_safe(json.dumps(spark_series)),
