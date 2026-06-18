@@ -2407,27 +2407,581 @@ def sites_instables(request):
 
 
 REPORTING_NETWORKS = {
-    'mobile-dr2':    'Réseau mobile & DR2',
-    'fixe':          'Réseau Fixe',
-    'core':          'Core',
-    'igw':           'IGW',
-    'transmission':  'Transmission',
+    'mobile-dr2':   {'label': 'Réseau Mobile & DR2', 'domains': ['mobile', 'dr2'], 'icon': '📡'},
+    'fixe':         {'label': 'Réseau Fixe',          'domains': ['fixe'],          'icon': '☎️'},
+    'transmission': {'label': 'Transmission',         'domains': ['transport'],     'icon': '🔗'},
+    'igw':          {'label': 'IGW',                  'domains': ['igw'],           'icon': '🔌'},
+    'core':         {'label': 'Core',                 'domains': ['core'],          'icon': '🌐'},
+}
+
+# Clé de groupement par domaine (colonne utilisée pour la synthèse)
+DOMAIN_GROUP_FIELD = {
+    'mobile':    'escalade',
+    'dr2':       'escalade',
+    'fixe':      'escalade',
+    'transport': 'escalade',
+    'igw':       'escalade',
+    'core':      'escalade',
 }
 
 
+def _fmt_sec(secs):
+    if not secs:
+        return '0:00:00'
+    secs = int(secs)
+    return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
+
+
+def reporting_import(request):
+    """Upload du fichier multi-feuilles BASES DES INCIDENTS et import dans Incident."""
+    from .models import Incident
+    from reports.management.commands.import_incidents import PARSERS
+
+    if request.method != 'POST':
+        return redirect('reporting')
+
+    uploaded = request.FILES.get('incidents_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('reporting')
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('reporting')
+
+    clear_mois = request.POST.get('clear_mois') == '1'
+    domains_sel = request.POST.getlist('domains') or list(PARSERS.keys())
+
+    # Sauvegarder le fichier temporairement
+    import tempfile, os
+    suffix = f'.{ext}'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    source = uploaded.name
+    total_created = 0
+    errors = []
+
+    try:
+        for domain in domains_sel:
+            if domain not in PARSERS:
+                continue
+            try:
+                incidents = PARSERS[domain](tmp_path, source)
+            except Exception as e:
+                errors.append(f'{domain}: {e}')
+                continue
+
+            if not incidents:
+                continue
+
+            mois = incidents[0].mois_rapport
+            if clear_mois and mois:
+                Incident.objects.filter(domain=domain, mois_rapport=mois).delete()
+
+            Incident.objects.bulk_create(incidents, batch_size=500)
+            total_created += len(incidents)
+    finally:
+        os.unlink(tmp_path)
+
+    if errors:
+        messages.warning(request, f'{total_created} incidents importés. Erreurs : ' + ' | '.join(errors))
+    else:
+        messages.success(request, f'{total_created} incidents importés avec succès depuis « {source} ».')
+
+    return redirect('reporting')
+
+
 def reporting(request):
+    from .models import Incident
+    from django.db.models import Count, Sum
+
+    # Mois disponibles (tous domaines confondus)
+    mois_list = (
+        Incident.objects.exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .distinct().order_by('-mois_rapport')
+    )
+    mois_list = list(dict.fromkeys(mois_list))  # dédoublonner
+
+    mois_sel_str = request.GET.get('mois', '')
+    mois_sel = None
+    if mois_sel_str:
+        try:
+            from datetime import datetime as _dt
+            mois_sel = _dt.strptime(mois_sel_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    networks_ctx = []
+    for key, meta in REPORTING_NETWORKS.items():
+        qs = Incident.objects.filter(domain__in=meta['domains'])
+        if mois_sel:
+            qs = qs.filter(mois_rapport=mois_sel)
+        # Mois le plus récent disponible pour ce domaine
+        dernier_mois = (
+            qs.exclude(mois_rapport__isnull=True)
+            .values_list('mois_rapport', flat=True)
+            .order_by('-mois_rapport').first()
+        )
+        agg = qs.aggregate(total=Count('id'), outage=Sum('duration_sec'))
+        open_cnt = qs.filter(status__iexact='OUVERT').count()
+        dr2_cnt = qs.filter(domain='dr2').count() if key == 'mobile-dr2' else None
+        networks_ctx.append({
+            'key':          key,
+            'label':        meta['label'],
+            'icon':         meta['icon'],
+            'total':        agg['total'] or 0,
+            'open':         open_cnt,
+            'outage_h':     round((agg['outage'] or 0) / 3600, 1),
+            'dernier_mois': dernier_mois,
+            'dr2_count':    dr2_cnt,
+        })
+
     return render(request, 'reports/reporting.html', {
-        'networks': [{'key': k, 'label': v} for k, v in REPORTING_NETWORKS.items()],
+        'networks':  networks_ctx,
+        'mois_list': mois_list,
+        'mois_sel':  mois_sel,
     })
 
 
+DR2_REGION_TARGETS = {
+    'LOME':     372,
+    'MARITIME': 182,
+    'PLATEAUX': 159,
+    'CENTRALE': 134,
+    'KARA':     161,
+    'SAVANES':  118,
+}
+
+DR2_ESCALADE_ORDER = [
+    'ENERGIE', 'RAN-FIELD O', 'TRANS FH-FIELD O', 'TRANS IP',
+    'TRANS FO', 'TRANS FTTM', 'PROJET', 'BSS', 'INFRA',
+]
+
+
+def _parse_dr2_dates(request):
+    """Parse debut/fin depuis GET params, avec défaut = mois dernier."""
+    today = date.today()
+    last_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    debut_str = request.GET.get('debut', '')
+    fin_str   = request.GET.get('fin', '')
+    try:
+        debut = date.fromisoformat(debut_str) if debut_str else last_month_first
+    except ValueError:
+        debut = last_month_first
+    try:
+        fin = date.fromisoformat(fin_str) if fin_str else today
+    except ValueError:
+        fin = today
+    return debut, fin
+
+
+def _build_dr2_data(debut, fin):
+    """Construit le dataset DR2 pour une période. Partagé entre view et export."""
+    from .models import Incident
+    from django.utils import timezone
+    import datetime
+
+    today = date.today()
+    period_days = (fin - debut).days + 1
+
+    debut_dt = timezone.make_aware(datetime.datetime.combine(debut, datetime.time.min))
+    fin_dt   = timezone.make_aware(datetime.datetime.combine(fin,   datetime.time.max))
+
+    qs = Incident.objects.filter(domain='dr2', alarm_time__gte=debut_dt, alarm_time__lte=fin_dt)
+    total_dr2 = qs.count()
+    moyenne   = round(total_dr2 / period_days, 2) if period_days else 0
+
+    yesterday = today - timedelta(days=1)
+    y_s = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.min))
+    y_e = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.max))
+    nbre_j1 = Incident.objects.filter(domain='dr2', alarm_time__gte=y_s, alarm_time__lte=y_e).count()
+
+    db_escs = list(qs.exclude(escalade='').values_list('escalade', flat=True).distinct())
+    escalade_vals = [e for e in DR2_ESCALADE_ORDER if e in db_escs]
+    for e in db_escs:
+        if e not in escalade_vals:
+            escalade_vals.append(e)
+
+    region_rows = []
+    for region in DR2_REGION_TARGETS:
+        rqs      = qs.filter(region__iexact=region)
+        dr2      = rqs.count()
+        tget     = DR2_REGION_TARGETS[region]
+        pct_reg  = round(dr2 / total_dr2 * 100) if total_dr2 else 0
+        pct_tget = round(dr2 / tget * 100)       if tget else 0
+        metier   = rqs.exclude(cancel_time__isnull=True).count()
+        color    = 'red' if pct_tget >= 100 else ('yellow' if pct_tget >= 70 else 'green')
+        region_rows.append({
+            'region':    region,
+            'tget':      tget,
+            'dr2':       dr2,
+            'metier':    metier,
+            'pct_reg':   pct_reg,
+            'pct_tget':  pct_tget,
+            'escalades': {e: rqs.filter(escalade=e).count() for e in escalade_vals},
+            'color':     color,
+        })
+
+    metier_qs   = qs.exclude(cancel_time__isnull=True)
+    metier_tots = {e: metier_qs.filter(escalade=e).count() for e in escalade_vals}
+    total_metier = sum(metier_tots.values())
+
+    esc_stats = []
+    for e in escalade_vals:
+        tot    = qs.filter(escalade=e).count()
+        metier = metier_tots.get(e, 0)
+        esc_stats.append({
+            'escalade': e,
+            'total':    tot,
+            'metier':   metier,
+            'pct_tgt':  round(metier / tot * 100) if tot else None,
+            'pct_tt':   round(metier / total_dr2 * 100) if total_dr2 else 0,
+        })
+
+    return {
+        'debut':         debut,
+        'fin':           fin,
+        'period_days':   period_days,
+        'total_dr2':     total_dr2,
+        'total_tget':    sum(DR2_REGION_TARGETS.values()),
+        'moyenne':       moyenne,
+        'nbre_j1':       nbre_j1,
+        'escalade_vals': escalade_vals,
+        'region_rows':   region_rows,
+        'esc_stats':     esc_stats,
+        'total_metier':  total_metier,
+    }
+
+
+def dr2_daily_report(request):
+    debut, fin = _parse_dr2_dates(request)
+    ctx = _build_dr2_data(debut, fin)
+    return render(request, 'reports/dr2_daily.html', ctx)
+
+
+def dr2_daily_export(request):
+    """Génère l'export Excel du DR2 Daily Report."""
+    from openpyxl import Workbook
+    from openpyxl.styles import (
+        PatternFill, Font, Alignment, Border, Side, numbers
+    )
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+
+    debut, fin = _parse_dr2_dates(request)
+    d = _build_dr2_data(debut, fin)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'DR2 Daily Report'
+
+    # ── Couleurs ──────────────────────────────────────────────────────────────
+    C_BLUE_DARK  = 'FF003087'
+    C_BLUE_MED   = 'FF1E3A6E'
+    C_BLUE_LIGHT = 'FF2A4A80'
+    C_YELLOW     = 'FFFFC72C'
+    C_WHITE      = 'FFFFFFFF'
+    C_GREEN_BG   = 'FFC6EFCE';  C_GREEN_FG   = 'FF276221'
+    C_YELLOW_BG  = 'FFFFEB9C';  C_YELLOW_FG  = 'FF9C6500'
+    C_RED_BG     = 'FFFFC7CE';  C_RED_FG     = 'FF9C0006'
+    C_METIER_BG  = 'FFF0F4FF'
+    C_PCT_BG     = 'FFFFF7ED'
+    C_PCT2_BG    = 'FFF0FDF4'
+    C_GRAY       = 'FFF5F5F5'
+
+    def fill(hex_color):
+        return PatternFill('solid', fgColor=hex_color)
+
+    def font(bold=False, color=C_WHITE, size=11):
+        return Font(bold=bold, color=color, size=size, name='Calibri')
+
+    def align(h='center', v='center', wrap=False):
+        return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
+
+    thin = Side(border_style='thin', color='FFD8E0F0')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    escs = d['escalade_vals']
+    n_esc = len(escs)
+    # Columns: [Region, TGET, DR2, %REG, %TGET, STAT_label] + [esc×N]
+    n_fixed = 6
+    total_cols = n_fixed + n_esc
+
+    # ── Largeurs de colonnes ──────────────────────────────────────────────────
+    ws.column_dimensions['A'].width = 13
+    ws.column_dimensions['B'].width = 7
+    ws.column_dimensions['C'].width = 8
+    ws.column_dimensions['D'].width = 8
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 4   # STAT vertical
+    for i in range(n_esc):
+        col = get_column_letter(n_fixed + 1 + i)
+        ws.column_dimensions[col].width = 16
+
+    # ── Hauteurs de lignes ────────────────────────────────────────────────────
+    ws.row_dimensions[1].height = 22   # titre
+    ws.row_dimensions[2].height = 16   # période
+    ws.row_dimensions[3].height = 40   # entêtes (wrap)
+    ws.row_dimensions[4].height = 18   # tgets escalades
+
+    def _set_row(row_idx, values, bg, fg_color, bold=True, h_align='center', row_height=None):
+        for c, val in enumerate(values, 1):
+            cell = ws.cell(row=row_idx, column=c, value=val)
+            cell.fill    = fill(bg)
+            cell.font    = font(bold=bold, color=fg_color)
+            cell.alignment = align(h=h_align)
+            cell.border  = border
+        if row_height:
+            ws.row_dimensions[row_idx].height = row_height
+
+    # ── Ligne 1 : Titre ───────────────────────────────────────────────────────
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+    c = ws.cell(row=1, column=1, value='DR2 / DAILY REPORT')
+    c.fill      = fill(C_BLUE_DARK)
+    c.font      = Font(bold=True, color=C_WHITE, size=14, name='Calibri')
+    c.alignment = align()
+    c.border    = border
+
+    # ── Ligne 2 : Période ─────────────────────────────────────────────────────
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
+    period_str = f"Du {d['debut'].strftime('%d/%m/%Y')} au {d['fin'].strftime('%d/%m/%Y')}"
+    c = ws.cell(row=2, column=1, value=period_str)
+    c.fill      = fill(C_BLUE_DARK)
+    c.font      = Font(bold=True, color=C_YELLOW, size=11, name='Calibri')
+    c.alignment = align()
+    c.border    = border
+
+    # ── Ligne 3 : En-têtes colonnes ───────────────────────────────────────────
+    headers_left = ['Région', 'TGET', 'DR2 REG', '% REG', '% TGET\nREG', 'STAT.']
+    for c_idx, hdr in enumerate(headers_left, 1):
+        cell = ws.cell(row=3, column=c_idx, value=hdr)
+        cell.fill      = fill(C_BLUE_MED)
+        cell.font      = Font(bold=True, color=C_WHITE, size=10, name='Calibri')
+        cell.alignment = align(wrap=True)
+        cell.border    = border
+    for i, esc in enumerate(escs):
+        cell = ws.cell(row=3, column=n_fixed + 1 + i, value=esc)
+        cell.fill      = fill(C_BLUE_MED)
+        cell.font      = Font(bold=True, color=C_WHITE, size=10, name='Calibri')
+        cell.alignment = align(wrap=True)
+        cell.border    = border
+
+    # ── Ligne 4 : Totaux TGET par escalade ───────────────────────────────────
+    for c_idx in range(1, n_fixed + 1):
+        cell = ws.cell(row=4, column=c_idx, value='')
+        cell.fill   = fill(C_BLUE_LIGHT)
+        cell.border = border
+    for i, stat in enumerate(d['esc_stats']):
+        cell = ws.cell(row=4, column=n_fixed + 1 + i, value=stat['total'])
+        cell.fill      = fill(C_BLUE_LIGHT)
+        cell.font      = Font(bold=True, color=C_WHITE, size=11, name='Calibri')
+        cell.alignment = align()
+        cell.border    = border
+
+    # ── Lignes par région (à partir de la ligne 5) ────────────────────────────
+    COLOR_MAP = {
+        'green':  (C_GREEN_BG,  C_GREEN_FG),
+        'yellow': (C_YELLOW_BG, C_YELLOW_FG),
+        'red':    (C_RED_BG,    C_RED_FG),
+    }
+    row_idx = 5
+    for row in d['region_rows']:
+        bg_c, fg_c = COLOR_MAP[row['color']]
+        ws.row_dimensions[row_idx].height = 18
+
+        cells_left = [
+            row['region'],
+            row['tget'],
+            row['dr2'],
+            f"{row['pct_reg']}%",
+            f"{row['pct_tget']}%",
+            '',
+        ]
+        for c_idx, val in enumerate(cells_left, 1):
+            cell = ws.cell(row=row_idx, column=c_idx, value=val)
+            if c_idx in (3, 5):
+                cell.fill = fill(bg_c)
+                cell.font = Font(bold=True, color=fg_c, size=11, name='Calibri')
+            elif c_idx == 1:
+                cell.font = Font(bold=True, color='FF1E3A6E', size=11, name='Calibri')
+                cell.fill = fill('FFF8FAFF')
+            else:
+                cell.font = Font(size=11, name='Calibri')
+                cell.fill = fill('FFFFFFFF')
+            cell.alignment = align(h='left' if c_idx == 1 else 'center')
+            cell.border    = border
+
+        for i, esc in enumerate(escs):
+            val  = row['escalades'].get(esc, 0)
+            cell = ws.cell(row=row_idx, column=n_fixed + 1 + i, value=val if val else 0)
+            cell.fill      = fill('FFFFFFFF' if val else C_GRAY)
+            cell.font      = Font(bold=bool(val), size=11, name='Calibri', color='FF1E3A6E' if val else 'FFBBBBBB')
+            cell.alignment = align()
+            cell.border    = border
+
+        row_idx += 1
+
+    # ── Ligne TOTAL DR2 ───────────────────────────────────────────────────────
+    ws.row_dimensions[row_idx].height = 20
+    total_pct = round(d['total_dr2'] / d['total_tget'] * 100) if d['total_tget'] else 0
+    _set_row(row_idx,
+             ['TOTAL DR2', d['total_tget'], d['total_dr2'], '100%', f"{total_pct}%", ''] +
+             [s['total'] for s in d['esc_stats']],
+             C_BLUE_DARK, C_WHITE, bold=True, row_height=20)
+    row_idx += 1
+
+    # ── Ligne MOYENNE DR2 ─────────────────────────────────────────────────────
+    ws.row_dimensions[row_idx].height = 18
+    avg_cells = ['MOYENNE DR2', '', str(d['moyenne']), '', '% TGET/MÉTIER', '']
+    for i, stat in enumerate(d['esc_stats']):
+        if stat['pct_tgt'] is None:
+            avg_cells.append('#DIV/0!')
+        else:
+            avg_cells.append(f"{stat['pct_tgt']}%")
+    _set_row(row_idx, avg_cells, 'FF0047CC', C_WHITE, bold=True, row_height=18)
+    row_idx += 1
+
+    # ── Ligne DR2/MÉTIER ──────────────────────────────────────────────────────
+    ws.row_dimensions[row_idx].height = 18
+    _set_row(row_idx,
+             ['DR2 / MÉTIER', '', '', '', '', ''] + [s['metier'] for s in d['esc_stats']],
+             C_METIER_BG, 'FF1E3A6E', bold=True, row_height=18)
+    row_idx += 1
+
+    # ── Ligne %MÉTIER/TT DR2 ─────────────────────────────────────────────────
+    ws.row_dimensions[row_idx].height = 18
+    _set_row(row_idx,
+             ['% MÉTIER / TT DR2', '', '', '', '', ''] + [f"{s['pct_tt']}%" for s in d['esc_stats']],
+             C_PCT2_BG, 'FF1E3A6E', bold=True, row_height=18)
+
+    # ── Réponse HTTP ──────────────────────────────────────────────────────────
+    filename = f"DR2_Daily_{d['debut'].strftime('%Y%m%d')}_{d['fin'].strftime('%Y%m%d')}.xlsx"
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+
+def _build_network_section(domain_filter, mois_sel=None):
+    """Construit les stats (synth, top_sites, top_causes, top_regions, statuts) pour un domaine."""
+    from .models import Incident
+    from django.db.models import Count, Sum
+
+    qs_all = Incident.objects.filter(**domain_filter)
+
+    # Tous les mois disponibles pour ce domaine (non filtrés) → dropdown
+    mois_list = list(dict.fromkeys(
+        qs_all.exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .distinct().order_by('-mois_rapport')
+    ))
+
+    # Mois effectif : explicite ou plus récent
+    mois_effectif = mois_sel or (mois_list[0] if mois_list else None)
+
+    # qs filtré sur le mois effectif
+    qs = qs_all.filter(mois_rapport=mois_effectif) if mois_effectif else qs_all
+
+    synth_rows, total_nb, total_duree = [], 0, 0
+    for row in (qs.exclude(escalade='').values('escalade')
+                  .annotate(nb=Count('id'), duree_sec=Sum('duration_sec'))
+                  .order_by('-nb')):
+        nb    = row['nb']
+        duree = row['duree_sec'] or 0
+        ouvert = qs.filter(escalade=row['escalade'], status__iexact='OUVERT').count()
+        synth_rows.append({
+            'escalade': row['escalade'],
+            'nb': nb,
+            'duree': _fmt_sec(duree),
+            'mttr':  _fmt_sec(duree / nb if nb else 0),
+            'outage': _fmt_sec(duree),
+            'status': f"{ouvert} Non résolu" if ouvert else 'Résolu',
+            'ouvert': ouvert,
+        })
+        total_nb += nb; total_duree += duree
+
+    top_sites = list(
+        qs.exclude(site_name='').values('site_name', 'region')
+        .annotate(nb=Count('id'), duree=Sum('duration_sec')).order_by('-nb')[:15]
+    )
+    for s in top_sites:
+        s['duree_h'] = round((s['duree'] or 0) / 3600, 1)
+
+    top_causes  = list(qs.exclude(cause='').values('cause').annotate(nb=Count('id')).order_by('-nb')[:10])
+    top_regions = list(qs.exclude(region='').values('region').annotate(nb=Count('id')).order_by('-nb')[:8])
+    statuts     = list(qs.exclude(status='').values('status').annotate(nb=Count('id')).order_by('-nb'))
+
+    open_cnt = sum(s['nb'] for s in statuts if s['status'].upper() == 'OUVERT')
+
+    return {
+        'mois_list':    mois_list,
+        'mois_sel':     mois_effectif,
+        'synth_rows':   synth_rows,
+        'total_row': {
+            'nb':     total_nb,
+            'duree':  _fmt_sec(total_duree),
+            'mttr':   _fmt_sec(total_duree / total_nb if total_nb else 0),
+            'outage': _fmt_sec(total_duree),
+            'ouvert': open_cnt,
+        },
+        'top_sites':    top_sites,
+        'top_causes':   top_causes,
+        'top_regions':  top_regions,
+        'statuts':      statuts,
+        'total_all':    qs.count(),
+    }
+
+
 def reporting_network(request, network):
-    label = REPORTING_NETWORKS.get(network)
-    if not label:
+    from .models import Incident
+    from django.db.models import Count, Sum
+
+    meta = REPORTING_NETWORKS.get(network)
+    if not meta:
         raise Http404('Réseau de reporting inconnu')
+
+    domains = meta['domains']
+
+    # Mois sélectionné via GET (optionnel)
+    mois_sel_str = request.GET.get('mois', '')
+    mois_sel = None
+    if mois_sel_str:
+        try:
+            from datetime import datetime as _dt
+            mois_sel = _dt.strptime(mois_sel_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    # ── Cas spécial : mobile-dr2 → deux sections indépendantes ───────────────
+    if network == 'mobile-dr2':
+        mobile_data = _build_network_section({'domain': 'mobile'}, mois_sel)
+        dr2_data    = _build_network_section({'domain': 'dr2'}, mois_sel)
+        return render(request, 'reports/reporting_network.html', {
+            'network':        network,
+            'network_label':  meta['label'],
+            'network_icon':   meta['icon'],
+            'is_mobile_dr2':  True,
+            'mobile':         mobile_data,
+            'dr2':            dr2_data,
+        })
+
+    # ── Cas standard : un seul domaine ───────────────────────────────────────
+    section_std = _build_network_section({'domain__in': domains}, mois_sel)
     return render(request, 'reports/reporting_network.html', {
-        'network': network,
-        'network_label': label,
+        'network':       network,
+        'network_label': meta['label'],
+        'network_icon':  meta['icon'],
+        'mois_list':     section_std['mois_list'],
+        'mois_sel':      section_std['mois_sel'],
+        'section_std':   section_std,
+        'is_mobile_dr2': False,
     })
 
 

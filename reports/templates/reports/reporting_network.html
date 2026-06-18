@@ -1,46 +1,218 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static report_extras %}
 
 {% block title %}{{ network_label }} — Reporting — ReportXCare{% endblock %}
 {% block breadcrumb %}Reporting / {{ network_label }}{% endblock %}
 
 {% block extra_css %}
 <style>
-  .rptn-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 28px; flex-wrap: wrap; gap: 16px;
-  }
-  .rptn-title { font-size: 22px; font-weight: 700; color: #003087; }
-  .rptn-subtitle { font-size: 13px; color: #888; margin-top: 4px; }
-  .rptn-back {
-    font-size: 13px; font-weight: 600; color: #003087; text-decoration: none;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .rptn-back:hover { text-decoration: underline; }
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
 
-  .rptn-section {
-    background: #fff; border-radius: 16px; padding: 28px;
-    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.06);
+  /* ── Banner ── */
+  .rptn-banner {
+    background: linear-gradient(135deg,#003087 0%,#0047cc 100%);
+    border-radius:16px; padding:22px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:24px;
   }
-  .placeholder-body {
-    min-height: 160px;
-    display: flex; align-items: center; justify-content: center;
-    color: #bbb; font-size: 14px; font-style: italic;
-    border: 2px dashed #e8edf5; border-radius: 10px;
+  .rptn-banner-left { display:flex; align-items:center; gap:14px; }
+  .rptn-banner-icon { width:48px; height:48px; background:rgba(255,199,44,.18); border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+  .rptn-banner-tag  { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--yellow); }
+  .rptn-banner-ttl  { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
+  .rptn-banner-sub  { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+  .rptn-banner-right{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+
+  .mois-select {
+    padding:8px 16px; border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1);
+    font-size:13px; font-weight:600; color:#fff; cursor:pointer; outline:none;
+    transition:border-color .15s;
   }
+  .mois-select option { color:#003087; background:#fff; }
+  .btn-back {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:8px 16px; border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.85); font-size:13px; font-weight:600;
+    text-decoration:none; transition:all .15s;
+  }
+  .btn-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+
+  /* ── Section separator (mobile-dr2) ── */
+  .section-sep {
+    display:flex; align-items:center; gap:10px;
+    margin:28px 0 18px;
+    padding-bottom:12px;
+    border-bottom:2px solid #e8edf5;
+  }
+  .section-icon { font-size:20px; }
+  .section-title { font-size:16px; font-weight:800; color:#003087; }
+  .section-mois {
+    margin-left:auto;
+    background:#f0f4ff; color:#003087;
+    font-size:11px; font-weight:700; padding:3px 12px; border-radius:20px;
+  }
+
+  /* ── KPI row ── */
+  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  @media(max-width:900px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:500px){ .kpi-row{ grid-template-columns:1fr 1fr; } }
+
+  .kpi {
+    background:#fff; border-radius:14px; padding:18px 20px;
+    border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.06);
+    display:flex; align-items:center; gap:14px;
+    transition:box-shadow .18s, transform .18s;
+  }
+  .kpi:hover { box-shadow:0 4px 20px rgba(0,48,135,.1); transform:translateY(-2px); }
+  .kpi-icon  { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+  .kpi-icon.blue   { background:#e8f0ff; }
+  .kpi-icon.red    { background:#fff0f0; }
+  .kpi-icon.orange { background:#fff7ed; }
+  .kpi-icon.green  { background:#f0fdf4; }
+  .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:30px; color:#003087; letter-spacing:1px; line-height:1; }
+  .kpi-val.red { color:#e53e3e; }
+  .kpi-lbl { font-size:11px; color:#999; text-transform:uppercase; letter-spacing:.5px; margin-top:3px; }
+
+  /* ── Shared card ── */
+  .stat-card {
+    background:#fff; border-radius:16px; padding:22px 24px;
+    border:1px solid #e8edf5; box-shadow:0 1px 4px rgba(0,48,135,.05);
+  }
+  .card-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:18px; padding-bottom:12px; border-bottom:1px solid #f0f4ff;
+  }
+  .card-title  { font-size:14px; font-weight:700; color:#003087; display:flex; align-items:center; gap:8px; }
+  .card-badge  { background:#f0f4ff; color:#003087; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+
+  /* ── Synthèse table ── */
+  .synth-wrap  { overflow-x:auto; }
+  .synth-table { width:100%; border-collapse:collapse; font-size:13px; min-width:520px; }
+  .synth-table thead th {
+    padding:9px 14px; background:#f8faff; color:#777;
+    font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+    border-bottom:2px solid #e8edf5; white-space:nowrap;
+  }
+  .synth-table thead th:first-child { border-radius:8px 0 0 0; }
+  .synth-table thead th:last-child  { border-radius:0 8px 0 0; }
+  .synth-table tbody td {
+    padding:10px 14px; border-bottom:1px solid #f5f7fb; vertical-align:middle;
+  }
+  .synth-table tbody tr:last-child td { border-bottom:none; }
+  .synth-table tbody tr:hover td { background:#f8faff; }
+  .synth-table tr.total-row td {
+    font-weight:700; background:#f0f4ff;
+    border-top:2px solid #d0d8e8;
+  }
+  .synth-table td.num { text-align:right; font-family:monospace; font-size:13px; }
+  .synth-table td.cnt { text-align:center; font-weight:800; font-size:16px; color:#1e3a6e; }
+
+  /* Dot escalade */
+  .esc-dot   { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:8px; flex-shrink:0; }
+  .esc-row   { display:flex; align-items:center; }
+
+  /* Badge statut */
+  .badge {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    white-space:nowrap;
+  }
+  .badge.ok    { background:#f0fdf4; color:#16a34a; }
+  .badge.warn  { background:#fff0f0; color:#e53e3e; }
+  .badge.na    { background:#f5f5f5; color:#bbb; }
+
+  /* ── Bar charts ── */
+  .bar-list  { display:flex; flex-direction:column; gap:11px; }
+  .bar-meta  { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .bar-name  { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:68%; }
+  .bar-val   { font-size:13px; font-weight:700; color:#003087; }
+  .bar-track { height:8px; background:#f0f4ff; border-radius:4px; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:4px; transition:width .4s ease; }
+  .bar-fill.blue   { background:linear-gradient(90deg,#003087,#0047cc); }
+  .bar-fill.orange { background:linear-gradient(90deg,#f97316,#fb923c); }
+  .bar-fill.green  { background:linear-gradient(90deg,#059669,#10b981); }
+
+  /* ── Statuts ── */
+  .statut-chips { display:flex; flex-wrap:wrap; gap:10px; }
+  .statut-chip  {
+    display:flex; align-items:center; gap:8px;
+    padding:8px 16px; border-radius:10px;
+    border:1px solid #e8edf5; background:#fff;
+    font-size:13px; font-weight:600; color:#444;
+  }
+  .statut-chip-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .statut-chip-nb  { font-family:'Bebas Neue',sans-serif; font-size:20px; color:#003087; margin-left:4px; letter-spacing:.5px; }
+
+  /* ── Layout ── */
+  .row-full  { margin-bottom:18px; }
+  .row-2col  { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px; }
+  .row-2col-a{ display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-bottom:18px; }
+  @media(max-width:1000px){ .row-2col, .row-2col-a { grid-template-columns:1fr; } }
+
+  .empty-msg { text-align:center; padding:36px 20px; color:#ccc; font-size:14px; font-style:italic; }
+
+  /* Section DR2 séparée visuellement */
+  .section-dr2 { margin-top:40px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="rptn-header">
-  <div>
-    <div class="rptn-title">{{ network_label }}</div>
-    <div class="rptn-subtitle">Reporting — {{ network_label }}</div>
+
+<!-- Banner -->
+<div class="rptn-banner">
+  <div class="rptn-banner-left">
+    <div class="rptn-banner-icon">{{ network_icon }}</div>
+    <div>
+      <div class="rptn-banner-tag">Reporting</div>
+      <div class="rptn-banner-ttl">{{ network_label }}</div>
+      {% if is_mobile_dr2 %}
+      <div class="rptn-banner-sub">
+        Mobile : {{ mobile.mois_sel|date:"F Y"|default:"—" }}
+        &nbsp;/&nbsp;
+        DR2 : {{ dr2.mois_sel|date:"F Y"|default:"—" }}
+      </div>
+      {% else %}
+      <div class="rptn-banner-sub">Rapport mensuel des incidents{% if mois_sel %} — {{ mois_sel|date:"F Y" }}{% endif %}</div>
+      {% endif %}
+    </div>
   </div>
-  <a href="{% url 'reporting' %}" class="rptn-back">← Retour à Reporting</a>
+  <div class="rptn-banner-right">
+    {% if not is_mobile_dr2 and mois_list %}
+    <form method="get">
+      <select name="mois" class="mois-select" onchange="this.form.submit()">
+        {% for m in mois_list %}
+        <option value="{{ m|date:'Y-m-d' }}" {% if mois_sel == m %}selected{% endif %}>{{ m|date:"F Y" }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    {% if is_mobile_dr2 %}
+    <a href="{% url 'dr2_daily' %}" class="btn-back" style="background:rgba(255,199,44,.15);border-color:rgba(255,199,44,.4);color:#FFC72C;">📱 Daily Report</a>
+    {% endif %}
+    <a href="{% url 'reporting' %}" class="btn-back">&#8592; Retour</a>
+  </div>
 </div>
 
-<div class="rptn-section">
-  <div class="placeholder-body">Contenu à définir</div>
-</div>
+{% if is_mobile_dr2 %}
+  {# ── Section Mobile ── #}
+  {% with section=mobile section_label="Réseau Mobile" section_icon="📡" %}
+  {% include "reports/_network_section.html" %}
+  {% endwith %}
+
+  {# ── Section DR2 ── #}
+  <div class="section-dr2">
+  {% with section=dr2 section_label="DR2" section_icon="📱" %}
+  {% include "reports/_network_section.html" %}
+  {% endwith %}
+  </div>
+
+{% else %}
+  {# ── Affichage standard (domaine unique) ── #}
+  {% with section=section_std section_icon=network_icon section_label=network_label %}
+  {% include "reports/_network_section.html" %}
+  {% endwith %}
+{% endif %}
+
 {% endblock %}

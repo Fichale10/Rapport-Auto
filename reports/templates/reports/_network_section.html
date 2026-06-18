@@ -1,0 +1,200 @@
+{% load report_extras %}
+{# Appelé avec: section=<dict>, section_label=<str>, section_icon=<str> #}
+
+<!-- Section header -->
+<div class="section-sep">
+  <span class="section-icon">{{ section_icon }}</span>
+  <span class="section-title">{{ section_label }}</span>
+  {% if section.mois_sel %}
+  <span class="section-mois">{{ section.mois_sel|date:"F Y" }}</span>
+  {% endif %}
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-icon blue">📋</div>
+    <div>
+      <div class="kpi-val">{{ section.total_row.nb }}</div>
+      <div class="kpi-lbl">Total incidents</div>
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon red">🔴</div>
+    <div>
+      <div class="kpi-val red">{{ section.total_row.ouvert }}</div>
+      <div class="kpi-lbl">Incidents ouverts</div>
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon orange">⏱️</div>
+    <div>
+      <div class="kpi-val">{{ section.total_row.outage }}</div>
+      <div class="kpi-lbl">Outage total</div>
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon green">📐</div>
+    <div>
+      <div class="kpi-val">{{ section.total_row.mttr }}</div>
+      <div class="kpi-lbl">MTTR moyen</div>
+    </div>
+  </div>
+</div>
+
+<!-- Synthèse par escalade -->
+<div class="row-full">
+  <div class="stat-card">
+    <div class="card-header">
+      <span class="card-title">⚡ Synthèse par escalade</span>
+      <span class="card-badge">{{ section.total_row.nb }} incidents</span>
+    </div>
+    {% if section.synth_rows %}
+    <div class="synth-wrap">
+    <table class="synth-table">
+      <thead>
+        <tr>
+          <th style="min-width:160px">Escalade</th>
+          <th style="text-align:center">Inc.</th>
+          <th style="text-align:right">Durée totale</th>
+          <th style="text-align:right">MTTR</th>
+          <th style="text-align:right">Outage</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in section.synth_rows %}
+        <tr>
+          <td>
+            <span class="esc-row">
+              <span class="esc-dot" style="background:{{ row.escalade|esc_color }}"></span>
+              {{ row.escalade }}
+            </span>
+          </td>
+          <td class="cnt">{{ row.nb }}</td>
+          <td class="num">{{ row.duree }}</td>
+          <td class="num">{{ row.mttr }}</td>
+          <td class="num">{{ row.outage }}</td>
+          <td>
+            {% if row.ouvert %}
+              <span class="badge warn">● {{ row.status }}</span>
+            {% elif row.nb %}
+              <span class="badge ok">✓ Résolu</span>
+            {% else %}
+              <span class="badge na">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="total-row">
+          <td><strong>TOTAL</strong></td>
+          <td class="cnt">{{ section.total_row.nb }}</td>
+          <td class="num">{{ section.total_row.duree }}</td>
+          <td class="num">{{ section.total_row.mttr }}</td>
+          <td class="num">{{ section.total_row.outage }}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-msg">Aucun incident pour cette période</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Sites + Causes -->
+<div class="row-2col">
+  <div class="stat-card">
+    <div class="card-header">
+      <span class="card-title">📍 Top 15 sites impactés</span>
+      <span class="card-badge">{{ section.top_sites|length }}</span>
+    </div>
+    {% if section.top_sites %}
+    {% with mx=section.top_sites.0.nb %}
+    <div class="bar-list">
+      {% for s in section.top_sites %}
+      <div>
+        <div class="bar-meta">
+          <span class="bar-name" title="{{ s.site_name }}">{{ s.site_name }}</span>
+          <span class="bar-val">{{ s.nb }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill blue" style="width:{% widthratio s.nb mx 100 %}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endwith %}
+    {% else %}<div class="empty-msg">Aucune donnée</div>{% endif %}
+  </div>
+
+  <div class="stat-card">
+    <div class="card-header">
+      <span class="card-title">🔍 Top 10 causes</span>
+      <span class="card-badge">{{ section.top_causes|length }}</span>
+    </div>
+    {% if section.top_causes %}
+    {% with mx=section.top_causes.0.nb %}
+    <div class="bar-list">
+      {% for c in section.top_causes %}
+      <div>
+        <div class="bar-meta">
+          <span class="bar-name" title="{{ c.cause }}">{{ c.cause|truncatechars:28 }}</span>
+          <span class="bar-val">{{ c.nb }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill orange" style="width:{% widthratio c.nb mx 100 %}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endwith %}
+    {% else %}<div class="empty-msg">Aucune donnée</div>{% endif %}
+  </div>
+</div>
+
+<!-- Régions + Statuts -->
+<div class="row-2col">
+  {% if section.top_regions %}
+  <div class="stat-card">
+    <div class="card-header">
+      <span class="card-title">🗺️ Incidents par région</span>
+      <span class="card-badge">{{ section.top_regions|length }}</span>
+    </div>
+    {% with mx=section.top_regions.0.nb %}
+    <div class="bar-list">
+      {% for r in section.top_regions %}
+      <div>
+        <div class="bar-meta">
+          <span class="bar-name">{{ r.region }}</span>
+          <span class="bar-val">{{ r.nb }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill green" style="width:{% widthratio r.nb mx 100 %}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endwith %}
+  </div>
+  {% endif %}
+
+  <div class="stat-card">
+    <div class="card-header">
+      <span class="card-title">📊 Répartition des statuts</span>
+      <span class="card-badge">{{ section.total_all }} total</span>
+    </div>
+    {% if section.statuts %}
+    <div class="statut-chips">
+      {% for s in section.statuts %}
+      <div class="statut-chip">
+        <span class="statut-chip-dot" style="background:{% if s.status|upper == 'OUVERT' %}#e53e3e{% elif s.status|upper == 'FERME' %}#16a34a{% else %}#aaa{% endif %}"></span>
+        {{ s.status }}
+        <span class="statut-chip-nb">{{ s.nb }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-msg">Aucune donnée</div>{% endif %}
+  </div>
+</div>

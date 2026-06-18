@@ -67,6 +67,7 @@ class Site(models.Model):
     date_mes            = models.DateField(null=True, blank=True)
     site_id             = models.CharField(max_length=20,  blank=True, default='')
     region              = models.CharField(max_length=50,  blank=True, default='')
+    zone                = models.CharField(max_length=50,  blank=True, default='')
     base                = models.CharField(max_length=50,  blank=True, default='')
     olt                 = models.CharField(max_length=10,  blank=True, default='')
     longitude           = models.FloatField(null=True, blank=True)
@@ -88,9 +89,68 @@ class Site(models.Model):
     numero_agent        = models.CharField(max_length=30,  blank=True, default='')
     societe_gardiens    = models.CharField(max_length=50,  blank=True, default='')
     contacts_surveillants = models.CharField(max_length=100, blank=True, default='')
+    typologie_avant     = models.CharField(max_length=50,  blank=True, default='')
+    typologie_apres     = models.CharField(max_length=50,  blank=True, default='')
 
     class Meta:
         ordering = ['site_name']
 
     def __str__(self):
         return f"{self.site_name} ({self.site_id})"
+
+
+class Incident(models.Model):
+    DOMAIN_MOBILE    = 'mobile'
+    DOMAIN_DR2       = 'dr2'
+    DOMAIN_FIXE      = 'fixe'
+    DOMAIN_TRANSPORT = 'transport'
+    DOMAIN_IGW       = 'igw'
+    DOMAIN_CORE      = 'core'
+    DOMAIN_CHOICES = [
+        (DOMAIN_MOBILE,    'Réseau Mobile'),
+        (DOMAIN_DR2,       'DR2'),
+        (DOMAIN_FIXE,      'Réseau Fixe'),
+        (DOMAIN_TRANSPORT, 'Transport'),
+        (DOMAIN_IGW,       'IGW'),
+        (DOMAIN_CORE,      'Core'),
+    ]
+
+    domain              = models.CharField(max_length=20, choices=DOMAIN_CHOICES, db_index=True)
+    mois_rapport        = models.DateField(null=True, blank=True, db_index=True)
+    numero_ticket       = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    nature              = models.TextField(blank=True, default='')
+    alarm_time          = models.DateTimeField(null=True, blank=True, db_index=True)
+    cancel_time         = models.DateTimeField(null=True, blank=True)
+    duration_sec        = models.FloatField(null=True, blank=True)
+    site_parent         = models.CharField(max_length=150, blank=True, default='')
+    site_name           = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    site_id             = models.CharField(max_length=100, blank=True, default='')
+    region              = models.CharField(max_length=50,  blank=True, default='', db_index=True)
+    base                = models.CharField(max_length=50,  blank=True, default='')
+    plateforme          = models.CharField(max_length=150, blank=True, default='')
+    technologies        = models.CharField(max_length=100, blank=True, default='')
+    impact_equipement   = models.TextField(blank=True, default='')
+    impact_service      = models.TextField(blank=True, default='')
+    escalade            = models.CharField(max_length=80,  blank=True, default='', db_index=True)
+    cause               = models.TextField(blank=True, default='')
+    root_cause          = models.TextField(blank=True, default='')
+    action              = models.TextField(blank=True, default='')
+    technicien_informe  = models.TextField(blank=True, default='')
+    technicien_maint    = models.TextField(blank=True, default='')
+    point_bloquant      = models.TextField(blank=True, default='')
+    observation         = models.TextField(blank=True, default='')
+    status              = models.CharField(max_length=50,  blank=True, default='', db_index=True)
+    nbre_clients        = models.CharField(max_length=50,  blank=True, default='')
+    source_file         = models.CharField(max_length=255, blank=True, default='')
+    imported_at         = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-alarm_time']
+        indexes = [
+            models.Index(fields=['domain', 'mois_rapport']),
+            models.Index(fields=['domain', 'escalade']),
+            models.Index(fields=['alarm_time', 'domain']),
+        ]
+
+    def __str__(self):
+        return f"[{self.domain}] {self.numero_ticket or self.nature[:40]} ({self.alarm_time})"

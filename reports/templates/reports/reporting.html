@@ -6,55 +6,378 @@
 
 {% block extra_css %}
 <style>
-  .rpt-header { margin-bottom: 28px; }
-  .rpt-title { font-size: 22px; font-weight: 700; color: #003087; }
-  .rpt-subtitle { font-size: 13px; color: #888; margin-top: 4px; }
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
 
-  .rpt-grid {
+  /* ── Banner ── */
+  .rpt-banner {
+    background: linear-gradient(135deg, #003087 0%, #0047cc 100%);
+    border-radius: 16px; padding: 24px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px; margin-bottom: 28px;
+  }
+  .rpt-banner-left  { display:flex; align-items:center; gap:16px; }
+  .rpt-banner-icon  {
+    width:52px; height:52px; background:rgba(255,199,44,.18); border-radius:14px;
+    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;
+  }
+  .rpt-banner-tag   { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--yellow); }
+  .rpt-banner-title { font-size:20px; font-weight:700; color:#fff; margin-top:2px; }
+  .rpt-banner-sub   { font-size:12px; color:rgba(255,255,255,.55); margin-top:3px; }
+  .rpt-banner-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+
+  /* Sélecteur mois */
+  .mois-select {
+    padding:9px 16px; border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.25); background:rgba(255,255,255,.1);
+    font-size:13px; font-weight:600; color:#fff; cursor:pointer; outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .mois-select option { color:#003087; background:#fff; }
+  .mois-select:focus { border-color:rgba(255,199,44,.7); background:rgba(255,255,255,.18); }
+
+  /* Bouton import */
+  .btn-import {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:9px 20px; border-radius:10px;
+    background:var(--yellow); color:var(--blue);
+    font-size:13px; font-weight:700; border:none; cursor:pointer;
+    transition:opacity .15s, transform .15s; white-space:nowrap;
+  }
+  .btn-import:hover { opacity:.88; transform:translateY(-1px); }
+  .btn-import svg   { width:15px; height:15px; }
+
+  /* ── Grille des réseaux ── */
+  .net-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 18px;
   }
-  .rpt-card {
-    background: #fff; border-radius: 16px; padding: 28px 24px;
-    border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.06);
-    display: flex; flex-direction: column; gap: 10px;
-    text-decoration: none; color: inherit;
-    transition: transform .15s, box-shadow .15s, border-color .15s;
-  }
-  .rpt-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0,48,135,.12);
-    border-color: #c8daf5;
-  }
-  .rpt-card-icon { font-size: 30px; }
-  .rpt-card-label { font-size: 16px; font-weight: 700; color: #003087; }
-  .rpt-card-sub { font-size: 12px; color: #999; }
 
-  @media (max-width:900px) {
-    .rpt-grid { grid-template-columns: repeat(2, 1fr); }
+  .net-card {
+    background: #fff; border-radius: 16px;
+    border: 1px solid #e8edf5; box-shadow: 0 1px 6px rgba(0,48,135,.06);
+    text-decoration: none; color: inherit;
+    display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+    transition: transform .18s, box-shadow .18s;
   }
-  @media (max-width:520px) {
-    .rpt-grid { grid-template-columns: 1fr; }
+  .net-card:hover { transform: translateY(-4px); box-shadow: 0 10px 28px rgba(0,48,135,.13); }
+
+  /* Bande de couleur en haut */
+  .net-card-accent { height: 5px; width: 100%; flex-shrink: 0; }
+
+  .net-card-body   { padding: 22px 24px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+  .net-card-head   { display: flex; align-items: center; gap: 12px; }
+  .net-card-icon   {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
   }
+  .net-card-label  { font-size: 15px; font-weight: 700; color: #003087; }
+  .net-card-domain { font-size: 11px; color: #999; margin-top: 2px; text-transform: uppercase; letter-spacing: .5px; }
+
+  .net-card-kpis   { display: flex; gap: 20px; }
+  .net-kpi         { display: flex; flex-direction: column; gap: 2px; }
+  .net-kpi-val     { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: #1e3a6e; letter-spacing: 1px; line-height: 1; }
+  .net-kpi-val.open { color: #e53e3e; }
+  .net-kpi-lbl     { font-size: 10px; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+
+  .net-card-footer {
+    padding: 10px 24px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-top: 1px solid #f5f7fb;
+  }
+  .net-card-outage { font-size: 12px; color: #888; font-weight: 600; }
+  .net-card-arrow  { font-size: 18px; color: #c8daf5; font-weight: 700; }
+
+  .net-card-zero   { opacity: .6; }
+
+  /* Couleurs par réseau */
+  .accent-mobile-dr2   { background: linear-gradient(90deg,#003087,#0047cc); }
+  .accent-fixe         { background: linear-gradient(90deg,#0891b2,#06b6d4); }
+  .accent-core         { background: linear-gradient(90deg,#7c3aed,#a855f7); }
+  .accent-igw          { background: linear-gradient(90deg,#d97706,#f59e0b); }
+  .accent-transmission { background: linear-gradient(90deg,#059669,#10b981); }
+
+  .icon-mobile-dr2   { background: #e8f0ff; }
+  .icon-fixe         { background: #e0f7fa; }
+  .icon-core         { background: #ede9fe; }
+  .icon-igw          { background: #fef3c7; }
+  .icon-transmission { background: #d1fae5; }
+
+  /* Badge DR2 */
+  .kpi-dr2 { color: #0f766e; }
+  .kpi-dr2 .net-kpi-lbl { color: #0f766e; opacity: .8; }
+
+  /* ── Stats globales ── */
+  .stats-bar {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 28px;
+  }
+  .stat-chip {
+    flex: 1; min-width: 140px; background: #fff; border-radius: 12px;
+    padding: 16px 20px; border: 1px solid #e8edf5;
+    box-shadow: 0 1px 4px rgba(0,48,135,.05);
+    display: flex; align-items: center; gap: 14px;
+  }
+  .stat-chip-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+    flex-shrink: 0;
+  }
+  .stat-chip-val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: #003087; letter-spacing: 1px; line-height: 1; }
+  .stat-chip-lbl { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── Messages ── */
+  .msg-success { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:20px; background:#f0fff4; color:#16a34a; border:1px solid #bbf7d0; }
+  .msg-warning { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:20px; background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+  .msg-error   { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:20px; background:#fff0f0; color:#e53e3e; border:1px solid #fecaca; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+    z-index:1000; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.open { display:flex; }
+  .modal-box {
+    background:#fff; border-radius:20px; padding:32px 36px;
+    width:100%; max-width:520px;
+    box-shadow:0 24px 64px rgba(0,0,0,.22);
+    position:relative; animation:modalIn .18s ease;
+  }
+  @keyframes modalIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+  .modal-header  { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+  .modal-icon    { width:44px; height:44px; background:#e8f0ff; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:22px; }
+  .modal-title   { font-size:17px; font-weight:700; color:#003087; }
+  .modal-close   { position:absolute; top:18px; right:20px; font-size:20px; background:none; border:none; color:#bbb; cursor:pointer; line-height:1; }
+  .modal-close:hover { color:#555; }
+
+  .form-row      { margin-bottom:18px; }
+  .form-label    { display:block; font-size:13px; font-weight:600; color:#444; margin-bottom:8px; }
+
+  .drop-zone {
+    border:2px dashed #c8daf5; border-radius:14px; padding:28px 20px;
+    text-align:center; cursor:pointer; background:#f8faff;
+    transition:border-color .15s, background .15s; position:relative;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color:#3b82f6; background:#eef4ff; }
+  .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .drop-zone-ico  { font-size:30px; margin-bottom:8px; }
+  .drop-zone-text { font-size:14px; color:#555; font-weight:600; }
+  .drop-zone-sub  { font-size:12px; color:#aaa; margin-top:4px; }
+  .drop-zone-name { font-size:13px; color:#003087; font-weight:700; margin-top:8px; }
+
+  .check-group { display:flex; flex-wrap:wrap; gap:8px; }
+  .check-pill  {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 13px; border-radius:20px; border:1.5px solid #d0d8e8;
+    font-size:12px; font-weight:600; color:#666; cursor:pointer; background:#fff;
+    transition:all .15s; user-select:none;
+  }
+  .check-pill input { accent-color:#003087; width:13px; height:13px; }
+  .check-pill:has(input:checked) { border-color:#003087; background:#e8f0ff; color:#003087; }
+
+  .switch-wrap  { display:flex; align-items:center; justify-content:space-between; padding:14px; background:#f8faff; border-radius:12px; }
+  .switch-info  {}
+  .switch-lbl   { font-size:13px; font-weight:600; color:#444; }
+  .switch-hint  { font-size:11px; color:#aaa; margin-top:2px; }
+  .toggle       { position:relative; width:44px; height:24px; flex-shrink:0; }
+  .toggle input { display:none; }
+  .toggle-track { position:absolute; inset:0; background:#dde; border-radius:12px; cursor:pointer; transition:background .2s; }
+  .toggle input:checked + .toggle-track { background:#003087; }
+  .toggle-thumb { position:absolute; top:3px; left:3px; width:18px; height:18px; background:#fff; border-radius:50%; pointer-events:none; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .toggle input:checked ~ .toggle-thumb { left:23px; }
+
+  .btn-submit {
+    width:100%; padding:13px; border-radius:12px; background:#003087;
+    color:#fff; font-size:14px; font-weight:700; border:none; cursor:pointer;
+    transition:background .15s; margin-top:10px;
+  }
+  .btn-submit:hover    { background:#1a4daa; }
+  .btn-submit:disabled { background:#c0cce0; cursor:not-allowed; }
+
+  @media(max-width:900px) { .net-grid { grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:520px) { .net-grid { grid-template-columns:1fr; } .modal-box { padding:24px 18px; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="rpt-header">
-  <div class="rpt-title">Reporting</div>
-  <div class="rpt-subtitle">Choisissez un réseau pour accéder à son reporting</div>
+
+{% if messages %}{% for msg in messages %}
+<div class="msg-{{ msg.tags|default:'success' }}">{{ msg }}</div>
+{% endfor %}{% endif %}
+
+<!-- Banner -->
+<div class="rpt-banner">
+  <div class="rpt-banner-left">
+    <div class="rpt-banner-icon">📊</div>
+    <div>
+      <div class="rpt-banner-tag">Tableau de bord</div>
+      <div class="rpt-banner-title">Reporting des incidents réseau</div>
+      <div class="rpt-banner-sub">Suivi multi-domaines — Réseau Mobile, Transport, Fixe, Core, IGW</div>
+    </div>
+  </div>
+  <div class="rpt-banner-right">
+    <form method="get">
+      <select name="mois" class="mois-select" onchange="this.form.submit()">
+        <option value="">Tous les mois</option>
+        {% for m in mois_list %}
+        <option value="{{ m|date:'Y-m-d' }}" {% if mois_sel == m %}selected{% endif %}>{{ m|date:"F Y" }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button class="btn-import" onclick="document.getElementById('importModal').classList.add('open')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Importer
+    </button>
+  </div>
 </div>
 
-<div class="rpt-grid">
-  {% for net in networks %}
-  <a href="{% url 'reporting_network' net.key %}" class="rpt-card">
-    <div class="rpt-card-icon">
-      {% if net.key == 'mobile-dr2' %}📡{% elif net.key == 'fixe' %}☎️{% elif net.key == 'core' %}🌐{% elif net.key == 'igw' %}🔌{% else %}🔗{% endif %}
+<!-- Stats globales -->
+{% with total_inc=networks|length %}
+<div class="stats-bar">
+  {% for net in networks %}{% if net.total %}
+  <div class="stat-chip">
+    <div class="stat-chip-icon icon-{{ net.key }}">{{ net.icon }}</div>
+    <div>
+      <div class="stat-chip-val">{{ net.total }}</div>
+      <div class="stat-chip-lbl">{{ net.label }}{% if net.dr2_count %} (dont {{ net.dr2_count }} DR2){% endif %}</div>
     </div>
-    <div class="rpt-card-label">{{ net.label }}</div>
-    <div class="rpt-card-sub">Voir le reporting</div>
+  </div>
+  {% endif %}{% endfor %}
+</div>
+{% endwith %}
+
+<!-- Grille réseaux -->
+<div class="net-grid">
+  {% for net in networks %}
+  <a href="{% url 'reporting_network' net.key %}{% if mois_sel %}?mois={{ mois_sel|date:'Y-m-d' }}{% elif net.dernier_mois %}?mois={{ net.dernier_mois|date:'Y-m-d' }}{% endif %}"
+     class="net-card {% if net.total == 0 %}net-card-zero{% endif %}">
+    <div class="net-card-accent accent-{{ net.key }}"></div>
+    <div class="net-card-body">
+      <div class="net-card-head">
+        <div class="net-card-icon icon-{{ net.key }}">{{ net.icon }}</div>
+        <div>
+          <div class="net-card-label">{{ net.label }}</div>
+          <div class="net-card-domain">
+            {% if net.dernier_mois %}{{ net.dernier_mois|date:"F Y" }}{% else %}Aucune donnée{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="net-card-kpis">
+        <div class="net-kpi">
+          <span class="net-kpi-val">{{ net.total }}</span>
+          <span class="net-kpi-lbl">Incidents</span>
+        </div>
+        {% if net.dr2_count %}
+        <div class="net-kpi kpi-dr2">
+          <span class="net-kpi-val" style="color:#0f766e">{{ net.dr2_count }}</span>
+          <span class="net-kpi-lbl" style="color:#0f766e">DR2</span>
+        </div>
+        {% endif %}
+        {% if net.open %}
+        <div class="net-kpi">
+          <span class="net-kpi-val open">{{ net.open }}</span>
+          <span class="net-kpi-lbl">Ouverts</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="net-card-footer">
+      <span class="net-card-outage">{% if net.outage_h %}Outage : {{ net.outage_h }}h{% else %}Aucun outage enregistré{% endif %}</span>
+      <span class="net-card-arrow">›</span>
+    </div>
   </a>
   {% endfor %}
 </div>
+
+<!-- Outils DR2 -->
+<div style="margin-top:28px;margin-bottom:28px">
+  <div style="font-size:13px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px">Outils DR2</div>
+  <a href="{% url 'dr2_daily' %}" style="
+    display:inline-flex;align-items:center;gap:14px;
+    background:#fff;border:1px solid #e8edf5;border-radius:16px;
+    padding:18px 24px;text-decoration:none;color:inherit;
+    box-shadow:0 1px 6px rgba(0,48,135,.06);
+    transition:transform .18s, box-shadow .18s;max-width:420px;width:100%
+  " onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,48,135,.12)'"
+     onmouseout="this.style.transform='';this.style.boxShadow='0 1px 6px rgba(0,48,135,.06)'">
+    <div style="width:44px;height:44px;background:#e0f7fa;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📱</div>
+    <div style="flex:1">
+      <div style="font-size:15px;font-weight:700;color:#003087">DR2 / Daily Report</div>
+      <div style="font-size:12px;color:#999;margin-top:2px">Tableau de bord quotidien DR2 par région et escalade</div>
+    </div>
+    <div style="font-size:20px;color:#c8daf5;font-weight:700">›</div>
+  </a>
+</div>
+
+<!-- Modal Import -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div class="modal-header">
+      <div class="modal-icon">📂</div>
+      <div class="modal-title">Importer des incidents</div>
+    </div>
+    <form method="post" action="{% url 'reporting_import' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="form-row">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" name="incidents_file" id="incidentsFile" accept=".xlsx,.xls" onchange="onFileChange(this)">
+          <div class="drop-zone-ico">📊</div>
+          <div class="drop-zone-text">Glisser-déposer ou cliquer</div>
+          <div class="drop-zone-sub">Fichier Excel multi-feuilles (.xlsx)</div>
+          <div class="drop-zone-name" id="fileName"></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Domaines à importer</label>
+        <div class="check-group">
+          <label class="check-pill"><input type="checkbox" name="domains" value="mobile" checked> Réseau Mobile</label>
+          <label class="check-pill"><input type="checkbox" name="domains" value="dr2" checked> DR2</label>
+          <label class="check-pill"><input type="checkbox" name="domains" value="fixe" checked> Réseau Fixe</label>
+          <label class="check-pill"><input type="checkbox" name="domains" value="transport" checked> Transport</label>
+          <label class="check-pill"><input type="checkbox" name="domains" value="igw" checked> IGW</label>
+          <label class="check-pill"><input type="checkbox" name="domains" value="core" checked> Core</label>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="switch-wrap">
+          <div class="switch-info">
+            <div class="switch-lbl">Remplacer les données existantes</div>
+            <div class="switch-hint">Supprime les incidents du même mois avant import</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" name="clear_mois" value="1">
+            <span class="toggle-track"></span>
+            <span class="toggle-thumb"></span>
+          </label>
+        </div>
+      </div>
+      <button type="submit" class="btn-submit" id="submitBtn" disabled>Importer le fichier</button>
+    </form>
+  </div>
+</div>
+
+<script>
+function closeModal(){ document.getElementById('importModal').classList.remove('open'); }
+document.getElementById('importModal').addEventListener('click',function(e){ if(e.target===this) closeModal(); });
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeModal(); });
+function onFileChange(i){
+  document.getElementById('fileName').textContent = i.files[0]?i.files[0].name:'';
+  document.getElementById('submitBtn').disabled = !i.files[0];
+}
+var dz=document.getElementById('dropZone');
+dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',function(){dz.classList.remove('dragover');});
+dz.addEventListener('drop',function(e){
+  e.preventDefault(); dz.classList.remove('dragover');
+  var f=e.dataTransfer.files[0]; if(!f) return;
+  var dt=new DataTransfer(); dt.items.add(f);
+  var inp=document.getElementById('incidentsFile'); inp.files=dt.files; onFileChange(inp);
+});
+</script>
 {% endblock %}

@@ -1,0 +1,406 @@
+{% extends 'base.html' %}
+{% load static report_extras %}
+
+{% block title %}DR2 Daily Report — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / DR2 Daily Report{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  /* ── Banner ── */
+  .dr2-banner {
+    background:linear-gradient(135deg,#003087 0%,#0047cc 100%);
+    border-radius:16px; padding:22px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:20px;
+  }
+  .dr2-banner-left { display:flex; align-items:center; gap:14px; }
+  .dr2-banner-icon { width:48px;height:48px;background:rgba(255,199,44,.18);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0; }
+  .dr2-banner-tag  { font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--yellow); }
+  .dr2-banner-ttl  { font-size:19px;font-weight:700;color:#fff;margin-top:2px; }
+  .dr2-banner-sub  { font-size:12px;color:rgba(255,255,255,.55);margin-top:3px; }
+  .dr2-banner-right{ display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+
+  .btn-back {
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 16px;border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.85);font-size:13px;font-weight:600;
+    text-decoration:none;transition:all .15s;
+  }
+  .btn-back:hover { border-color:rgba(255,255,255,.6);color:#fff; }
+
+  /* ── Date picker ── */
+  .date-form {
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  }
+  .date-form label { font-size:12px;color:rgba(255,255,255,.7);font-weight:600; }
+  .date-input {
+    padding:7px 12px;border-radius:8px;
+    border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);
+    font-size:12px;color:#fff;outline:none;cursor:pointer;
+  }
+  .date-input::-webkit-calendar-picker-indicator { filter:invert(1);opacity:.7; }
+  .btn-apply {
+    padding:7px 16px;border-radius:8px;background:var(--yellow);
+    border:none;font-size:12px;font-weight:700;color:#003087;cursor:pointer;
+    transition:opacity .15s;
+  }
+  .btn-apply:hover { opacity:.88; }
+
+  /* ── KPI chips ── */
+  .kpi-strip {
+    display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;
+  }
+  .kpi-chip {
+    background:#fff;border-radius:12px;padding:14px 20px;
+    border:1px solid #e8edf5;box-shadow:0 1px 4px rgba(0,48,135,.06);
+    display:flex;align-items:center;gap:12px;
+  }
+  .kpi-chip-icon { width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0; }
+  .kpi-chip-val  { font-family:'Bebas Neue',sans-serif;font-size:26px;color:#003087;letter-spacing:.5px;line-height:1; }
+  .kpi-chip-lbl  { font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-top:2px; }
+  .kpi-chip-icon.blue   { background:#e8f0ff; }
+  .kpi-chip-icon.orange { background:#fff7ed; }
+  .kpi-chip-icon.teal   { background:#f0fdfa; }
+  .kpi-chip-icon.red    { background:#fff0f0; }
+
+  /* ── Main table ── */
+  .report-wrap { overflow-x:auto; margin-bottom:24px; }
+  .dr2-table {
+    border-collapse:collapse;
+    min-width:900px;
+    width:100%;
+    font-size:12px;
+    border:2px solid #003087;
+  }
+
+  /* Title row */
+  .dr2-table .tr-title td {
+    background:#003087;color:#fff;font-size:14px;font-weight:800;
+    text-align:center;padding:10px 12px;letter-spacing:1px;
+  }
+  .dr2-table .tr-period td {
+    background:#003087;color:var(--yellow);font-size:12px;font-weight:600;
+    text-align:center;padding:4px 12px 10px;
+  }
+
+  /* Column headers */
+  .dr2-table .tr-hdr td {
+    background:#1e3a6e;color:#fff;font-weight:700;font-size:11px;
+    text-align:center;padding:8px 6px;border:1px solid #2a4a80;
+    text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;
+  }
+  .dr2-table .tr-tget td {
+    background:#2a4a80;color:#fff;font-weight:800;font-size:13px;
+    text-align:center;padding:7px 6px;border:1px solid #2a4a80;
+  }
+
+  /* Data rows */
+  .dr2-table tbody tr.data-row td {
+    padding:7px 8px;border:1px solid #d8e0f0;text-align:center;
+    vertical-align:middle;
+  }
+  .dr2-table tbody tr.data-row td:first-child {
+    text-align:left;font-weight:700;font-size:12px;color:#1e3a6e;
+    padding-left:12px;white-space:nowrap;
+  }
+  .dr2-table tbody tr.data-row:hover td { background:#f5f8ff; }
+
+  /* Statistique label cell */
+  .td-stat {
+    background:#1e3a6e !important;
+    writing-mode:vertical-rl;
+    text-orientation:mixed;
+    transform:rotate(180deg);
+    color:#fff !important;
+    font-weight:800 !important;
+    font-size:11px !important;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    white-space:nowrap;
+    width:22px;
+    padding:8px 4px !important;
+  }
+
+  /* Color cells */
+  .cell-green  { background:#c6efce !important;color:#276221 !important;font-weight:700; }
+  .cell-yellow { background:#ffeb9c !important;color:#9c6500 !important;font-weight:700; }
+  .cell-red    { background:#ffc7ce !important;color:#9c0006 !important;font-weight:700; }
+  .cell-teal   { background:#e0f7fa !important;color:#006064 !important;font-weight:700; }
+  .cell-orange { background:#fff0d9 !important;color:#b45309 !important;font-weight:700; }
+  .cell-blue   { background:#e8f0ff !important;color:#1e3a6e !important;font-weight:700; }
+  .cell-div0   { background:#f5f5f5 !important;color:#999 !important;font-style:italic; }
+
+  /* Total / summary rows */
+  .dr2-table tr.tr-total td {
+    background:#003087;color:#fff;font-weight:800;font-size:13px;
+    text-align:center;padding:8px 8px;border:1px solid #0a2560;
+  }
+  .dr2-table tr.tr-total td:first-child { text-align:left;padding-left:12px; }
+  .dr2-table tr.tr-avg td {
+    background:#0047cc;color:#fff;font-weight:700;font-size:12px;
+    text-align:center;padding:7px 8px;border:1px solid #0a2560;
+  }
+  .dr2-table tr.tr-avg td:first-child { text-align:left;padding-left:12px; }
+  .dr2-table tr.tr-metier td {
+    background:#f0f4ff;color:#1e3a6e;font-weight:700;font-size:12px;
+    text-align:center;padding:7px 8px;border:1px solid #d8e0f0;
+  }
+  .dr2-table tr.tr-metier td:first-child { text-align:left;padding-left:12px; }
+  .dr2-table tr.tr-pct td {
+    background:#fff7ed;font-size:12px;font-weight:600;
+    text-align:center;padding:7px 8px;border:1px solid #f0e0c0;
+  }
+  .dr2-table tr.tr-pct td:first-child { text-align:left;padding-left:12px;font-weight:700;color:#1e3a6e; }
+  .dr2-table tr.tr-pct2 td {
+    background:#f0fdf4;font-size:12px;font-weight:600;
+    text-align:center;padding:7px 8px;border:1px solid #c0e0c8;
+  }
+  .dr2-table tr.tr-pct2 td:first-child { text-align:left;padding-left:12px;font-weight:700;color:#1e3a6e; }
+
+  /* Legend */
+  .legend { display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px;align-items:center; }
+  .legend-item { display:flex;align-items:center;gap:6px;font-size:12px;color:#555; }
+  .legend-dot  { width:14px;height:14px;border-radius:3px;flex-shrink:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Banner -->
+<div class="dr2-banner">
+  <div class="dr2-banner-left">
+    <div class="dr2-banner-icon">📱</div>
+    <div>
+      <div class="dr2-banner-tag">Reporting</div>
+      <div class="dr2-banner-ttl">DR2 / Daily Report</div>
+      <div class="dr2-banner-sub">Du {{ debut|date:"d/m/Y" }} au {{ fin|date:"d/m/Y" }} — {{ period_days }} jour{{ period_days|pluralize }}</div>
+    </div>
+  </div>
+  <div class="dr2-banner-right">
+    <form method="get" class="date-form">
+      <label>Du</label>
+      <input type="date" name="debut" value="{{ debut|date:'Y-m-d' }}" class="date-input">
+      <label>Au</label>
+      <input type="date" name="fin"   value="{{ fin|date:'Y-m-d' }}"   class="date-input">
+      <button type="submit" class="btn-apply">Appliquer</button>
+    </form>
+    <a href="{% url 'dr2_daily_export' %}?debut={{ debut|date:'Y-m-d' }}&fin={{ fin|date:'Y-m-d' }}"
+       class="btn-apply" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 16px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Exporter Excel
+    </a>
+    <a href="{% url 'reporting' %}" class="btn-back">&#8592; Retour</a>
+  </div>
+</div>
+
+<!-- KPI Chips -->
+<div class="kpi-strip">
+  <div class="kpi-chip">
+    <div class="kpi-chip-icon red">📋</div>
+    <div>
+      <div class="kpi-chip-val">{{ total_dr2 }}</div>
+      <div class="kpi-chip-lbl">Total DR2 période</div>
+    </div>
+  </div>
+  <div class="kpi-chip">
+    <div class="kpi-chip-icon orange">📅</div>
+    <div>
+      <div class="kpi-chip-val">{{ nbre_j1 }}</div>
+      <div class="kpi-chip-lbl">DR2 hier (J-1)</div>
+    </div>
+  </div>
+  <div class="kpi-chip">
+    <div class="kpi-chip-icon blue">📈</div>
+    <div>
+      <div class="kpi-chip-val">{{ moyenne }}</div>
+      <div class="kpi-chip-lbl">Moyenne / jour</div>
+    </div>
+  </div>
+  <div class="kpi-chip">
+    <div class="kpi-chip-icon teal">✅</div>
+    <div>
+      <div class="kpi-chip-val">{{ total_metier }}</div>
+      <div class="kpi-chip-lbl">Résolus (métier)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <span style="font-size:12px;font-weight:700;color:#555;">Légende %TGET :</span>
+  <div class="legend-item"><div class="legend-dot" style="background:#c6efce;border:1px solid #276221"></div> &lt; 70% — Sous objectif</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffeb9c;border:1px solid #9c6500"></div> 70–99% — Proche objectif</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ffc7ce;border:1px solid #9c0006"></div> ≥ 100% — Dépasse objectif</div>
+</div>
+
+<!-- Main Report Table -->
+<div class="report-wrap">
+<table class="dr2-table">
+
+  <!-- Title rows -->
+  <thead>
+    <tr class="tr-title">
+      <td colspan="{{ escalade_vals|length|add:6 }}">DR2 / DAILY REPORT</td>
+    </tr>
+    <tr class="tr-period">
+      <td colspan="{{ escalade_vals|length|add:6 }}">Du {{ debut|date:"d/m/Y" }} au {{ fin|date:"d/m/Y" }}</td>
+    </tr>
+
+    <!-- Column headers -->
+    <tr class="tr-hdr">
+      <td rowspan="2" style="min-width:90px">Région</td>
+      <td rowspan="2">TGET</td>
+      <td rowspan="2">DR2<br>REG</td>
+      <td rowspan="2">% REG</td>
+      <td rowspan="2">% TGET<br>REG</td>
+      <td rowspan="2" class="td-stat">STATISTIQUE</td>
+      {% for esc in escalade_vals %}
+      <td>{{ esc }}</td>
+      {% endfor %}
+    </tr>
+
+    <!-- Escalade targets row -->
+    <tr class="tr-tget">
+      {% for stat in esc_stats %}
+      <td>{{ stat.total }}</td>
+      {% endfor %}
+    </tr>
+  </thead>
+
+  <!-- Region data rows -->
+  <tbody>
+    {% for row in region_rows %}
+    <tr class="data-row">
+      <td>{{ row.region }}</td>
+      <td>{{ row.tget }}</td>
+      <td class="{% if row.color == 'red' %}cell-red{% elif row.color == 'yellow' %}cell-yellow{% else %}cell-green{% endif %}">{{ row.dr2 }}</td>
+      <td>{{ row.pct_reg }}%</td>
+      <td class="{% if row.color == 'red' %}cell-red{% elif row.color == 'yellow' %}cell-yellow{% else %}cell-green{% endif %}">{{ row.pct_tget }}%</td>
+      <td class="td-stat"></td>
+      {% for esc in escalade_vals %}
+      <td>{% with cnt=row.escalades|access:esc %}{% if cnt %}{{ cnt }}{% else %}0{% endif %}{% endwith %}</td>
+      {% endfor %}
+    </tr>
+    {% empty %}
+    <tr class="data-row">
+      <td colspan="{{ escalade_vals|length|add:6 }}" style="text-align:center;color:#aaa;padding:24px">Aucune donnée pour cette période</td>
+    </tr>
+    {% endfor %}
+
+    <!-- Total row -->
+    <tr class="tr-total">
+      <td>TOTAL DR2</td>
+      <td>{{ total_tget }}</td>
+      <td>{{ total_dr2 }}</td>
+      <td>100%</td>
+      <td>{% if total_tget %}{% widthratio total_dr2 total_tget 100 %}%{% else %}—{% endif %}</td>
+      <td></td>
+      {% for stat in esc_stats %}
+      <td>{{ stat.total }}</td>
+      {% endfor %}
+    </tr>
+
+    <!-- Moyenne row -->
+    <tr class="tr-avg">
+      <td>MOYENNE DR2</td>
+      <td colspan="3" style="font-family:'Bebas Neue',sans-serif;font-size:20px;">{{ moyenne }}</td>
+      <td>% TGET/METIER</td>
+      <td></td>
+      {% for stat in esc_stats %}
+      <td>
+        {% if stat.pct_tgt is not None %}
+          <span class="{% if stat.pct_tgt >= 100 %}cell-red{% elif stat.pct_tgt >= 70 %}cell-yellow{% else %}cell-green{% endif %}" style="padding:2px 6px;border-radius:4px;display:inline-block;">{{ stat.pct_tgt }}%</span>
+        {% else %}
+          <span class="cell-div0">#DIV/0!</span>
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+
+    <!-- DR2/Métier row -->
+    <tr class="tr-metier">
+      <td>DR2 / MÉTIER</td>
+      <td colspan="4"></td>
+      <td></td>
+      {% for stat in esc_stats %}
+      <td>{{ stat.metier }}</td>
+      {% endfor %}
+    </tr>
+
+    <!-- %Métier/TT DR2 row -->
+    <tr class="tr-pct2">
+      <td>% MÉTIER / TT DR2</td>
+      <td colspan="4"></td>
+      <td></td>
+      {% for stat in esc_stats %}
+      <td>{{ stat.pct_tt }}%</td>
+      {% endfor %}
+    </tr>
+
+  </tbody>
+</table>
+</div>
+
+<!-- Detail cards -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px">
+
+  <!-- Répartition par région -->
+  <div style="background:#fff;border-radius:16px;padding:22px 24px;border:1px solid #e8edf5;box-shadow:0 1px 4px rgba(0,48,135,.05)">
+    <div style="font-size:14px;font-weight:700;color:#003087;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      🗺️ DR2 par région
+    </div>
+    {% if region_rows %}
+    {% with max_dr2=region_rows.0.dr2 %}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      {% for row in region_rows %}
+      {% if row.dr2 %}
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:13px;font-weight:600;color:#333">{{ row.region }}</span>
+          <span style="font-size:13px;font-weight:700;color:#003087">{{ row.dr2 }}</span>
+        </div>
+        <div style="height:8px;background:#f0f4ff;border-radius:4px;overflow:hidden">
+          <div style="height:100%;border-radius:4px;width:{% widthratio row.dr2 total_dr2 100 %}%;background:{% if row.color == 'red' %}linear-gradient(90deg,#e53e3e,#f87171){% elif row.color == 'yellow' %}linear-gradient(90deg,#d97706,#fbbf24){% else %}linear-gradient(90deg,#059669,#10b981){% endif %}"></div>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endwith %}
+    {% endif %}
+  </div>
+
+  <!-- Répartition par escalade -->
+  <div style="background:#fff;border-radius:16px;padding:22px 24px;border:1px solid #e8edf5;box-shadow:0 1px 4px rgba(0,48,135,.05)">
+    <div style="font-size:14px;font-weight:700;color:#003087;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      ⚡ DR2 par escalade
+    </div>
+    {% if esc_stats %}
+    <div style="display:flex;flex-direction:column;gap:10px">
+      {% for stat in esc_stats %}
+      {% if stat.total %}
+      <div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:12px;font-weight:500;color:#333;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ stat.escalade }}</span>
+          <span style="font-size:13px;font-weight:700;color:#003087">{{ stat.total }}</span>
+        </div>
+        <div style="height:8px;background:#f0f4ff;border-radius:4px;overflow:hidden">
+          <div style="height:100%;border-radius:4px;width:{% widthratio stat.total total_dr2 100 %}%;background:linear-gradient(90deg,#003087,#0047cc)"></div>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
