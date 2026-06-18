@@ -19,7 +19,7 @@
       box-shadow: 0 2px 20px rgba(0,48,135,0.3);
     }
     .nav-inner {
-      max-width: 1440px; margin: 0 auto; padding: 0 40px;
+      max-width: 2560px; margin: 0 auto; padding: 0 40px;
       height: 100%; display: flex; align-items: center; justify-content: space-between;
     }
     .nav-brand { display: flex; align-items: center; gap: 14px; text-decoration: none; }
@@ -135,11 +135,11 @@
 
     /* ── TOPBAR ── */
     .topbar { background: #fff; border-bottom: 1px solid #e8edf5; font-size: 13px; color: #888; }
-    .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 10px 40px; }
+    .topbar-inner { max-width: 2560px; margin: 0 auto; padding: 10px 40px; }
     .topbar span { color: var(--yas-blue); font-weight: 600; }
 
     /* ── MAIN ── */
-    .main-content { padding: 32px 40px; max-width: 1440px; margin: 0 auto; }
+    .main-content { padding: 32px 40px; max-width: 2560px; margin: 0 auto; }
     .card { background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5; }
     .messages-container { margin-bottom: 24px; }
     .message { padding: 12px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 8px; border-left: 4px solid; }
@@ -204,7 +204,7 @@
     @media (prefers-reduced-motion:reduce) {
       *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
     }
-    /* ── Large screens (1400px+) ── */
+    /* ── Large screens ── */
     @media (min-width:1400px) {
       .main-content { padding: 36px 48px; }
       .nav-inner    { padding: 0 48px; }
@@ -214,6 +214,16 @@
       .main-content { padding: 40px 56px; }
       .nav-inner    { padding: 0 56px; }
       .topbar-inner { padding: 10px 56px; }
+    }
+    @media (min-width:1920px) {
+      .main-content { padding: 44px 80px; }
+      .nav-inner    { padding: 0 80px; }
+      .topbar-inner { padding: 10px 80px; }
+    }
+    @media (min-width:2400px) {
+      .main-content { padding: 48px 120px; }
+      .nav-inner    { padding: 0 120px; }
+      .topbar-inner { padding: 10px 120px; }
     }
 
     /* ── Small screens ── */

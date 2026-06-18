@@ -245,8 +245,23 @@
     .card             { padding: 32px; }
   }
   @media(min-width:1800px){
-    .main-grid        { grid-template-columns: 1fr 480px; gap: 32px; }
+    .main-grid        { grid-template-columns: 1fr 500px; gap: 32px; }
     .hero-kpi-row     { gap: 16px; }
+    .hero-kpi-num     { font-size: 34px; }
+  }
+  @media(min-width:2000px){
+    .main-grid        { grid-template-columns: 1fr 560px; gap: 36px; }
+    .hero             { padding: 68px 80px; }
+    .hero-title       { font-size: 72px; }
+    .hero-kpi-num     { font-size: 38px; }
+    .hero-kpi-ico     { width: 48px; height: 48px; font-size: 20px; }
+    .card             { padding: 36px; border-radius: 20px; }
+    .period-bar-wrap  { padding: 16px 28px; border-radius: 18px; }
+  }
+  @media(min-width:2400px){
+    .main-grid        { grid-template-columns: 1fr 620px; gap: 40px; }
+    .hero             { padding: 80px 100px; }
+    .hero-title       { font-size: 80px; }
   }
 
   /* ── Responsive : petits écrans ── */
