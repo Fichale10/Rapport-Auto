@@ -9,9 +9,12 @@ def process_file(input_file, date_rapport, date_fin=None):
         date_fin: date de fin inclusive (str YYYY-MM-DD ou date).
                   Si None, la plage porte uniquement sur date_rapport (rapport journalier).
     """
-    # Charger le fichier Excel
-    print(f"Chargement du fichier: {input_file}")
-    df = pd.read_excel(input_file)
+    # Charger le fichier Excel (ou accepter un DataFrame déjà chargé)
+    if isinstance(input_file, pd.DataFrame):
+        df = input_file.copy()
+    else:
+        print(f"Chargement du fichier: {input_file}")
+        df = pd.read_excel(input_file)
     
     # Filtrage des alarmes
     alarmes_a_garder = [
