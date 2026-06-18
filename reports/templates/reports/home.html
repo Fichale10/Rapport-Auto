@@ -122,8 +122,30 @@
     box-shadow: 0 1px 4px rgba(0,48,135,.05);
   }
   .period-bar-label { font-size: 13px; font-weight: 700; color: #003087; }
-  .period-bar-label span { font-weight: 400; color: #888; margin-left: 6px; font-size: 12px; }
-  .period-bar { display: flex; align-items: center; gap: 6px; }
+  .period-select {
+    padding: 6px 32px 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: 1.5px solid #d8dff0; background: #fff; color: #003087;
+    font-family: inherit; cursor: pointer; appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23003087' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    transition: border-color .15s;
+  }
+  .period-select:focus { border-color: #003087; outline: none; box-shadow: 0 0 0 2px rgba(0,48,135,.1); }
+  .period-divider { width: 1px; height: 24px; background: #e0e5ef; margin: 0 4px; }
+  .date-range-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .date-input {
+    padding: 5px 8px; border-radius: 7px; font-size: 12px; font-weight: 500;
+    border: 1.5px solid #e8edf5; background: #fff; color: #444; font-family: inherit;
+    cursor: pointer; max-width: 175px;
+  }
+  .date-input:focus, .date-input.active { border-color: #003087; outline: none; box-shadow: 0 0 0 2px rgba(0,48,135,.08); }
+  .date-arrow { color: #bbb; font-size: 13px; }
+  .date-apply-btn {
+    padding: 5px 14px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid #003087; background: #003087; color: #fff;
+    cursor: pointer; font-family: inherit; transition: background .15s;
+  }
+  .date-apply-btn:hover { background: #002070; }
 
   /* ── Synthèse par Escalade ── */
   .synth-btn {
@@ -199,34 +221,50 @@
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
   .empty a { color: #003087; font-weight: 600; text-decoration: none; }
 
-  /* ── Grand écran : sidebar plus large, hero plus aéré ── */
+  /* ── Responsive : grands écrans ── */
+  @media(min-width:1200px){
+    .main-grid        { grid-template-columns: 1fr 360px; gap: 22px; }
+    .hero             { padding: 52px 56px; }
+  }
   @media(min-width:1400px){
-    .main-grid        { grid-template-columns: 1fr 380px; gap: 24px; }
-    .kpi-bar          { gap: 20px; }
-    .kpi-box          { padding: 22px 24px; }
-    .kpi-num          { font-size: 32px; }
+    .main-grid        { grid-template-columns: 1fr 400px; gap: 24px; }
     .hero             { padding: 56px 60px; }
     .hero-title       { font-size: 58px; }
+    .hero-kpi-num     { font-size: 28px; }
+    .hero-kpi         { padding: 16px 18px; gap: 14px; }
     .card             { padding: 28px; }
+    .period-bar-wrap  { padding: 14px 24px; }
   }
   @media(min-width:1600px){
-    .main-grid        { grid-template-columns: 1fr 420px; gap: 28px; }
-    .hero             { padding: 64px 68px; }
+    .main-grid        { grid-template-columns: 1fr 440px; gap: 28px; }
+    .hero             { padding: 60px 68px; }
     .hero-title       { font-size: 64px; }
+    .hero-kpi-num     { font-size: 32px; }
+    .hero-kpi         { padding: 18px 22px; }
+    .hero-kpi-ico     { width: 42px; height: 42px; font-size: 18px; }
+    .card             { padding: 32px; }
+  }
+  @media(min-width:1800px){
+    .main-grid        { grid-template-columns: 1fr 480px; gap: 32px; }
+    .hero-kpi-row     { gap: 16px; }
   }
 
-  /* ── Petit écran ── */
+  /* ── Responsive : petits écrans ── */
+  @media(max-width:1100px){
+    .main-grid        { grid-template-columns: 1fr 300px; }
+  }
   @media(max-width:900px){
-    .kpi-bar { grid-template-columns: repeat(2,1fr); }
-    .main-grid { grid-template-columns: 1fr; }
-    .hero-visual { display: none; }
-    .hero-title { font-size: 38px; }
-
+    .main-grid        { grid-template-columns: 1fr; }
+    .hero-title       { font-size: 38px; }
+    .hero-kpi-row     { grid-template-columns: repeat(2,1fr); }
+    .period-bar-wrap  { flex-direction: column; align-items: flex-start; gap: 10px; }
   }
-  @media(max-width:520px){
-    .kpi-bar  { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .hero     { padding: 28px 24px; }
-    .hero-title { font-size: 30px; }
+  @media(max-width:600px){
+    .hero             { padding: 28px 24px; }
+    .hero-title       { font-size: 30px; }
+    .hero-kpi-row     { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .date-range-form  { flex-wrap: wrap; }
+    .date-input       { max-width: 100%; }
   }
 </style>
 {% endblock %}
@@ -288,17 +326,25 @@
 
 <!-- ── Sélecteur de période unifié ── -->
 <div class="period-bar-wrap">
-  <div class="period-bar-label">
-    Période d'analyse
-    <span>s'applique à Évolution des incidents &amp; Synthèse par Escalade</span>
-  </div>
-  <div class="period-bar">
-    <a href="?period=week"    class="synth-btn {% if period == 'week'    %}active{% endif %}">7 jours</a>
-    <a href="?period=month"   class="synth-btn {% if period == 'month'   %}active{% endif %}">Mois</a>
-    <a href="?period=quarter" class="synth-btn {% if period == 'quarter' %}active{% endif %}">3 mois</a>
-    <a href="?period=half"    class="synth-btn {% if period == 'half'    %}active{% endif %}">6 mois</a>
-    <a href="?period=year"    class="synth-btn {% if period == 'year'    %}active{% endif %}">Année</a>
-    <a href="?period=all"     class="synth-btn {% if period == 'all'     %}active{% endif %}">Tout</a>
+  <div class="period-bar-label">Période d'analyse</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <select class="period-select" onchange="if(this.value) window.location='?period='+this.value">
+      <option value="week"    {% if period == 'week'    %}selected{% endif %}>7 jours</option>
+      <option value="month"   {% if period == 'month'   %}selected{% endif %}>Mois</option>
+      <option value="quarter" {% if period == 'quarter' %}selected{% endif %}>3 mois</option>
+      <option value="half"    {% if period == 'half'    %}selected{% endif %}>6 mois</option>
+      <option value="year"    {% if period == 'year'    %}selected{% endif %}>Année</option>
+      <option value="all"     {% if period == 'all'     %}selected{% endif %}>Tout</option>
+    </select>
+    <div class="period-divider"></div>
+    <form method="get" class="date-range-form">
+      <input type="datetime-local" name="date_from" class="date-input {% if period == 'custom' %}active{% endif %}"
+             value="{{ date_from }}" title="Date et heure de début">
+      <span class="date-arrow">→</span>
+      <input type="datetime-local" name="date_to" class="date-input {% if period == 'custom' %}active{% endif %}"
+             value="{{ date_to }}" title="Date et heure de fin">
+      <button type="submit" class="date-apply-btn">Appliquer</button>
+    </form>
   </div>
 </div>
 
@@ -618,9 +664,12 @@
     }).addTo(map);
   });
 
-  // ── Sync clic table → carte ───────────────────────────────────────────
+  // ── Sync clic table → carte + scroll ─────────────────────────────────
   document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
-    row.addEventListener('click', function(){ highlightRegion(row.dataset.region); });
+    row.addEventListener('click', function(){
+      highlightRegion(row.dataset.region);
+      document.getElementById('togo-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   });
 
   // ── Sites impactés uniquement ─────────────────────────────────────────
@@ -636,8 +685,14 @@
         '<div style="font-size:12px;font-weight:700;color:#e53e3e;margin-bottom:4px;">⚠️ ' + s.name + '</div>' +
         (s.region ? '<div style="font-size:11px;color:#888;">' + s.region + '</div>' : '') +
         '<div style="font-size:11px;font-weight:700;color:#e53e3e;margin-top:4px;">Site impacté</div>' +
-      '</div>'
+      '</div>',
+      { autoPan: true }
     );
+    marker.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      marker.openPopup();
+      if (s.region) highlightRegion(s.region.toUpperCase());
+    });
     sitesLayer.addLayer(marker);
   });
   sitesLayer.addTo(map);

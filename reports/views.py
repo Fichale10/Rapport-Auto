@@ -96,10 +96,34 @@ def _shift_month(d, delta):
     return date(y, m, 1)
 
 
-def _evol_time_buckets(period, today=None):
-    """Intervalles fixes : 7 jours, 7 semaines, 3/6/12 mois."""
+def _evol_time_buckets(period, today=None, custom_start=None, custom_end=None):
+    """Intervalles fixes : 7 jours, 7 semaines, 3/6/12 mois, ou plage custom."""
     today = today or date.today()
     buckets = []
+
+    if period == 'custom' and custom_start and custom_end:
+        delta = (custom_end - custom_start).days
+        if delta <= 7:
+            for i in range(delta + 1):
+                d = custom_start + timedelta(days=i)
+                buckets.append({'label': d.strftime('%d/%m'), 'start': d, 'end': d})
+        elif delta <= 90:
+            d = custom_start
+            while d <= custom_end:
+                we = min(d + timedelta(days=6), custom_end)
+                buckets.append({'label': f"S{d.isocalendar()[1]}", 'start': d, 'end': we})
+                d += timedelta(weeks=1)
+        else:
+            d = custom_start.replace(day=1)
+            while d <= custom_end:
+                me = date(d.year, d.month, calendar.monthrange(d.year, d.month)[1])
+                buckets.append({
+                    'label': f"{MOIS_FR_SHORT[d.month]} {str(d.year)[2:]}",
+                    'start': d,
+                    'end': min(me, custom_end),
+                })
+                d = _shift_month(d, 1)
+        return buckets
 
     if period == 'day':
         for i in range(6, -1, -1):
@@ -161,9 +185,9 @@ def _evol_time_buckets(period, today=None):
     return buckets
 
 
-def _build_spark_evolution(reports_qs, period):
+def _build_spark_evolution(reports_qs, period, custom_start=None, custom_end=None):
     all_reports = list(reports_qs)
-    buckets = _evol_time_buckets(period)
+    buckets = _evol_time_buckets(period, custom_start=custom_start, custom_end=custom_end)
     labels = []
     total_vals = []
     esc_vals = {esc: [] for esc, _ in SPARK_ESCALADES}
@@ -260,7 +284,29 @@ def home(request):
         month_trend_pct = 100.0
 
     # ── Période unifiée pour Évolution + Synthèse ──────────────────────────
-    period = request.GET.get('period', 'month')
+    period = request.GET.get('period', 'week')
+    date_from_str = request.GET.get('date_from', '')
+    date_to_str   = request.GET.get('date_to', '')
+    custom_start  = custom_end = None
+
+    if date_from_str and date_to_str:
+        try:
+            from datetime import datetime as _dt
+            dt_from = _dt.fromisoformat(date_from_str)
+            dt_to   = _dt.fromisoformat(date_to_str)
+            custom_start = dt_from.date()
+            custom_end   = dt_to.date()
+            period = 'custom'
+        except (ValueError, TypeError):
+            date_from_str = date_to_str = ''
+
+    if period == 'custom' and custom_start and custom_end:
+        base_qs = all_reports.filter(
+            uploaded_at__date__gte=custom_start,
+            uploaded_at__date__lte=custom_end,
+        )
+    else:
+        base_qs = all_reports
 
     (
         spark_labels,
@@ -271,14 +317,14 @@ def home(request):
         evol_unresolved,
         evol_latest_report,
         show_spark_chart,
-    ) = _build_spark_evolution(all_reports, period)
+    ) = _build_spark_evolution(base_qs, period, custom_start, custom_end)
 
     last_report = all_reports.first()
     if not evol_latest_report:
         evol_latest_report = last_report
 
     # ── Synthèse par Escalade agrégée (même période) ───────────────────────
-    synth_qs = _filter_reports_by_period(all_reports, period)
+    synth_qs = _filter_reports_by_period(base_qs, period)  # 'custom' → return as-is
 
     esc_data = defaultdict(lambda: {
         'inc': 0, 'duree_sec': 0, 'outage_sec': 0,
@@ -420,6 +466,8 @@ def home(request):
 
     return render(request, 'reports/home.html', {
         'period':           period,
+        'date_from':        date_from_str,
+        'date_to':          date_to_str,
         'synth_rows':       synth_rows,
         'synth_total_inc':  synth_total_inc,
         'total_reports':        total_reports,
