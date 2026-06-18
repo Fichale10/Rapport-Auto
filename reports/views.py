@@ -77,16 +77,16 @@ def _filter_reports_by_month(queryset, year=None, month=None):
 def _filter_reports_by_period(queryset, period):
     today = date.today()
     if period == 'week':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=7))
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=6))
     if period == 'month':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=30))
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=29))
     if period == 'quarter':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=90))
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=89))
     if period == 'half':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=180))
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=179))
     if period == 'year':
-        return queryset.filter(uploaded_at__year=today.year)
-    return queryset  # 'all'
+        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=364))
+    return queryset  # 'all' ou 'custom'
 
 
 def _shift_month(d, delta):
@@ -125,30 +125,23 @@ def _evol_time_buckets(period, today=None, custom_start=None, custom_end=None):
                 d = _shift_month(d, 1)
         return buckets
 
-    if period == 'day':
+    if period == 'week':
+        # 7 buckets journaliers (J-6 → aujourd'hui)
         for i in range(6, -1, -1):
             d = today - timedelta(days=i)
             buckets.append({'label': d.strftime('%d/%m'), 'start': d, 'end': d})
     elif period == 'month':
-        week_start = today - timedelta(days=today.weekday())
+        # 4 buckets hebdomadaires glissants (J-29 → aujourd'hui)
         for i in range(3, -1, -1):
-            ws = week_start - timedelta(weeks=i)
-            we = ws + timedelta(days=6)
+            ws = today - timedelta(days=i * 7 + 6)
+            we = today - timedelta(days=i * 7)
             buckets.append({'label': f"S{ws.isocalendar()[1]}", 'start': ws, 'end': we})
-    elif period == 'week':
-        week_start = today - timedelta(days=today.weekday())
-        for i in range(6, -1, -1):
-            ws = week_start - timedelta(weeks=i)
-            we = ws + timedelta(days=6)
-            buckets.append({
-                'label': f"S{ws.isocalendar()[1]}",
-                'start': ws,
-                'end': we,
-            })
     elif period == 'quarter':
-        base = today.replace(day=1)
-        for i in range(2, -1, -1):
-            ms = _shift_month(base, -i)
+        # 3 buckets mensuels — les 3 mois qui couvrent J-89 → aujourd'hui
+        start_approx = today - timedelta(days=89)
+        base = start_approx.replace(day=1)
+        for i in range(3):
+            ms = _shift_month(base, i)
             me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
             buckets.append({
                 'label': f"{MOIS_FR_SHORT[ms.month]} {ms.year}",
@@ -156,9 +149,11 @@ def _evol_time_buckets(period, today=None, custom_start=None, custom_end=None):
                 'end': me,
             })
     elif period == 'half':
-        base = today.replace(day=1)
-        for i in range(5, -1, -1):
-            ms = _shift_month(base, -i)
+        # 6 buckets mensuels — les 6 mois qui couvrent J-179 → aujourd'hui
+        start_approx = today - timedelta(days=179)
+        base = start_approx.replace(day=1)
+        for i in range(6):
+            ms = _shift_month(base, i)
             me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
             buckets.append({
                 'label': f"{MOIS_FR_SHORT[ms.month]} {str(ms.year)[2:]}",
@@ -166,21 +161,28 @@ def _evol_time_buckets(period, today=None, custom_start=None, custom_end=None):
                 'end': me,
             })
     elif period == 'year':
-        base = today.replace(day=1)
-        for i in range(11, -1, -1):
-            ms = _shift_month(base, -i)
+        # 12 buckets mensuels — les 12 mois qui couvrent J-364 → aujourd'hui
+        start_approx = today - timedelta(days=364)
+        base = start_approx.replace(day=1)
+        for i in range(12):
+            ms = _shift_month(base, i)
             me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
             buckets.append({
-                'label': MOIS_FR_SHORT[ms.month],
+                'label': f"{MOIS_FR_SHORT[ms.month]} {str(ms.year)[2:]}",
                 'start': ms,
                 'end': me,
             })
     else:
-        week_start = today - timedelta(days=today.weekday())
-        for i in range(6, -1, -1):
-            ws = week_start - timedelta(weeks=i)
-            we = ws + timedelta(days=6)
-            buckets.append({'label': f"S{ws.isocalendar()[1]}", 'start': ws, 'end': we})
+        # 'all' → 12 derniers mois glissants
+        base = _shift_month(today.replace(day=1), -11)
+        for i in range(12):
+            ms = _shift_month(base, i)
+            me = date(ms.year, ms.month, calendar.monthrange(ms.year, ms.month)[1])
+            buckets.append({
+                'label': f"{MOIS_FR_SHORT[ms.month]} {str(ms.year)[2:]}",
+                'start': ms,
+                'end': me,
+            })
 
     return buckets
 
