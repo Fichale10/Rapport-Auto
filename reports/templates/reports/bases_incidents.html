@@ -1,0 +1,316 @@
+{% extends 'base.html' %}
+{% load static report_extras %}
+
+{% block title %}Bases des Incidents — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / Bases des Incidents{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  .bi-banner {
+    background:linear-gradient(135deg,#003087 0%,#0047cc 100%);
+    border-radius:16px; padding:22px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:28px;
+  }
+  .bi-banner-left { display:flex; align-items:center; gap:14px; }
+  .bi-banner-icon { width:48px; height:48px; background:rgba(255,199,44,.18); border-radius:12px;
+    display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
+  .bi-banner-tag { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--yellow); }
+  .bi-banner-ttl { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
+  .bi-banner-sub { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+
+  .card { background:#fff; border-radius:16px; border:1px solid #e8edf5;
+    box-shadow:0 1px 4px rgba(0,48,135,.05); padding:22px 24px; margin-bottom:22px; }
+  .card-title { font-size:14px; font-weight:700; color:#003087;
+    display:flex; align-items:center; gap:8px; margin-bottom:18px;
+    padding-bottom:12px; border-bottom:1px solid #f0f4ff; }
+
+  .month-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+  .month-chip {
+    padding:10px 14px; border-radius:10px; border:2px solid #e8edf5;
+    font-size:13px; font-weight:600; color:#003087; cursor:pointer;
+    text-align:center; transition:all .15s; background:#f8faff;
+    user-select:none;
+  }
+  .month-chip:hover { border-color:#003087; background:#e8f0ff; }
+  .month-chip.active { border-color:#003087; background:#003087; color:#fff; }
+
+  .platform-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px;
+  }
+  .platform-card {
+    background:#f8faff; border-radius:12px; border:1.5px dashed #c8d8f0;
+    padding:16px 18px; transition:border-color .15s;
+  }
+  .platform-card:hover { border-color:#003087; }
+  .platform-card.has-file { border-style:solid; border-color:#003087; background:#e8f0ff; }
+  .platform-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+  .platform-icon { width:36px; height:36px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .platform-name { font-size:14px; font-weight:700; color:#003087; }
+  .platform-hint { font-size:11px; color:#999; margin-top:2px; }
+  .platform-badge { margin-left:auto; font-size:11px; font-weight:700;
+    padding:3px 10px; border-radius:20px; }
+  .badge-db  { background:#f0fdf4; color:#16a34a; }
+  .badge-file { background:#dbeafe; color:#1e40af; }
+  .badge-ok  { background:#003087; color:#fff; }
+
+  .file-input-wrap {
+    display:flex; align-items:center; gap:8px; margin-top:8px;
+  }
+  .file-label {
+    flex:1; padding:8px 14px; border-radius:8px; border:1px solid #d0d8e8;
+    background:#fff; font-size:12px; color:#666; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    transition:border-color .15s;
+  }
+  .file-label:hover { border-color:#003087; }
+  .file-clear {
+    width:28px; height:28px; border-radius:6px; border:none;
+    background:#fee2e2; color:#e53e3e; font-size:16px; cursor:pointer;
+    display:none; align-items:center; justify-content:center;
+    transition:background .15s;
+  }
+  .file-clear:hover { background:#fca5a5; }
+
+  .btn-export {
+    display:inline-flex; align-items:center; gap:10px;
+    padding:14px 32px; border-radius:12px;
+    background:linear-gradient(135deg,#003087,#0047cc);
+    color:#fff; font-size:15px; font-weight:700; border:none; cursor:pointer;
+    box-shadow:0 4px 16px rgba(0,48,135,.25); transition:all .18s;
+    text-decoration:none;
+  }
+  .btn-export:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,48,135,.35); }
+  .btn-export:active { transform:translateY(0); }
+  .btn-back {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:10px 18px; border-radius:10px; border:1.5px solid #e8edf5;
+    background:#fff; font-size:13px; font-weight:600; color:#666;
+    cursor:pointer; text-decoration:none; transition:all .15s;
+  }
+  .btn-back:hover { border-color:#003087; color:#003087; }
+
+  .info-box {
+    background:#f0f8ff; border:1px solid #bdd7f5; border-radius:12px;
+    padding:14px 18px; margin-bottom:20px;
+    font-size:13px; color:#1e3a6e; line-height:1.7;
+  }
+  .info-box strong { color:#003087; }
+
+  .spinner { display:none; }
+  .btn-export.loading .spinner { display:inline-block; }
+  .btn-export.loading .btn-text { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Banner -->
+<div class="bi-banner">
+  <div class="bi-banner-left">
+    <div class="bi-banner-icon">📋</div>
+    <div>
+      <div class="bi-banner-tag">Reporting</div>
+      <div class="bi-banner-ttl">Bases des Incidents</div>
+      <div class="bi-banner-sub">Générer le fichier consolidé multi-plateformes</div>
+    </div>
+  </div>
+  <a href="{% url 'reporting_platform' 'mobile-dr2' %}" class="btn-back">&#8592; Retour</a>
+</div>
+
+<!-- Info -->
+<div class="info-box">
+  <strong>Comment ça marche :</strong><br>
+  1. Choisissez le <strong>mois</strong> du rapport.<br>
+  2. Pour chaque plateforme, <strong>chargez le fichier brut</strong> du ticketing (optionnel) — sinon les données proviennent de la base de données.<br>
+  3. Cliquez <strong>"Générer le fichier"</strong> pour télécharger le fichier Excel consolidé avec les 6 onglets : Réseau Mobile, DR2, Réseau Fixe, Transport, IGW, Core.
+</div>
+
+<form method="post" action="{% url 'bases_incidents_export' %}" enctype="multipart/form-data" id="exportForm">
+  {% csrf_token %}
+  <input type="hidden" name="mois" id="moisInput" value="{{ mois_sel|date:'Y-m-d' }}">
+
+  <!-- Sélection du mois -->
+  <div class="card">
+    <div class="card-title">📅 Période du rapport</div>
+    <div class="month-grid">
+      {% for m in mois_list %}
+      <div class="month-chip {% if m == mois_sel %}active{% endif %}"
+           data-mois="{{ m|date:'Y-m-d' }}"
+           onclick="selectMois(this)">
+        {{ m|date:"M Y" }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Fichiers sources -->
+  <div class="card">
+    <div class="card-title">📁 Fichiers sources (optionnels)</div>
+    <div class="platform-grid">
+
+      <!-- Mobile -->
+      <div class="platform-card" id="card-mobile">
+        <div class="platform-header">
+          <div class="platform-icon" style="background:#e0f0ff">📡</div>
+          <div>
+            <div class="platform-name">Réseau Mobile</div>
+            <div class="platform-hint">RESEAU_MOBILE_*.xlsx</div>
+          </div>
+          <span class="platform-badge badge-db" id="badge-mobile">Base de données</span>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-label" id="label-mobile" for="file_mobile">
+            Choisir un fichier…
+          </label>
+          <button type="button" class="file-clear" id="clear-mobile" onclick="clearFile('mobile')">✕</button>
+        </div>
+        <input type="file" id="file_mobile" name="file_mobile" accept=".xlsx,.xls"
+               style="display:none" onchange="fileSelected('mobile', this)">
+      </div>
+
+      <!-- Fixe -->
+      <div class="platform-card" id="card-fixe">
+        <div class="platform-header">
+          <div class="platform-icon" style="background:#f0fdf4">☎️</div>
+          <div>
+            <div class="platform-name">Réseau Fixe</div>
+            <div class="platform-hint">RESEAU_FIXE_*.xlsx</div>
+          </div>
+          <span class="platform-badge badge-db" id="badge-fixe">Base de données</span>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-label" id="label-fixe" for="file_fixe">Choisir un fichier…</label>
+          <button type="button" class="file-clear" id="clear-fixe" onclick="clearFile('fixe')">✕</button>
+        </div>
+        <input type="file" id="file_fixe" name="file_fixe" accept=".xlsx,.xls"
+               style="display:none" onchange="fileSelected('fixe', this)">
+      </div>
+
+      <!-- Transport -->
+      <div class="platform-card" id="card-transport">
+        <div class="platform-header">
+          <div class="platform-icon" style="background:#fef3c7">🔗</div>
+          <div>
+            <div class="platform-name">Transport</div>
+            <div class="platform-hint">TRANSPORT_*.xlsx</div>
+          </div>
+          <span class="platform-badge badge-db" id="badge-transport">Base de données</span>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-label" id="label-transport" for="file_transport">Choisir un fichier…</label>
+          <button type="button" class="file-clear" id="clear-transport" onclick="clearFile('transport')">✕</button>
+        </div>
+        <input type="file" id="file_transport" name="file_transport" accept=".xlsx,.xls"
+               style="display:none" onchange="fileSelected('transport', this)">
+      </div>
+
+      <!-- IGW -->
+      <div class="platform-card" id="card-igw">
+        <div class="platform-header">
+          <div class="platform-icon" style="background:#fdf2f8">🔌</div>
+          <div>
+            <div class="platform-name">IGW</div>
+            <div class="platform-hint">IGW_*.xlsx</div>
+          </div>
+          <span class="platform-badge badge-db" id="badge-igw">Base de données</span>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-label" id="label-igw" for="file_igw">Choisir un fichier…</label>
+          <button type="button" class="file-clear" id="clear-igw" onclick="clearFile('igw')">✕</button>
+        </div>
+        <input type="file" id="file_igw" name="file_igw" accept=".xlsx,.xls"
+               style="display:none" onchange="fileSelected('igw', this)">
+      </div>
+
+      <!-- Core -->
+      <div class="platform-card" id="card-core">
+        <div class="platform-header">
+          <div class="platform-icon" style="background:#f5f0ff">🌐</div>
+          <div>
+            <div class="platform-name">Core</div>
+            <div class="platform-hint">CORE_*.xlsx</div>
+          </div>
+          <span class="platform-badge badge-db" id="badge-core">Base de données</span>
+        </div>
+        <div class="file-input-wrap">
+          <label class="file-label" id="label-core" for="file_core">Choisir un fichier…</label>
+          <button type="button" class="file-clear" id="clear-core" onclick="clearFile('core')">✕</button>
+        </div>
+        <input type="file" id="file_core" name="file_core" accept=".xlsx,.xls"
+               style="display:none" onchange="fileSelected('core', this)">
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bouton export -->
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <button type="submit" class="btn-export" id="exportBtn"
+            onclick="this.classList.add('loading');this.disabled=true">
+      <span class="spinner">⏳</span>
+      <span class="btn-text">📥 Générer le fichier Excel</span>
+    </button>
+    <span style="font-size:13px;color:#999">
+      Onglets générés : Réseau Mobile · DR2 · Réseau Fixe · Transport · IGW · Core
+    </span>
+  </div>
+
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectMois(el) {
+  document.querySelectorAll('.month-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('moisInput').value = el.dataset.mois;
+}
+
+function fileSelected(domain, input) {
+  const file = input.files[0];
+  const label = document.getElementById('label-' + domain);
+  const badge = document.getElementById('badge-' + domain);
+  const card  = document.getElementById('card-'  + domain);
+  const clear = document.getElementById('clear-' + domain);
+
+  if (file) {
+    label.textContent = file.name;
+    badge.textContent = 'Fichier chargé';
+    badge.className = 'platform-badge badge-ok';
+    card.classList.add('has-file');
+    clear.style.display = 'flex';
+    // Ouvrir le sélecteur via click sur le label désormais lié
+    label.setAttribute('for', 'file_' + domain);
+  }
+}
+
+function clearFile(domain) {
+  const input = document.getElementById('file_' + domain);
+  const label = document.getElementById('label-' + domain);
+  const badge = document.getElementById('badge-' + domain);
+  const card  = document.getElementById('card-'  + domain);
+  const clear = document.getElementById('clear-' + domain);
+
+  input.value = '';
+  label.textContent = 'Choisir un fichier…';
+  badge.textContent = 'Base de données';
+  badge.className = 'platform-badge badge-db';
+  card.classList.remove('has-file');
+  clear.style.display = 'none';
+}
+
+// Réactiver le bouton après téléchargement (si form re-soumis)
+document.getElementById('exportForm').addEventListener('submit', function() {
+  setTimeout(function() {
+    const btn = document.getElementById('exportBtn');
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }, 8000);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ cfg.label }} — Reporting — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / {{ cfg.label }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  /* Banner */
+  .plat-banner {
+    border-radius:16px; padding:22px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:28px;
+  }
+  .plat-banner-left { display:flex; align-items:center; gap:14px; }
+  .plat-banner-icon { width:52px; height:52px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0; }
+  .plat-banner-tag  { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
+  .plat-banner-ttl  { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
+  .plat-banner-sub  { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+  .plat-banner-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+
+  .btn-back {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:8px 16px; border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.85); font-size:13px; font-weight:600;
+    text-decoration:none; transition:all .15s;
+  }
+  .btn-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+
+  /* KPIs banner */
+  .kpi-band {
+    display:flex; gap:20px; flex-wrap:wrap;
+    background:rgba(255,255,255,.12); border-radius:12px;
+    padding:10px 20px; margin-top:4px;
+  }
+  .kpi-band-item { text-align:center; }
+  .kpi-band-val { font-family:'Bebas Neue',sans-serif; font-size:22px; color:#fff; line-height:1; }
+  .kpi-band-lbl { font-size:10px; color:rgba(255,255,255,.6); text-transform:uppercase; letter-spacing:.5px; }
+
+  /* Section titre */
+  .section-hdr {
+    display:flex; align-items:center; gap:10px;
+    margin:28px 0 16px; padding-bottom:12px;
+    border-bottom:2px solid #e8edf5;
+  }
+  .section-hdr-icon { font-size:20px; }
+  .section-hdr-ttl { font-size:15px; font-weight:800; color:#003087; }
+  .section-hdr-cnt { margin-left:auto; background:#f0f4ff; color:#003087;
+    font-size:11px; font-weight:700; padding:3px 12px; border-radius:20px; }
+
+  /* Grille rapports */
+  .reports-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+    gap:16px;
+    margin-bottom:8px;
+  }
+  @media(max-width:600px){ .reports-grid{ grid-template-columns:1fr; } }
+
+  /* Carte rapport */
+  .rpt-card {
+    background:#fff; border-radius:16px; border:1px solid #e8edf5;
+    box-shadow:0 1px 6px rgba(0,48,135,.06);
+    text-decoration:none; color:inherit;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+    transition:box-shadow .2s, transform .2s;
+    position:relative;
+  }
+  .rpt-card:hover { box-shadow:0 6px 24px rgba(0,48,135,.13); transform:translateY(-3px); }
+
+  .rpt-card-top { height:3px; }
+  .rpt-card-body { padding:20px 22px 16px; flex:1; }
+  .rpt-num {
+    display:inline-block; padding:3px 12px; border-radius:20px;
+    font-size:11px; font-weight:700; margin-bottom:10px;
+  }
+  .rpt-num.excel { background:#e8f0ff; color:#003087; }
+  .rpt-num.pptx  { background:#fff3e0; color:#c75a00; }
+
+  .rpt-title   { font-size:16px; font-weight:800; color:#1e3a6e; margin-bottom:4px; }
+  .rpt-subtitle { font-size:13px; font-weight:600; color:#003087; margin-bottom:8px; }
+  .rpt-desc    { font-size:12px; color:#888; line-height:1.5; }
+
+  .rpt-card-footer {
+    padding:12px 22px; border-top:1px solid #f0f4ff;
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:12px; font-weight:700; color:#003087;
+  }
+  .rpt-card-footer-icon { font-size:18px; }
+
+  /* Section import */
+  .import-card {
+    background:#fff; border-radius:16px; border:1px solid #e8edf5;
+    box-shadow:0 1px 6px rgba(0,48,135,.06);
+    padding:22px 24px;
+  }
+  .import-form-row {
+    display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;
+    margin-top:14px;
+  }
+  .import-file-wrap { flex:1; min-width:200px; }
+  .import-label { font-size:12px; font-weight:600; color:#666; margin-bottom:4px; display:block; }
+  .import-file-input {
+    width:100%; padding:9px 12px; border-radius:10px;
+    border:1.5px solid #d0d8e8; background:#f8faff;
+    font-size:13px; color:#333; cursor:pointer;
+    transition:border-color .15s;
+  }
+  .import-file-input:hover { border-color:#003087; }
+  .import-hint { font-size:11px; color:#aaa; margin-top:4px; }
+  .import-check { display:flex; align-items:center; gap:6px; font-size:12px; color:#666; padding:6px 0; }
+  .btn-import {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 22px; border-radius:10px;
+    background:#003087; color:#fff;
+    font-size:13px; font-weight:700; border:none; cursor:pointer;
+    white-space:nowrap; transition:all .15s;
+  }
+  .btn-import:hover { background:#0047cc; }
+
+  .msg-success { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px 16px; color:#16a34a; font-size:13px; margin-bottom:16px; }
+  .msg-warning { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px 16px; color:#d97706; font-size:13px; margin-bottom:16px; }
+  .msg-error   { background:#fff0f0; border:1px solid #fca5a5; border-radius:10px; padding:10px 16px; color:#dc2626; font-size:13px; margin-bottom:16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+{% for msg in messages %}
+<div class="msg-{% if msg.tags == 'success' %}success{% elif msg.tags == 'warning' %}warning{% else %}error{% endif %}">
+  {{ msg }}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Banner plateforme -->
+<div class="plat-banner" style="background:linear-gradient(135deg,{{ cfg.color }} 0%,{{ cfg.color2 }} 100%)">
+  <div class="plat-banner-left">
+    <div class="plat-banner-icon" style="background:rgba(255,255,255,.15)">{{ cfg.icon }}</div>
+    <div>
+      <div class="plat-banner-tag" style="color:var(--yellow)">Reporting</div>
+      <div class="plat-banner-ttl">{{ cfg.label }}</div>
+      {% if dernier_mois %}
+      <div class="kpi-band">
+        <div class="kpi-band-item">
+          <div class="kpi-band-val">{{ total }}</div>
+          <div class="kpi-band-lbl">Incidents</div>
+        </div>
+        <div class="kpi-band-item">
+          <div class="kpi-band-val">{{ outage_h }}h</div>
+          <div class="kpi-band-lbl">Outage</div>
+        </div>
+        <div class="kpi-band-item">
+          <div class="kpi-band-val">{{ dernier_mois|date:"M Y" }}</div>
+          <div class="kpi-band-lbl">Dernier mois</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="plat-banner-right">
+    <a href="{% url 'reporting' %}" class="btn-back">&#8592; Retour</a>
+  </div>
+</div>
+
+<!-- ── Rapports Excel ── -->
+{% if excel_reports %}
+<div class="section-hdr">
+  <span class="section-hdr-icon">📊</span>
+  <span class="section-hdr-ttl">Rapports Excel</span>
+  <span class="section-hdr-cnt">{{ excel_reports|length }} rapport{% if excel_reports|length > 1 %}s{% endif %}</span>
+</div>
+
+<div class="reports-grid">
+  {% for rpt in excel_reports %}
+  <a href="{{ rpt.url }}" class="rpt-card">
+    <div class="rpt-card-top" style="background:{{ cfg.color }}"></div>
+    <div class="rpt-card-body">
+      <div class="rpt-num excel">{{ rpt.title }}</div>
+      <div class="rpt-subtitle">{{ rpt.subtitle }}</div>
+      <div class="rpt-desc">{{ rpt.desc }}</div>
+    </div>
+    <div class="rpt-card-footer">
+      <span>Ouvrir le rapport</span>
+      <span class="rpt-card-footer-icon">›</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Rapports PowerPoint ── -->
+{% if pptx_reports %}
+<div class="section-hdr">
+  <span class="section-hdr-icon">🎯</span>
+  <span class="section-hdr-ttl">Rapports PowerPoint</span>
+  <span class="section-hdr-cnt">{{ pptx_reports|length }} rapport{% if pptx_reports|length > 1 %}s{% endif %}</span>
+</div>
+
+<div class="reports-grid">
+  {% for rpt in pptx_reports %}
+  <a href="{{ rpt.url }}" class="rpt-card">
+    <div class="rpt-card-top" style="background:#c75a00"></div>
+    <div class="rpt-card-body">
+      <div class="rpt-num pptx">{{ rpt.title }}</div>
+      <div class="rpt-subtitle">{{ rpt.subtitle }}</div>
+      <div class="rpt-desc">{{ rpt.desc }}</div>
+    </div>
+    <div class="rpt-card-footer">
+      <span>Télécharger (.pptx)</span>
+      <span class="rpt-card-footer-icon">⬇</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Import ── -->
+<div class="section-hdr">
+  <span class="section-hdr-icon">📂</span>
+  <span class="section-hdr-ttl">Import des données — {{ cfg.label }}</span>
+</div>
+
+<div class="import-card">
+  <p style="font-size:13px;color:#666;margin:0 0 4px">
+    Importez les données de la plateforme <strong>{{ cfg.label }}</strong> depuis un fichier Excel du ticketing ou depuis le fichier Bases des Incidents.
+  </p>
+
+  <form method="post" action="{% url 'reporting_platform_import' platform %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="import-form-row">
+      <div class="import-file-wrap">
+        <label class="import-label" for="incidents_file">Fichier Excel</label>
+        <input type="file" name="incidents_file" id="incidents_file"
+               accept="{{ cfg.import.accept }}" class="import-file-input" required>
+        <div class="import-hint">{{ cfg.import.hint }}</div>
+      </div>
+      <div>
+        <label class="import-check">
+          <input type="checkbox" name="clear_mois" value="1">
+          Remplacer les données existantes du même mois
+        </label>
+        <button type="submit" class="btn-import">📂 Importer</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

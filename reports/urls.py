@@ -16,11 +16,29 @@ urlpatterns = [
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
     path('sites-instables/',                      login_required(views.sites_instables), name='sites_instables'),
-    path('reporting/',                            login_required(views.reporting),         name='reporting'),
-    path('reporting/import/',                     login_required(views.reporting_import),  name='reporting_import'),
+
+    # ── Reporting ──────────────────────────────────────────────────────────────
+    path('reporting/',                            login_required(views.reporting),       name='reporting'),
+
+    # Outils globaux (avant le slug générique)
     path('reporting/dr2-daily/',                  login_required(views.dr2_daily_report),  name='dr2_daily'),
     path('reporting/dr2-daily/export/',           login_required(views.dr2_daily_export),  name='dr2_daily_export'),
-    path('reporting/<slug:network>/',             login_required(views.reporting_network), name='reporting_network'),
+    path('reporting/generate-pptx/',              login_required(views.generate_pptx_report), name='generate_pptx'),
+    path('reporting/bases-incidents/',            login_required(views.bases_incidents_view),   name='bases_incidents'),
+    path('reporting/bases-incidents/export/',     login_required(views.bases_incidents_export), name='bases_incidents_export'),
+
+    # Import global (rétro-compat)
+    path('reporting/import/',                     login_required(views.reporting_import), name='reporting_import'),
+
+    # ── Par plateforme (slug doit venir après les chemins fixes) ───────────────
+    path('reporting/<slug:platform>/import/',               login_required(views.reporting_platform_import),       name='reporting_platform_import'),
+    path('reporting/<slug:platform>/pptx/',                 login_required(views.generate_pptx_platform),         name='generate_pptx_platform'),
+    path('reporting/<slug:platform>/synthese/',             login_required(views.reporting_network),               name='reporting_network'),
+    path('reporting/<slug:platform>/bases-incidents/',      login_required(views.platform_bases_incidents),        name='platform_bases_incidents'),
+    path('reporting/<slug:platform>/bases-incidents/export/', login_required(views.platform_bases_incidents_export), name='platform_bases_incidents_export'),
+    path('reporting/<slug:platform>/',                      login_required(views.reporting_platform),              name='reporting_platform'),
+
+    # ── Autres ────────────────────────────────────────────────────────────────
     path('site-info/',                            login_required(views.site_info),       name='site_info'),
     path('site-info/search/',                     login_required(views.site_search_api), name='site_search_api'),
     path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),

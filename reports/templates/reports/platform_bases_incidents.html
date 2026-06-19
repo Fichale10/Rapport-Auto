@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Bases des Incidents — {{ cfg.label }} — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / {{ cfg.label }} / Bases des Incidents{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  .bi-banner {
+    border-radius:16px; padding:22px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:28px;
+  }
+  .bi-banner-left { display:flex; align-items:center; gap:14px; }
+  .bi-banner-icon { width:52px; height:52px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center; font-size:26px;
+    background:rgba(255,255,255,.15); flex-shrink:0; }
+  .bi-banner-tag  { font-size:10px; font-weight:700; letter-spacing:2px;
+    text-transform:uppercase; color:var(--yellow); }
+  .bi-banner-ttl  { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
+  .bi-banner-sub  { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+  .bi-banner-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+  .btn-back {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:8px 16px; border-radius:10px;
+    border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.85); font-size:13px; font-weight:600;
+    text-decoration:none; transition:all .15s;
+  }
+  .btn-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+
+  .card {
+    background:#fff; border-radius:16px; border:1px solid #e8edf5;
+    box-shadow:0 1px 4px rgba(0,48,135,.05); padding:22px 24px; margin-bottom:22px;
+  }
+  .card-title {
+    font-size:14px; font-weight:700; color:#003087;
+    display:flex; align-items:center; gap:8px; margin-bottom:16px;
+    padding-bottom:12px; border-bottom:1px solid #f0f4ff;
+  }
+
+  /* Sélecteur de mois */
+  .month-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px;
+  }
+  .month-chip {
+    padding:10px 14px; border-radius:10px; border:2px solid #e8edf5;
+    font-size:13px; font-weight:600; color:#003087; cursor:pointer;
+    text-align:center; transition:all .15s; background:#f8faff;
+    user-select:none;
+  }
+  .month-chip:hover { border-color:#003087; background:#e8f0ff; }
+  .month-chip.active { border-color:#003087; background:#003087; color:#fff; }
+  .no-months { font-size:13px; color:#aaa; font-style:italic; padding:8px 0; }
+
+  /* Upload fichier */
+  .upload-zone {
+    border:2px dashed #c8d8f0; border-radius:14px;
+    background:#f8faff; padding:28px 24px; text-align:center;
+    transition:border-color .15s; cursor:pointer; position:relative;
+  }
+  .upload-zone:hover { border-color:#003087; background:#eef4ff; }
+  .upload-zone.has-file { border-style:solid; border-color:#003087; background:#e8f0ff; }
+  .upload-zone input[type=file] {
+    position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%;
+  }
+  .upload-icon { font-size:32px; margin-bottom:8px; }
+  .upload-title { font-size:15px; font-weight:700; color:#003087; margin-bottom:4px; }
+  .upload-hint  { font-size:12px; color:#999; }
+  .upload-filename {
+    display:none; font-size:13px; font-weight:700; color:#003087;
+    background:rgba(0,48,135,.08); border-radius:8px;
+    padding:6px 14px; margin-top:10px; word-break:break-all;
+  }
+  .upload-filename.show { display:block; }
+
+  /* Onglets générés */
+  .sheets-list {
+    display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;
+  }
+  .sheet-chip {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 14px; border-radius:20px;
+    background:#e8f0ff; color:#003087;
+    font-size:12px; font-weight:700;
+  }
+
+  /* Info box */
+  .info-box {
+    background:#f0f8ff; border:1px solid #bdd7f5; border-radius:12px;
+    padding:14px 18px; margin-bottom:20px;
+    font-size:13px; color:#1e3a6e; line-height:1.7;
+  }
+  .info-box strong { color:#003087; }
+
+  /* Boutons */
+  .btn-export {
+    display:inline-flex; align-items:center; gap:10px;
+    padding:14px 32px; border-radius:12px;
+    background:linear-gradient(135deg,#003087,#0047cc);
+    color:#fff; font-size:15px; font-weight:700; border:none; cursor:pointer;
+    box-shadow:0 4px 16px rgba(0,48,135,.25); transition:all .18s;
+  }
+  .btn-export:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,48,135,.35); }
+  .btn-export:active { transform:translateY(0); }
+  .btn-export.loading .spinner { display:inline-block; }
+  .btn-export.loading .btn-text { display:none; }
+  .spinner { display:none; }
+
+  .msg-error { background:#fff0f0; border:1px solid #fca5a5; border-radius:10px; padding:10px 16px; color:#dc2626; font-size:13px; margin-bottom:16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+{% for msg in messages %}
+<div class="msg-error">{{ msg }}</div>
+{% endfor %}
+{% endif %}
+
+<!-- Banner plateforme -->
+<div class="bi-banner" style="background:linear-gradient(135deg,{{ cfg.color }} 0%,{{ cfg.color2 }} 100%)">
+  <div class="bi-banner-left">
+    <div class="bi-banner-icon">{{ cfg.icon }}</div>
+    <div>
+      <div class="bi-banner-tag">Bases des Incidents</div>
+      <div class="bi-banner-ttl">{{ cfg.label }}</div>
+      <div class="bi-banner-sub">Génération du fichier formaté depuis la source</div>
+    </div>
+  </div>
+  <div class="bi-banner-right">
+    <a href="{% url 'reporting_platform' platform %}" class="btn-back">&#8592; Retour</a>
+  </div>
+</div>
+
+<!-- Info -->
+<div class="info-box">
+  <strong>Comment ça marche :</strong><br>
+  1. Choisissez le <strong>mois de référence</strong> (pour nommer le fichier et filtrer la base de données si pas de fichier).<br>
+  2. <strong>Optionnel :</strong> chargez le fichier brut exporté depuis la source — toutes les lignes du fichier seront incluses sans filtre par mois.<br>
+  3. Cliquez <strong>"Générer et télécharger"</strong> pour obtenir le fichier Excel formaté.
+  {% if sheets %}
+  <br><br><strong>Onglet(s) générés :</strong>
+  <div class="sheets-list" style="margin-top:8px">
+    {% for sh in sheets %}
+    <span class="sheet-chip">📄 {{ sh }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<form method="post" action="{% url 'platform_bases_incidents_export' platform %}"
+      enctype="multipart/form-data" id="exportForm">
+  {% csrf_token %}
+  <input type="hidden" name="mois" id="moisInput"
+         value="{% if mois_sel %}{{ mois_sel|date:'Y-m-d' }}{% endif %}">
+
+  <!-- Mois -->
+  <div class="card">
+    <div class="card-title">📅 Mois de référence</div>
+    {% if mois_list %}
+    <div class="month-grid">
+      {% for m in mois_list %}
+      <div class="month-chip {% if m == mois_sel %}active{% endif %}"
+           data-mois="{{ m|date:'Y-m-d' }}"
+           onclick="selectMois(this)">
+        {{ m|date:"M Y" }}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-months">Aucun mois disponible en base de données. Chargez un fichier source pour générer le rapport.</p>
+    {% endif %}
+  </div>
+
+  <!-- Fichier source -->
+  <div class="card">
+    <div class="card-title">📁 Fichier source (optionnel)</div>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" name="source_file" id="sourceFile"
+             accept=".xlsx,.xls" onchange="fileChosen(this)">
+      <div class="upload-icon">📂</div>
+      <div class="upload-title">Glissez ou cliquez pour choisir</div>
+      <div class="upload-hint">{{ file_hint }} — Format Excel (.xlsx)</div>
+      <div class="upload-filename" id="uploadFilename"></div>
+    </div>
+    <p style="font-size:12px;color:#aaa;margin:10px 0 0">
+      Sans fichier, les données proviennent de la base de données pour le mois sélectionné.
+    </p>
+  </div>
+
+  <!-- Action -->
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <button type="submit" class="btn-export" id="exportBtn">
+      <span class="spinner" id="btnSpinner" style="display:none">⏳</span>
+      <span id="btnText">📥 Générer et télécharger</span>
+    </button>
+    {% if sheets %}
+    <span style="font-size:13px;color:#999">
+      Onglet{% if sheets|length > 1 %}s{% endif %} :
+      {% for sh in sheets %}{{ sh }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    </span>
+    {% endif %}
+  </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectMois(el) {
+  document.querySelectorAll('.month-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('moisInput').value = el.dataset.mois;
+}
+
+function fileChosen(input) {
+  const file = input.files[0];
+  const zone = document.getElementById('uploadZone');
+  const label = document.getElementById('uploadFilename');
+  if (file) {
+    zone.classList.add('has-file');
+    label.textContent = file.name;
+    label.classList.add('show');
+  } else {
+    zone.classList.remove('has-file');
+    label.classList.remove('show');
+  }
+}
+
+// Afficher l'état de chargement APRÈS que le navigateur a enregistré la soumission
+document.getElementById('exportForm').addEventListener('submit', function() {
+  const btn     = document.getElementById('exportBtn');
+  const spinner = document.getElementById('btnSpinner');
+  const txt     = document.getElementById('btnText');
+  spinner.style.display = 'inline';
+  txt.textContent = 'Génération en cours…';
+  btn.disabled = true;
+  // Réactiver après 15s (délai suffisant pour le téléchargement)
+  setTimeout(function() {
+    spinner.style.display = 'none';
+    txt.textContent = '📥 Générer et télécharger';
+    btn.disabled = false;
+  }, 15000);
+});
+</script>
+{% endblock %}

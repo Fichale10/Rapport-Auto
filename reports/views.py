@@ -2406,12 +2406,12 @@ def sites_instables(request):
     return render(request, 'reports/sites_instables.html')
 
 
+from .reporting_config import PLATFORMS as REPORTING_PLATFORMS
+
+# Alias de compatibilité (gardé pour _build_network_section, etc.)
 REPORTING_NETWORKS = {
-    'mobile-dr2':   {'label': 'Réseau Mobile & DR2', 'domains': ['mobile', 'dr2'], 'icon': '📡'},
-    'fixe':         {'label': 'Réseau Fixe',          'domains': ['fixe'],          'icon': '☎️'},
-    'transmission': {'label': 'Transmission',         'domains': ['transport'],     'icon': '🔗'},
-    'igw':          {'label': 'IGW',                  'domains': ['igw'],           'icon': '🔌'},
-    'core':         {'label': 'Core',                 'domains': ['core'],          'icon': '🌐'},
+    k: {'label': v['label'], 'domains': v['domains'], 'icon': v['icon']}
+    for k, v in REPORTING_PLATFORMS.items()
 }
 
 # Clé de groupement par domaine (colonne utilisée pour la synthèse)
@@ -2496,56 +2496,226 @@ def reporting_import(request):
 
 
 def reporting(request):
+    """Page d'accueil du reporting — liste des plateformes."""
     from .models import Incident
     from django.db.models import Count, Sum
 
-    # Mois disponibles (tous domaines confondus)
-    mois_list = (
-        Incident.objects.exclude(mois_rapport__isnull=True)
-        .values_list('mois_rapport', flat=True)
-        .distinct().order_by('-mois_rapport')
-    )
-    mois_list = list(dict.fromkeys(mois_list))  # dédoublonner
-
-    mois_sel_str = request.GET.get('mois', '')
-    mois_sel = None
-    if mois_sel_str:
-        try:
-            from datetime import datetime as _dt
-            mois_sel = _dt.strptime(mois_sel_str, '%Y-%m-%d').date()
-        except ValueError:
-            pass
-
-    networks_ctx = []
-    for key, meta in REPORTING_NETWORKS.items():
-        qs = Incident.objects.filter(domain__in=meta['domains'])
-        if mois_sel:
-            qs = qs.filter(mois_rapport=mois_sel)
-        # Mois le plus récent disponible pour ce domaine
+    platforms_ctx = []
+    for key, cfg in REPORTING_PLATFORMS.items():
+        qs = Incident.objects.filter(domain__in=cfg['domains'])
         dernier_mois = (
             qs.exclude(mois_rapport__isnull=True)
             .values_list('mois_rapport', flat=True)
             .order_by('-mois_rapport').first()
         )
-        agg = qs.aggregate(total=Count('id'), outage=Sum('duration_sec'))
-        open_cnt = qs.filter(status__iexact='OUVERT').count()
-        dr2_cnt = qs.filter(domain='dr2').count() if key == 'mobile-dr2' else None
-        networks_ctx.append({
+        agg = qs.filter(mois_rapport=dernier_mois).aggregate(
+            total=Count('id'), outage=Sum('duration_sec')
+        ) if dernier_mois else {'total': 0, 'outage': 0}
+
+        nb_excel = len(cfg.get('excel_reports', []))
+        nb_pptx  = len(cfg.get('pptx_reports', []))
+
+        platforms_ctx.append({
             'key':          key,
-            'label':        meta['label'],
-            'icon':         meta['icon'],
+            'label':        cfg['label'],
+            'icon':         cfg['icon'],
+            'color':        cfg['color'],
+            'color2':       cfg['color2'],
             'total':        agg['total'] or 0,
-            'open':         open_cnt,
             'outage_h':     round((agg['outage'] or 0) / 3600, 1),
             'dernier_mois': dernier_mois,
-            'dr2_count':    dr2_cnt,
+            'nb_excel':     nb_excel,
+            'nb_pptx':      nb_pptx,
         })
 
     return render(request, 'reports/reporting.html', {
-        'networks':  networks_ctx,
-        'mois_list': mois_list,
-        'mois_sel':  mois_sel,
+        'platforms': platforms_ctx,
     })
+
+
+def reporting_platform(request, platform):
+    """Page plateforme — liste des rapports Excel + PowerPoint + Import."""
+    from .models import Incident
+    from django.db.models import Count, Sum
+    from django.urls import reverse
+
+    cfg = REPORTING_PLATFORMS.get(platform)
+    if not cfg:
+        raise Http404('Plateforme inconnue')
+
+    # Stats du dernier mois disponible
+    qs = Incident.objects.filter(domain__in=cfg['domains'])
+    dernier_mois = (
+        qs.exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .order_by('-mois_rapport').first()
+    )
+    agg = qs.filter(mois_rapport=dernier_mois).aggregate(
+        total=Count('id'), outage=Sum('duration_sec')
+    ) if dernier_mois else {'total': 0, 'outage': 0}
+
+    # Construire les URLs des rapports
+    def _build_url(rep):
+        try:
+            return reverse(rep['url_name'], kwargs=rep.get('url_kwargs') or {})
+        except Exception:
+            return '#'
+
+    excel_reports = []
+    for rep in cfg.get('excel_reports', []):
+        excel_reports.append({**rep, 'url': _build_url(rep)})
+
+    pptx_reports = []
+    for rep in cfg.get('pptx_reports', []):
+        pptx_reports.append({**rep, 'url': _build_url(rep)})
+
+    return render(request, 'reports/reporting_platform.html', {
+        'platform':      platform,
+        'cfg':           cfg,
+        'excel_reports': excel_reports,
+        'pptx_reports':  pptx_reports,
+        'dernier_mois':  dernier_mois,
+        'total':         agg['total'] or 0,
+        'outage_h':      round((agg['outage'] or 0) / 3600, 1),
+    })
+
+
+def reporting_platform_import(request, platform):
+    """Import de données lié à une plateforme spécifique."""
+    from .reporting_config import PLATFORMS
+    from .models import Incident
+
+    cfg = PLATFORMS.get(platform)
+    if not cfg:
+        raise Http404('Plateforme inconnue')
+
+    if request.method != 'POST':
+        return redirect('reporting_platform', platform=platform)
+
+    uploaded = request.FILES.get('incidents_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('reporting_platform', platform=platform)
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('reporting_platform', platform=platform)
+
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    source = uploaded.name
+    clear_mois = request.POST.get('clear_mois') == '1'
+    total_created = 0
+    errors = []
+
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+        sheet_names = [s.lower() for s in wb.sheetnames]
+        wb.close()
+
+        # Détection automatique : fichier BASES DES INCIDENTS vs fichier brut
+        is_bases_format = any(s in sheet_names for s in ['reseau mobile ', 'dr2', 'reseau fixe', 'transport', 'igw', 'core'])
+
+        if is_bases_format:
+            # Parseurs existants (format BASES DES INCIDENTS)
+            from reports.management.commands.import_incidents import PARSERS
+            domains_to_import = cfg['import']['domains']
+            for domain in domains_to_import:
+                if domain not in PARSERS:
+                    continue
+                try:
+                    incidents = PARSERS[domain](tmp_path, source)
+                except Exception as e:
+                    errors.append(f'{domain}: {e}')
+                    continue
+                if not incidents:
+                    continue
+                mois = incidents[0].mois_rapport
+                if clear_mois and mois:
+                    Incident.objects.filter(domain=domain, mois_rapport=mois).delete()
+                Incident.objects.bulk_create(incidents, batch_size=500)
+                total_created += len(incidents)
+        else:
+            # Fichier brut ticketing (1 feuille, headers ligne 1)
+            from .bases_incidents import parse_raw_mobile, _parse_generic_raw, _parse_dur_str, _parse_dt, _clean, _fmt_dur
+            from reports.management.commands.import_incidents import _rows_to_incidents
+            import pandas as pd
+
+            domain = cfg['import']['domains'][0]
+
+            if domain == 'mobile':
+                rows = parse_raw_mobile(tmp_path, mois_filter=None)
+                from django.utils import timezone as _tz
+
+                def _to_aware(dt):
+                    if dt is None:
+                        return None
+                    try:
+                        return _tz.make_aware(dt, _tz.get_current_timezone())
+                    except Exception:
+                        return dt
+
+                from reports.models import Incident as _Inc
+                from datetime import date as _d
+                incidents = []
+                for r in rows:
+                    at  = r.get('alarm_time')
+                    ct  = r.get('cancel_time')
+                    mois = _d(at.year, at.month, 1) if at else None
+                    incidents.append(_Inc(
+                        domain='mobile', mois_rapport=mois, source_file=source,
+                        alarm_time=_to_aware(at), cancel_time=_to_aware(ct),
+                        duration_sec=r.get('duration_sec'),
+                        numero_ticket=r.get('numero_ticket', ''),
+                        nature=r.get('nature', ''),
+                        site_parent=r.get('site_parent', ''),
+                        site_name=r.get('site_name', ''),
+                        site_id=r.get('site_id', ''),
+                        region=r.get('region', ''),
+                        base=r.get('base', ''),
+                        impact_equipement=r.get('impact_equipement', ''),
+                        impact_service=r.get('impact_service', ''),
+                        plateforme=r.get('plateforme', ''),
+                        technologies=r.get('technologies', ''),
+                        escalade=r.get('escalade', ''),
+                        cause=r.get('cause', ''),
+                        root_cause=r.get('root_cause', ''),
+                        action=r.get('action', ''),
+                        technicien_informe=r.get('technicien_informe', ''),
+                        technicien_maint=r.get('technicien_maint', ''),
+                        point_bloquant=r.get('point_bloquant', ''),
+                        observation=r.get('observation', ''),
+                        status=r.get('status', ''),
+                    ))
+                if incidents:
+                    mois_val = incidents[0].mois_rapport
+                    if clear_mois and mois_val:
+                        Incident.objects.filter(domain='mobile', mois_rapport=mois_val).delete()
+                    Incident.objects.bulk_create(incidents, batch_size=500, ignore_conflicts=False)
+                    total_created = len(incidents)
+            else:
+                errors.append(f'Import brut non supporté pour la plateforme « {platform} » — utilisez le format Bases des Incidents.')
+    finally:
+        os.unlink(tmp_path)
+
+    if errors:
+        messages.warning(request, f'{total_created} incidents importés. Erreurs : ' + ' | '.join(errors))
+    else:
+        messages.success(request, f'{total_created} incidents importés depuis « {source} ».')
+
+    return redirect('reporting_platform', platform=platform)
+
+
+def generate_pptx_platform(request, platform):
+    """Génère le rapport PowerPoint pour une plateforme (redirige vers generate_pptx_report)."""
+    from django.urls import reverse
+    return redirect(reverse('generate_pptx') + f'?platform={platform}')
 
 
 DR2_REGION_TARGETS = {
@@ -2939,11 +3109,11 @@ def _build_network_section(domain_filter, mois_sel=None):
     }
 
 
-def reporting_network(request, network):
+def reporting_network(request, platform):
     from .models import Incident
     from django.db.models import Count, Sum
 
-    meta = REPORTING_NETWORKS.get(network)
+    meta = REPORTING_NETWORKS.get(platform)
     if not meta:
         raise Http404('Réseau de reporting inconnu')
 
@@ -2960,11 +3130,12 @@ def reporting_network(request, network):
             pass
 
     # ── Cas spécial : mobile-dr2 → deux sections indépendantes ───────────────
-    if network == 'mobile-dr2':
+    if platform == 'mobile-dr2':
         mobile_data = _build_network_section({'domain': 'mobile'}, mois_sel)
         dr2_data    = _build_network_section({'domain': 'dr2'}, mois_sel)
         return render(request, 'reports/reporting_network.html', {
-            'network':        network,
+            'network':        platform,
+            'platform':       platform,
             'network_label':  meta['label'],
             'network_icon':   meta['icon'],
             'is_mobile_dr2':  True,
@@ -2975,7 +3146,8 @@ def reporting_network(request, network):
     # ── Cas standard : un seul domaine ───────────────────────────────────────
     section_std = _build_network_section({'domain__in': domains}, mois_sel)
     return render(request, 'reports/reporting_network.html', {
-        'network':       network,
+        'network':       platform,
+        'platform':      platform,
         'network_label': meta['label'],
         'network_icon':  meta['icon'],
         'mois_list':     section_std['mois_list'],
@@ -3111,4 +3283,287 @@ def audit_view(request):
 
         return redirect('audit')
 
-    return render(request, 'reports/audit.html')
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Génération du rapport PowerPoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+def generate_pptx_report(request):
+    """Génère et télécharge le rapport PowerPoint Comité GDI."""
+    from datetime import date
+    from django.http import HttpResponse
+    from .pptx_report import generate_report
+
+    # Récupère le mois demandé (GET ?mois=2026-05-01)
+    mois_str = request.GET.get('mois', '')
+    mois = None
+    if mois_str:
+        try:
+            mois = date.fromisoformat(mois_str)
+        except ValueError:
+            pass
+
+    # Si pas de mois fourni, cherche le plus récent disponible pour mobile
+    if not mois:
+        from .models import Incident
+        mois = (
+            Incident.objects.filter(domain='mobile')
+            .exclude(mois_rapport__isnull=True)
+            .order_by('-mois_rapport')
+            .values_list('mois_rapport', flat=True)
+            .first()
+        )
+
+    generated_on = date.today().strftime('%d/%m/%Y')
+
+    buf = generate_report(
+        mois_mobile=mois,
+        mois_fixe=mois,
+        mois_transport=mois,
+        mois_igw=mois,
+        mois_core=mois,
+        generated_on=generated_on,
+    )
+
+    label = mois.strftime('%Y-%m') if mois else 'rapport'
+    filename = f'GDI_{label}.pptx'
+
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bases des Incidents — export multi-onglets
+# ─────────────────────────────────────────────────────────────────────────────
+
+def bases_incidents_view(request):
+    """Page de génération du fichier Bases des Incidents."""
+    from datetime import date
+    from .models import Incident
+
+    mois_list = list(dict.fromkeys(
+        Incident.objects.exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .distinct().order_by('-mois_rapport')
+    ))
+
+    mois_sel_str = request.GET.get('mois', '')
+    mois_sel = None
+    if mois_sel_str:
+        try:
+            mois_sel = date.fromisoformat(mois_sel_str)
+        except ValueError:
+            pass
+    if not mois_sel and mois_list:
+        mois_sel = mois_list[0]
+
+    return render(request, 'reports/bases_incidents.html', {
+        'mois_list': mois_list,
+        'mois_sel': mois_sel,
+    })
+
+
+def bases_incidents_export(request):
+    """Génère et télécharge le fichier Bases des Incidents."""
+    from datetime import date
+    from django.http import HttpResponse
+    from .bases_incidents import generate_bases_incidents
+
+    if request.method == 'POST':
+        mois_str = request.POST.get('mois', '')
+    else:
+        mois_str = request.GET.get('mois', '')
+
+    mois = None
+    if mois_str:
+        try:
+            mois = date.fromisoformat(mois_str)
+        except ValueError:
+            pass
+
+    if not mois:
+        from .models import Incident
+        mois = (
+            Incident.objects.exclude(mois_rapport__isnull=True)
+            .order_by('-mois_rapport')
+            .values_list('mois_rapport', flat=True)
+            .first()
+        )
+        if not mois:
+            return HttpResponse('Aucune donnée disponible.', status=400)
+
+    # Fichiers uploadés (optionnels)
+    import tempfile, os
+
+    def _save_tmp(f):
+        if not f:
+            return None
+        ext = f.name.rsplit('.', 1)[-1].lower()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
+        for chunk in f.chunks():
+            tmp.write(chunk)
+        tmp.close()
+        return tmp.name
+
+    files = {}
+    tmp_paths = []
+    for domain in ('mobile', 'fixe', 'transport', 'igw', 'core'):
+        f = request.FILES.get(f'file_{domain}')
+        path = _save_tmp(f)
+        files[domain] = path
+        if path:
+            tmp_paths.append(path)
+
+    try:
+        buf, nb_mobile, nb_dr2 = generate_bases_incidents(
+            mois=mois,
+            mobile_file=files.get('mobile'),
+            fixe_file=files.get('fixe'),
+            transport_file=files.get('transport'),
+            igw_file=files.get('igw'),
+            core_file=files.get('core'),
+        )
+    finally:
+        for p in tmp_paths:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+    from calendar import month_name
+    _MOIS_FR = {
+        1: 'JANVIER', 2: 'FEVRIER', 3: 'MARS', 4: 'AVRIL',
+        5: 'MAI', 6: 'JUIN', 7: 'JUILLET', 8: 'AOUT',
+        9: 'SEPTEMBRE', 10: 'OCTOBRE', 11: 'NOVEMBRE', 12: 'DECEMBRE',
+    }
+    label = f'{_MOIS_FR.get(mois.month, str(mois.month))}_{mois.year}'
+    filename = f'BASES_INCIDENTS_{label}.xlsx'
+
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bases des Incidents — par plateforme
+# ─────────────────────────────────────────────────────────────────────────────
+
+def platform_bases_incidents(request, platform):
+    """Page de génération Bases des Incidents pour une plateforme donnée."""
+    from datetime import date as date_
+    from .reporting_config import PLATFORMS as REPORTING_PLATFORMS
+    from .models import Incident
+
+    cfg = REPORTING_PLATFORMS.get(platform)
+    if not cfg:
+        raise Http404
+
+    # Domaines DB à interroger (dr2 n'est pas stocké séparément, dérivé de mobile)
+    domains = [d for d in cfg.get('domains', []) if d != 'dr2']
+    if not domains:
+        domains = ['mobile']
+
+    mois_list = list(dict.fromkeys(
+        Incident.objects.filter(domain__in=domains)
+        .exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .distinct().order_by('-mois_rapport')
+    ))
+
+    mois_sel = mois_list[0] if mois_list else date_.today().replace(day=1)
+
+    SHEETS_INFO = {
+        'mobile-dr2':  {'sheets': ['Réseau Mobile', 'DR2'], 'hint': 'RESEAU_MOBILE_*.xlsx'},
+        'fixe':        {'sheets': ['Réseau Fixe'],           'hint': 'RESEAU_FIXE_*.xlsx'},
+        'transmission': {'sheets': ['Transport'],            'hint': 'TRANSPORT_*.xlsx'},
+        'igw':         {'sheets': ['IGW'],                   'hint': 'IGW_*.xlsx'},
+        'core':        {'sheets': ['Core'],                  'hint': 'CORE_*.xlsx'},
+    }
+    info = SHEETS_INFO.get(platform, {'sheets': [], 'hint': '*.xlsx'})
+
+    return render(request, 'reports/platform_bases_incidents.html', {
+        'platform': platform,
+        'cfg': cfg,
+        'mois_list': mois_list,
+        'mois_sel': mois_sel,
+        'sheets': info['sheets'],
+        'file_hint': info['hint'],
+    })
+
+
+def platform_bases_incidents_export(request, platform):
+    """Génère et télécharge les Bases des Incidents pour une plateforme."""
+    from datetime import date as date_
+    import tempfile, os
+    from django.http import HttpResponse
+    from .reporting_config import PLATFORMS as REPORTING_PLATFORMS
+    from .bases_incidents import generate_platform_bases_incidents, _MOIS_FR
+
+    if request.method != 'POST':
+        return redirect('platform_bases_incidents', platform=platform)
+
+    cfg = REPORTING_PLATFORMS.get(platform)
+    if not cfg:
+        raise Http404
+
+    # Mois sélectionné
+    mois_str = request.POST.get('mois', '')
+    try:
+        mois = date_.fromisoformat(mois_str).replace(day=1)
+    except Exception:
+        from .models import Incident
+        domains = [d for d in cfg.get('domains', []) if d != 'dr2'] or ['mobile']
+        mois = (
+            Incident.objects.filter(domain__in=domains)
+            .exclude(mois_rapport__isnull=True)
+            .order_by('-mois_rapport')
+            .values_list('mois_rapport', flat=True)
+            .first()
+        ) or date_.today().replace(day=1)
+
+    # Fichier source uploadé (optionnel)
+    source_file = None
+    tmp_path = None
+    uploaded = request.FILES.get('source_file')
+    if uploaded:
+        ext = uploaded.name.rsplit('.', 1)[-1].lower()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp.close()
+        tmp_path = tmp.name
+        source_file = tmp_path
+
+    try:
+        buf, nb = generate_platform_bases_incidents(platform, mois, source_file)
+    except Exception as e:
+        messages.error(request, f'Erreur lors de la génération : {e}')
+        return redirect('platform_bases_incidents', platform=platform)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+    if buf is None:
+        messages.error(request, 'Plateforme non reconnue.')
+        return redirect('platform_bases_incidents', platform=platform)
+
+    label = f'{_MOIS_FR.get(mois.month, str(mois.month))}_{mois.year}'
+    plat_slug = platform.upper().replace('-', '_')
+    filename = f'BASES_INCIDENTS_{plat_slug}_{label}.xlsx'
+
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
