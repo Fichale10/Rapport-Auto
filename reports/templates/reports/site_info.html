@@ -182,6 +182,8 @@
   .stats-bar { display:flex; gap:20px; flex-wrap:wrap; margin-top:12px; }
   .stat-chip { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); border-radius:8px; padding:6px 14px; font-size:12px; color:rgba(255,255,255,.75); }
   .stat-chip strong { color:#fff; }
+  .stat-chip-export { background:rgba(255,199,44,.18); border-color:rgba(255,199,44,.4); color:#FFC72C; font-weight:700; text-decoration:none; cursor:pointer; transition:background .15s; }
+  .stat-chip-export:hover { background:rgba(255,199,44,.32); color:#fff; }
 </style>
 {% endblock %}
 
@@ -212,6 +214,7 @@
     <div class="stat-chip"><strong>1 213</strong> sites</div>
     <div class="stat-chip"><strong>6</strong> régions</div>
     <div class="stat-chip">Togo — Réseau YAS</div>
+    <a href="{% url 'sites_export_excel' %}" class="stat-chip stat-chip-export">⬇ Exporter Excel</a>
   </div>
 </div>
 

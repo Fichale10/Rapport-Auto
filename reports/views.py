@@ -3197,6 +3197,92 @@ def site_search_api(request):
     return JsonResponse(hits, safe=False)
 
 
+def sites_export_excel(request):
+    """Export de tous les sites en fichier Excel."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+    from .models import Site
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sites"
+
+    COLS = [
+        ('site_name',            'Nom du site'),
+        ('site_id',              'ID Site'),
+        ('region',               'Région'),
+        ('zone',                 'Zone'),
+        ('base',                 'Base'),
+        ('olt',                  'OLT'),
+        ('longitude',            'Longitude'),
+        ('latitude',             'Latitude'),
+        ('date_mes',             'Date MES'),
+        ('config',               'Configuration'),
+        ('techno',               'Technologie'),
+        ('typ_trans',            'Type Transport'),
+        ('typ_energie',          'Type Énergie'),
+        ('ge_auto',              'GE Auto'),
+        ('site_lithium',         'Site Lithium'),
+        ('site_esm',             'Site ESM'),
+        ('site_solaire_neteco',  'Solaire/Neteco'),
+        ('config_2g',            'Config 2G'),
+        ('config_3g',            'Config 3G'),
+        ('config_4g',            'Config 4G'),
+        ('classif_tech',         'Classif. Tech'),
+        ('type_site',            'Type Site'),
+        ('hauteur_pylone',       'Hauteur Pylône'),
+        ('typologie_pylone',     'Typo. Pylône'),
+        ('numero_agent',         'N° Agent'),
+        ('societe_gardiens',     'Société Gardiens'),
+        ('contacts_surveillants','Contacts Surv.'),
+        ('typologie_avant',      'Typo. Avant'),
+        ('typologie_apres',      'Typo. Après'),
+    ]
+
+    header_fill  = PatternFill('solid', fgColor='003087')
+    header_font  = Font(bold=True, color='FFFFFF', size=11)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    thin_side    = Side(style='thin', color='D0D8E8')
+    thin_border  = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    alt_fill     = PatternFill('solid', fgColor='F0F4FF')
+
+    # En-têtes
+    ws.row_dimensions[1].height = 32
+    for col_idx, (_, label) in enumerate(COLS, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font   = header_font
+        cell.fill   = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    # Données
+    for row_idx, site in enumerate(Site.objects.all().order_by('site_name'), start=2):
+        fill = alt_fill if row_idx % 2 == 0 else None
+        for col_idx, (field, _) in enumerate(COLS, start=1):
+            val  = getattr(site, field, '')
+            cell = ws.cell(row=row_idx, column=col_idx, value=val if val not in (None, '') else '')
+            cell.alignment = Alignment(vertical='center')
+            cell.border = thin_border
+            if fill:
+                cell.fill = fill
+
+    # Largeurs colonnes
+    col_widths = [28, 14, 16, 14, 14, 10, 12, 12, 14, 18, 14, 16, 16,
+                  10, 12, 10, 14, 18, 18, 24, 14, 12, 14, 16, 14, 20, 20, 16, 16]
+    for i, width in enumerate(col_widths, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
+
+    ws.freeze_panes = 'A2'
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="sites_YAS.xlsx"'
+    wb.save(response)
+    return response
+
+
 # ── Import API manuel ─────────────────────────────────────────────────────────
 
 def api_import_view(request):
