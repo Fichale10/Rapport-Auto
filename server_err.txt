@@ -126,3 +126,4 @@ C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\treatement.py:41
   df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
 [INFO] reports.api_import: Rapport créé : API_MOBILE_2026-06-23_2026-06-23 (id=3f3df806-8124-45fb-b89b-63f2a47ff14e, 21 incidents)
 [INFO] reports.scheduler: auto_api_import : 1 créé(s), 0 ignoré(s), 0 erreur(s)
+C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\reports\reporting_config.py changed, reloading.
