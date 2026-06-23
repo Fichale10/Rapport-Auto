@@ -49,6 +49,7 @@ urlpatterns = [
     path('site-info/',                            login_required(views.site_info),          name='site_info'),
     path('site-info/search/',                     login_required(views.site_search_api),    name='site_search_api'),
     path('site-info/export/',                     login_required(views.sites_export_excel), name='sites_export_excel'),
+    path('site-info/import/',                     login_required(views.sites_import_excel), name='sites_import_excel'),
     path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),
     path('api-import/',                           login_required(views.api_import_view),     name='api_import'),
     path('audit/',                                login_required(views.audit_view),          name='audit'),

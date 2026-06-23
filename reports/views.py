@@ -3198,7 +3198,10 @@ def site_search_api(request):
 
 
 def sites_export_excel(request):
-    """Export de tous les sites en fichier Excel."""
+    """Export de tous les sites en fichier Excel (admin uniquement)."""
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
@@ -3281,6 +3284,133 @@ def sites_export_excel(request):
     response['Content-Disposition'] = 'attachment; filename="sites_YAS.xlsx"'
     wb.save(response)
     return response
+
+
+def sites_import_excel(request):
+    """Import des sites depuis un fichier Excel (admin uniquement)."""
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+
+    if request.method != 'POST':
+        return redirect('site_info')
+
+    f = request.FILES.get('sites_file')
+    if not f:
+        messages.error(request, "Aucun fichier sélectionné.")
+        return redirect('site_info')
+
+    import openpyxl
+    from .models import Site
+
+    try:
+        wb = openpyxl.load_workbook(f, data_only=True)
+        ws = wb.active
+
+        # Lire les en-têtes (ligne 1) pour mapper les colonnes
+        headers = [str(cell.value).strip().lower() if cell.value else '' for cell in ws[1]]
+
+        FIELD_MAP = {
+            'nom du site':          'site_name',
+            'site_name':            'site_name',
+            'id site':              'site_id',
+            'site_id':              'site_id',
+            'région':               'region',
+            'region':               'region',
+            'zone':                 'zone',
+            'base':                 'base',
+            'olt':                  'olt',
+            'longitude':            'longitude',
+            'latitude':             'latitude',
+            'date mes':             'date_mes',
+            'date_mes':             'date_mes',
+            'configuration':        'config',
+            'config':               'config',
+            'technologie':          'techno',
+            'techno':               'techno',
+            'type transport':       'typ_trans',
+            'typ_trans':            'typ_trans',
+            "type énergie":         'typ_energie',
+            'typ_energie':          'typ_energie',
+            'ge auto':              'ge_auto',
+            'ge_auto':              'ge_auto',
+            'site lithium':         'site_lithium',
+            'site_lithium':         'site_lithium',
+            'site esm':             'site_esm',
+            'site_esm':             'site_esm',
+            'solaire/neteco':       'site_solaire_neteco',
+            'site_solaire_neteco':  'site_solaire_neteco',
+            'config 2g':            'config_2g',
+            'config_2g':            'config_2g',
+            'config 3g':            'config_3g',
+            'config_3g':            'config_3g',
+            'config 4g':            'config_4g',
+            'config_4g':            'config_4g',
+            'classif. tech':        'classif_tech',
+            'classif_tech':         'classif_tech',
+            'type site':            'type_site',
+            'type_site':            'type_site',
+            'hauteur pylône':       'hauteur_pylone',
+            'hauteur_pylone':       'hauteur_pylone',
+            'typo. pylône':         'typologie_pylone',
+            'typologie_pylone':     'typologie_pylone',
+            'n° agent':             'numero_agent',
+            'numero_agent':         'numero_agent',
+            'société gardiens':     'societe_gardiens',
+            'societe_gardiens':     'societe_gardiens',
+            'contacts surv.':       'contacts_surveillants',
+            'contacts_surveillants':'contacts_surveillants',
+            'typo. avant':          'typologie_avant',
+            'typologie_avant':      'typologie_avant',
+            'typo. après':          'typologie_apres',
+            'typologie_apres':      'typologie_apres',
+        }
+
+        col_map = {}
+        for idx, h in enumerate(headers):
+            field = FIELD_MAP.get(h)
+            if field:
+                col_map[idx] = field
+
+        if 'site_name' not in col_map.values():
+            messages.error(request, "Colonne 'Nom du site' introuvable dans le fichier.")
+            return redirect('site_info')
+
+        created = updated = skipped = 0
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            data = {}
+            for idx, field in col_map.items():
+                val = row[idx] if idx < len(row) else None
+                data[field] = val if val is not None else ''
+
+            site_name = str(data.get('site_name', '')).strip()
+            if not site_name:
+                skipped += 1
+                continue
+
+            # Nettoyer longitude/latitude
+            for fld in ('longitude', 'latitude'):
+                if fld in data:
+                    try:
+                        data[fld] = float(data[fld]) if data[fld] not in ('', None) else None
+                    except (ValueError, TypeError):
+                        data[fld] = None
+
+            obj, is_new = Site.objects.update_or_create(
+                site_name=site_name,
+                defaults={k: v for k, v in data.items() if k != 'site_name'},
+            )
+            if is_new:
+                created += 1
+            else:
+                updated += 1
+
+        messages.success(request, f"Import terminé — {created} créés, {updated} mis à jour, {skipped} ignorés.")
+
+    except Exception as e:
+        messages.error(request, f"Erreur lors de l'import : {e}")
+
+    return redirect('site_info')
 
 
 # ── Import API manuel ─────────────────────────────────────────────────────────

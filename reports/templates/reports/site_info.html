@@ -184,6 +184,8 @@
   .stat-chip strong { color:#fff; }
   .stat-chip-export { background:rgba(255,199,44,.18); border-color:rgba(255,199,44,.4); color:#FFC72C; font-weight:700; text-decoration:none; cursor:pointer; transition:background .15s; }
   .stat-chip-export:hover { background:rgba(255,199,44,.32); color:#fff; }
+  .stat-chip-import { background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.4); color:#fff; font-weight:700; cursor:pointer; transition:background .15s; font-family:inherit; }
+  .stat-chip-import:hover { background:rgba(255,255,255,.3); }
 </style>
 {% endblock %}
 
@@ -214,9 +216,38 @@
     <div class="stat-chip"><strong>1 213</strong> sites</div>
     <div class="stat-chip"><strong>6</strong> régions</div>
     <div class="stat-chip">Togo — Réseau YAS</div>
+    {% if request.user.is_staff %}
     <a href="{% url 'sites_export_excel' %}" class="stat-chip stat-chip-export">⬇ Exporter Excel</a>
+    <button type="button" class="stat-chip stat-chip-import" onclick="document.getElementById('importModal').style.display='flex'">↑ Importer Excel</button>
+    {% endif %}
   </div>
 </div>
+
+{% if request.user.is_staff %}
+<!-- Modal import sites -->
+<div id="importModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:999; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:20px; padding:32px; max-width:480px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,.3); position:relative;">
+    <button onclick="document.getElementById('importModal').style.display='none'"
+            style="position:absolute; top:14px; right:16px; background:none; border:none; font-size:20px; cursor:pointer; color:#999;">✕</button>
+    <div style="font-size:11px; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#FFC72C; margin-bottom:8px;">Admin</div>
+    <div style="font-family:'Bebas Neue',sans-serif; font-size:28px; color:#003087; margin-bottom:6px; letter-spacing:1px;">Importer les sites</div>
+    <div style="font-size:13px; color:#888; margin-bottom:22px;">Fichier Excel avec une ligne d'en-tête. Les sites existants (même nom) seront mis à jour.</div>
+    <form method="post" action="{% url 'sites_import_excel' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <label style="font-size:11px; font-weight:700; color:#8896b3; text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:6px;">Fichier Excel</label>
+      <input type="file" name="sites_file" accept=".xlsx,.xls" required
+             style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid #d0d8e8; background:#f8faff; font-size:13px; margin-bottom:8px; box-sizing:border-box;">
+      <div style="font-size:11px; color:#bbb; margin-bottom:20px;">Colonnes acceptées : Nom du site, Région, Zone, Longitude, Latitude, Techno…</div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <button type="button" onclick="document.getElementById('importModal').style.display='none'"
+                style="padding:10px 20px; border-radius:10px; border:1.5px solid #d0d8e8; background:#fff; font-size:13px; font-weight:600; cursor:pointer; color:#555;">Annuler</button>
+        <button type="submit"
+                style="padding:10px 24px; border-radius:10px; background:linear-gradient(135deg,#003087,#0047cc); color:#fff; font-size:13px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 12px rgba(0,48,135,.3);">↑ Importer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <!-- ── Résultats ── -->
 
