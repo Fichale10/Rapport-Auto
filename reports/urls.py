@@ -30,6 +30,13 @@ urlpatterns = [
     # Import global (rétro-compat)
     path('reporting/import/',                     login_required(views.reporting_import), name='reporting_import'),
 
+    # ── Outils interactifs (avant le slug générique) ──────────────────────────
+    path('reporting/igw/rapport-noc-core/',          login_required(views.igw_rapport_noc),          name='igw_rapport_noc'),
+    path('reporting/igw/trafic-international/',      login_required(views.igw_trafic_international),  name='igw_trafic_international'),
+    path('reporting/transmission/rapport-noc/',      login_required(views.transport_rapport_noc),     name='transport_rapport_noc'),
+    path('reporting/transmission/rapport-dco-fo/',   login_required(views.transport_rapport_fo),      name='transport_rapport_fo'),
+    path('reporting/fixe/rapport-ftth/',             login_required(views.fixe_rapport_ftth),         name='fixe_rapport_ftth'),
+
     # ── Par plateforme (slug doit venir après les chemins fixes) ───────────────
     path('reporting/<slug:platform>/import/',               login_required(views.reporting_platform_import),       name='reporting_platform_import'),
     path('reporting/<slug:platform>/pptx/',                 login_required(views.generate_pptx_platform),         name='generate_pptx_platform'),

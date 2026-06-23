@@ -67,6 +67,18 @@ PLATFORMS = {
         'color':   '#059669',
         'color2':  '#10b981',
         'domains': ['fixe'],
+        'tool_reports': [
+            {
+                'num':      1,
+                'title':    'Outil 1',
+                'subtitle': 'Rapport Hebdo DCO — FTTH',
+                'desc':     'Carte choroplèthe du Togo avec incidents FTTH par région et export PPTX',
+                'url_name': 'fixe_rapport_ftth',
+                'url_kwargs': {},
+                'icon':     '🗺️',
+                'badge':    'Interactif',
+            },
+        ],
         'excel_reports': [
             {
                 'num':      1,
@@ -114,6 +126,28 @@ PLATFORMS = {
         'color':   '#d97706',
         'color2':  '#f59e0b',
         'domains': ['transport'],
+        'tool_reports': [
+            {
+                'num':      1,
+                'title':    'Outil 1',
+                'subtitle': 'Rapport NOC Transport',
+                'desc':     'Génération du rapport hebdomadaire NOC Transport depuis TRANSMISSION_*.xlsx',
+                'url_name': 'transport_rapport_noc',
+                'url_kwargs': {},
+                'icon':     '📋',
+                'badge':    'Interactif',
+            },
+            {
+                'num':      2,
+                'title':    'Outil 2',
+                'subtitle': 'Rapport DCO Liens FO',
+                'desc':     'Présentation interactive des coupures fibre optique avec carte et export PPTX',
+                'url_name': 'transport_rapport_fo',
+                'url_kwargs': {},
+                'icon':     '🗺️',
+                'badge':    'Interactif',
+            },
+        ],
         'excel_reports': [
             {
                 'num':      1,
@@ -161,6 +195,28 @@ PLATFORMS = {
         'color':   '#7c3aed',
         'color2':  '#8b5cf6',
         'domains': ['igw'],
+        'tool_reports': [
+            {
+                'num':      1,
+                'title':    'Outil 1',
+                'subtitle': 'Rapport NOC CORE IP',
+                'desc':     'Génération du rapport hebdomadaire ISOC CORE & IGW depuis CORE_ET_IGW_*.xlsx',
+                'url_name': 'igw_rapport_noc',
+                'url_kwargs': {},
+                'icon':     '📋',
+                'badge':    'Interactif',
+            },
+            {
+                'num':      2,
+                'title':    'Outil 2',
+                'subtitle': 'Trafic International',
+                'desc':     'Visualisation du trafic international par lien depuis les fichiers CSV',
+                'url_name': 'igw_trafic_international',
+                'url_kwargs': {},
+                'icon':     '🌐',
+                'badge':    'Interactif',
+            },
+        ],
         'excel_reports': [
             {
                 'num':      1,

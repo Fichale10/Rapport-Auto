@@ -9,31 +9,41 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --yas-blue: #003087; --yas-yellow: #FFC72C; --yas-light: #f0f4ff; }
-    body { font-family: 'DM Sans', sans-serif; background: #f5f7fb; color: #111; min-height: 100vh; }
+    :root {
+      --yas-blue: #003087; --yas-yellow: #FFC72C; --yas-light: #f0f4ff;
+      --shadow-sm: 0 1px 6px rgba(0,48,135,0.07);
+      --shadow-md: 0 2px 20px rgba(0,48,135,0.09), 0 1px 4px rgba(0,48,135,0.04);
+      --shadow-lg: 0 8px 36px rgba(0,48,135,0.15);
+      --border: 1px solid #e8edf5;
+      --radius: 18px;
+      --muted: #6b7a99;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: #f2f5fb; color: #111; min-height: 100vh; }
 
     /* ── NAVBAR ── */
     .navbar {
-      background: var(--yas-blue);
+      background: linear-gradient(90deg,#002776 0%,#003087 60%,#00388c 100%);
       height: 64px; position: sticky; top: 0; z-index: 100;
-      box-shadow: 0 2px 20px rgba(0,48,135,0.3);
+      box-shadow: 0 2px 24px rgba(0,48,135,0.32);
+      border-bottom: 2.5px solid rgba(255,199,44,0.42);
     }
     .nav-inner {
       max-width: 2560px; margin: 0 auto; padding: 0 40px;
       height: 100%; display: flex; align-items: center; justify-content: space-between;
     }
     .nav-brand { display: flex; align-items: center; gap: 14px; text-decoration: none; }
-    .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--yas-yellow); letter-spacing: 3px; }
-    .nav-divider { width: 1px; height: 24px; background: rgba(255,255,255,0.2); }
-    .nav-app { color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 500; }
+    .nav-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--yas-yellow); letter-spacing: 3px; text-shadow: 0 1px 8px rgba(255,199,44,0.25); }
+    .nav-divider { width: 1px; height: 28px; background: rgba(255,255,255,0.18); border-radius:1px; }
+    .nav-app { color: rgba(255,255,255,0.65); font-size: 13px; font-weight: 500; letter-spacing:.2px; }
     .nav-links { display: flex; align-items: center; gap: 4px; }
     .nav-links a {
-      color: rgba(255,255,255,0.7); text-decoration: none;
-      font-size: 14px; font-weight: 500; padding: 8px 16px;
-      border-radius: 8px; transition: color .2s, background .2s;
+      color: rgba(255,255,255,0.72); text-decoration: none;
+      font-size: 13.5px; font-weight: 600; padding: 8px 15px;
+      border-radius: 8px; transition: color .18s, background .18s;
+      letter-spacing: .1px;
     }
-    .nav-links a:hover { color: #fff; background: rgba(255,255,255,0.1); }
-    .nav-links a.active { color: var(--yas-yellow); background: rgba(255,255,255,0.08); }
+    .nav-links a:hover { color: #fff; background: rgba(255,255,255,0.11); }
+    .nav-links a.active { color: var(--yas-yellow); background: rgba(255,199,44,0.12); }
     .nav-user { display: flex; align-items: center; gap: 10px; }
     /* ── USER DROPDOWN ── */
     .user-wrap { position: relative; }
@@ -133,26 +143,39 @@
     }
     .notif-footer-admin:hover { background: #fff0c0; color: #7a5a00; }
 
-    /* ── TOPBAR ── */
-    .topbar { background: #fff; border-bottom: 1px solid #e8edf5; font-size: 13px; color: #888; }
-    .topbar-inner { max-width: 2560px; margin: 0 auto; padding: 10px 40px; }
-    .topbar span { color: var(--yas-blue); font-weight: 600; }
+    /* ── TOPBAR / BREADCRUMB ── */
+    .topbar { background: #fff; border-bottom: 1px solid #eaeff8; }
+    .topbar-inner { max-width: 2560px; margin: 0 auto; padding: 9px 40px; display:flex; align-items:center; gap:7px; }
+    .bc-link { color: var(--muted); font-size:12.5px; font-weight:600; text-decoration:none; transition:color .15s; display:flex; align-items:center; gap:5px; }
+    .bc-link:hover { color: var(--yas-blue); }
+    .bc-link svg { width:14px; height:14px; flex-shrink:0; }
+    .bc-sep { color:#c8d3e8; font-size:13px; line-height:1; user-select:none; }
+    .bc-current { color: var(--yas-blue); font-size:12.5px; font-weight:700; }
 
     /* ── MAIN ── */
     .main-content { padding: 32px 40px; max-width: 2560px; margin: 0 auto; }
-    .card { background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 1px 4px rgba(0,48,135,0.06); border: 1px solid #e8edf5; }
+    .card { background: #fff; border-radius: var(--radius); padding: 28px; box-shadow: var(--shadow-md); border: var(--border); }
     .messages-container { margin-bottom: 24px; }
-    .message { padding: 12px 18px; border-radius: 10px; font-size: 14px; margin-bottom: 8px; border-left: 4px solid; }
-    .message.success { background: #f0fff4; border-color: #22c55e; color: #166534; }
-    .message.error   { background: #fff3cd; border-color: var(--yas-yellow); color: #7a5a00; }
+    .message {
+      padding: 13px 18px; border-radius: 12px; font-size: 14px; font-weight: 500;
+      margin-bottom: 8px; border-left: 4px solid;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .message.success { background: #f0fdf4; border-color: #22c55e; color: #166534; }
+    .message.success::before { content:'✓'; font-weight:900; font-size:15px; color:#22c55e; flex-shrink:0; }
+    .message.error   { background: #fff8e1; border-color: var(--yas-yellow); color: #7a5a00; }
+    .message.error::before { content:'⚠'; font-size:15px; flex-shrink:0; }
     .btn-primary {
       background: var(--yas-yellow); color: var(--yas-blue); border: none;
-      padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 700;
+      padding: 12px 26px; border-radius: 11px; font-size: 14px; font-weight: 700;
       font-family: 'DM Sans', sans-serif; cursor: pointer; text-decoration: none;
       display: inline-flex; align-items: center; gap: 8px;
-      transition: transform .15s, box-shadow .15s;
+      transition: transform .15s, box-shadow .15s, background .15s;
+      box-shadow: 0 2px 8px rgba(255,199,44,0.25);
     }
-    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,199,44,0.35); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,199,44,0.4); background: #f5be00; }
+    .btn-primary:active { transform: translateY(0); box-shadow: none; }
 
     /* ── ANIMATIONS ── */
     .main-content { animation: pageFadeIn .35s ease both; }
@@ -208,22 +231,22 @@
     @media (min-width:1400px) {
       .main-content { padding: 36px 48px; }
       .nav-inner    { padding: 0 48px; }
-      .topbar-inner { padding: 10px 48px; }
+      .topbar-inner { padding: 9px 48px; }
     }
     @media (min-width:1600px) {
       .main-content { padding: 40px 56px; }
       .nav-inner    { padding: 0 56px; }
-      .topbar-inner { padding: 10px 56px; }
+      .topbar-inner { padding: 9px 56px; }
     }
     @media (min-width:1920px) {
       .main-content { padding: 44px 80px; }
       .nav-inner    { padding: 0 80px; }
-      .topbar-inner { padding: 10px 80px; }
+      .topbar-inner { padding: 9px 80px; }
     }
     @media (min-width:2400px) {
       .main-content { padding: 48px 120px; }
       .nav-inner    { padding: 0 120px; }
-      .topbar-inner { padding: 10px 120px; }
+      .topbar-inner { padding: 9px 120px; }
     }
 
     /* ── Small screens ── */
@@ -254,9 +277,9 @@
       <a href="{% url 'home' %}"             class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
       <a href="{% url 'site_info' %}"          class="{% if request.resolver_match.url_name == 'site_info' %}active{% endif %}">Site Info</a>
       <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
-      <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
       <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
       <a href="{% url 'reporting' %}"          class="{% if request.resolver_match.url_name == 'reporting' or request.resolver_match.url_name == 'reporting_network' %}active{% endif %}">Reporting</a>
+      <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
     </div>
 
     <div class="nav-user">
@@ -316,7 +339,12 @@
 
 <div class="topbar">
   <div class="topbar-inner">
-    Yas Togo &rsaquo; ISOC &rsaquo; <span>{% block breadcrumb %}Accueil{% endblock %}</span>
+    <a href="{% url 'home' %}" class="bc-link">
+      <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/></svg>
+      Accueil
+    </a>
+    <span class="bc-sep">›</span>
+    <span class="bc-current">{% block breadcrumb %}Accueil{% endblock %}</span>
   </div>
 </div>
 

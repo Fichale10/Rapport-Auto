@@ -1,0 +1,128 @@
+Watching for file changes with StatReloader
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-20 08:25:57 GMT)" was missed by 1:35:52.976019
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-20 17:25:57 GMT)" was missed by 0:54:52.642920
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-21 02:25:57 GMT)" was missed by 0:48:11.129399
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-21 14:25:57 GMT)" was missed by 0:22:00.513300
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-21 17:25:57 GMT)" was missed by 0:07:02.394814
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-22 11:25:57 GMT)" was missed by 0:24:04.566536
+[INFO] reports.scheduler: auto_api_import : import 2026-06-22 \u2192 2026-06-22
+[ERROR] reports.scheduler: auto_api_import : exception non gérée
+Traceback (most recent call last):
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+TimeoutError: [WinError 10060] Une tentative de connexion a échoué car le parti connecté n’a pas répondu convenablement au-delà d’une certaine durée ou une connexion établie a échoué car l’hôte de connexion n’a pas répondu
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connectionpool.py", line 788, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connectionpool.py", line 493, in _make_request
+    conn.request(
+    ~~~~~~~~~~~~^
+        method,
+        ^^^^^^^
+    ...<6 lines>...
+        enforce_content_length=enforce_content_length,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connection.py", line 500, in request
+    self.endheaders()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1093, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1037, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ~~~~~~~~~~~~~~^^
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
+    raise ConnectTimeoutError(
+    ...<2 lines>...
+    ) from e
+urllib3.exceptions.ConnectTimeoutError: (<HTTPConnection(host='10.234.24.37', port=8080) at 0x24dad0fd6a0>, 'Connection to 10.234.24.37 timed out. (connect timeout=120)')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\requests\adapters.py", line 696, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\connectionpool.py", line 842, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\urllib3\util\retry.py", line 543, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='10.234.24.37', port=8080): Max retries exceeded with url: /api/auth/login (Caused by ConnectTimeoutError(<HTTPConnection(host='10.234.24.37', port=8080) at 0x24dad0fd6a0>, 'Connection to 10.234.24.37 timed out. (connect timeout=120)'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\reports\scheduler.py", line 30, in auto_api_import
+    result = run_import(d_deb, d_fin)
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\reports\api_import.py", line 190, in run_import
+    client.login(api_user, api_pass)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\reports\api_client.py", line 55, in login
+    response = self.session.post(
+        self._url("/api/auth/login"),
+    ...<2 lines>...
+        timeout=self.timeout,
+    )
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\requests\sessions.py", line 712, in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\requests\sessions.py", line 651, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\requests\sessions.py", line 784, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\.venv\Lib\site-packages\requests\adapters.py", line 717, in send
+    raise ConnectTimeout(e, request=request)
+requests.exceptions.ConnectTimeout: HTTPConnectionPool(host='10.234.24.37', port=8080): Max retries exceeded with url: /api/auth/login (Caused by ConnectTimeoutError(<HTTPConnection(host='10.234.24.37', port=8080) at 0x24dad0fd6a0>, 'Connection to 10.234.24.37 timed out. (connect timeout=120)'))
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-22 14:25:57 GMT)" was missed by 1:32:30.221499
+[INFO] reports.scheduler: auto_api_import : import 2026-06-22 \u2192 2026-06-22
+[INFO] reports.api_import: API login OK — import 2026-06-22 \u2192 2026-06-22 (réseau: mobile)
+[INFO] reports.api_import: Plage API élargie : 2026-06-21 \u2192 2026-06-23 (rapport: 2026-06-22 \u2192 2026-06-22)
+[INFO] reports.api_client: export_data: 144 lignes (liste) — 2026-06-21 \u2192 2026-06-23 (réseau: mobile)
+[INFO] reports.api_import: API retourne 144 lignes brutes (plage élargie 2026-06-21 \u2192 2026-06-23)
+[INFO] reports.api_import: Pré-filtre date : 144 \u2192 116 lignes (-28 tickets hors période)
+C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\treatement.py:41: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
+[INFO] reports.api_import: Rapport créé : API_MOBILE_2026-06-22_2026-06-22 (id=e845124a-2779-4ce3-965b-d61b4cf83eaa, 21 incidents)
+[INFO] reports.scheduler: auto_api_import : 1 créé(s), 0 ignoré(s), 0 erreur(s)
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-23 08:25:57 GMT)" was missed by 0:16:22.265366
+Run time of job "Import API automatique (trigger: interval[3:00:00], next run at: 2026-06-23 11:25:57 GMT)" was missed by 0:55:40.330297
+[INFO] reports.scheduler: auto_api_import : import 2026-06-23 \u2192 2026-06-23
+[INFO] reports.api_import: API login OK — import 2026-06-23 \u2192 2026-06-23 (réseau: mobile)
+[INFO] reports.api_import: Plage API élargie : 2026-06-22 \u2192 2026-06-24 (rapport: 2026-06-23 \u2192 2026-06-23)
+[INFO] reports.api_client: export_data: 144 lignes (liste) — 2026-06-22 \u2192 2026-06-24 (réseau: mobile)
+[INFO] reports.api_import: API retourne 144 lignes brutes (plage élargie 2026-06-22 \u2192 2026-06-24)
+[INFO] reports.api_import: Pré-filtre date : 144 \u2192 116 lignes (-28 tickets hors période)
+C:\Users\Dell\Downloads\rapport-automatique\rapport-automatique\treatement.py:41: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.
+  df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
+[INFO] reports.api_import: Rapport créé : API_MOBILE_2026-06-23_2026-06-23 (id=3f3df806-8124-45fb-b89b-63f2a47ff14e, 21 incidents)
+[INFO] reports.scheduler: auto_api_import : 1 créé(s), 0 ignoré(s), 0 erreur(s)

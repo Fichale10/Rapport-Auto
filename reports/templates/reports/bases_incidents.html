@@ -9,23 +9,28 @@
   :root { --blue:#003087; --yellow:#FFC72C; }
 
   .bi-banner {
-    background:linear-gradient(135deg,#003087 0%,#0047cc 100%);
-    border-radius:16px; padding:22px 28px;
+    background:linear-gradient(120deg,#002776 0%,#003087 50%,#0044bb 100%);
+    border-radius:20px; padding:28px 32px;
     display:flex; align-items:center; justify-content:space-between;
     flex-wrap:wrap; gap:16px; margin-bottom:28px;
+    box-shadow:0 6px 28px rgba(0,48,135,.22); position:relative; overflow:hidden;
   }
-  .bi-banner-left { display:flex; align-items:center; gap:14px; }
-  .bi-banner-icon { width:48px; height:48px; background:rgba(255,199,44,.18); border-radius:12px;
-    display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; }
-  .bi-banner-tag { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--yellow); }
-  .bi-banner-ttl { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
+  .bi-banner::after { content:''; position:absolute; right:-50px; top:-50px;
+    width:220px; height:220px; border-radius:50%;
+    background:rgba(255,199,44,.06); pointer-events:none; }
+  .bi-banner-left { display:flex; align-items:center; gap:16px; position:relative; z-index:1; }
+  .bi-banner-icon { width:56px; height:56px; background:rgba(255,199,44,.16); border-radius:15px;
+    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;
+    border:1.5px solid rgba(255,199,44,.25); }
+  .bi-banner-tag { font-size:10px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:var(--yellow); }
+  .bi-banner-ttl { font-size:22px; font-weight:900; color:#fff; margin-top:2px; }
   .bi-banner-sub { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
 
-  .card { background:#fff; border-radius:16px; border:1px solid #e8edf5;
-    box-shadow:0 1px 4px rgba(0,48,135,.05); padding:22px 24px; margin-bottom:22px; }
-  .card-title { font-size:14px; font-weight:700; color:#003087;
+  .card { background:#fff; border-radius:20px; border:1px solid #e8edf5;
+    box-shadow:0 2px 16px rgba(0,48,135,.07); padding:24px 28px; margin-bottom:22px; }
+  .card-title { font-size:14px; font-weight:800; color:#003087;
     display:flex; align-items:center; gap:8px; margin-bottom:18px;
-    padding-bottom:12px; border-bottom:1px solid #f0f4ff; }
+    padding-bottom:13px; border-bottom:1px solid #f0f4ff; }
 
   .month-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
   .month-chip {

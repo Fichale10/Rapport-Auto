@@ -349,6 +349,14 @@
           {% else %}{{ site.site_esm|default:"—" }}{% endif %}
         </span>
       </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Site solaire NetEco</span>
+        <span class="site-field-val">
+          {% if site.site_solaire_neteco == 'YES' or site.site_solaire_neteco == 'OUI' %}<span class="tag-ok">{{ site.site_solaire_neteco }}</span>
+          {% elif site.site_solaire_neteco == 'NO' or site.site_solaire_neteco == 'NON' %}<span class="tag-no">{{ site.site_solaire_neteco }}</span>
+          {% else %}{{ site.site_solaire_neteco|default:"—" }}{% endif %}
+        </span>
+      </div>
 
       <!-- Sécurité -->
       <div class="site-section-title" style="margin-top:18px;">👮 Sécurité</div>
@@ -409,6 +417,7 @@
       <div class="site-stat-chip"><span>GE Auto</span><strong>{{ site.ge_auto|default:"—" }}</strong></div>
       <div class="site-stat-chip"><span>Site Lithium</span><strong>{{ site.site_lithium|default:"—" }}</strong></div>
       <div class="site-stat-chip"><span>Site ESM</span><strong>{{ site.site_esm|default:"—" }}</strong></div>
+      <div class="site-stat-chip"><span>Site solaire NetEco</span><strong>{{ site.site_solaire_neteco|default:"—" }}</strong></div>
       <div class="site-stat-chip"><span>Technologie FTTH</span><strong>{{ site.olt|default:"—" }}</strong></div>
     </div>
   </div>

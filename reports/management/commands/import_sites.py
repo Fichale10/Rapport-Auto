@@ -54,6 +54,7 @@ class Command(BaseCommand):
                 ge_auto=_clean(row.get('GE AUTO', '')),
                 site_lithium=_clean(row.get('SITE LITHIUM', '')),
                 site_esm=_clean(row.get('SITE ESM', '')),
+                site_solaire_neteco=_clean(row.get('SITE SOLAIRE NETECO', '')),
                 config_2g=_clean(row.get('CONFIG 2G', '')),
                 config_3g=_clean(row.get('CONFIG 3G', '')),
                 config_4g=_clean(row.get('CONFIG 4G', '')),

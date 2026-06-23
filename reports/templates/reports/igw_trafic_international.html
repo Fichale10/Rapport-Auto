@@ -1,0 +1,238 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Trafic International — IGW — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / IGW / Trafic International{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --navy:#0d2461; --navy2:#162d72; --yellow:#f5c000; --yellow2:#ffe066;
+    --bg:#f0f3fa; --white:#fff; --gray1:#e8ecf4; --gray2:#9aa3ba;
+    --text:#1a2340; --green:#22c55e; --red:#ef4444; --blue2:#2563eb;
+    --radius:12px; --shadow:0 2px 16px rgba(13,36,97,.10);
+  }
+  .tool-banner { border-radius:16px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .tool-banner-back { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:10px; border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:rgba(255,255,255,.85); font-size:13px; font-weight:600; text-decoration:none; transition:all .15s; }
+  .tool-banner-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+  .page-wrap { max-width:1200px; margin:0 auto; padding:0 0 40px; }
+  .two-col { display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start; }
+  .card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px 28px 24px; }
+  .card-title { font-size:20px; font-weight:800; color:var(--navy); display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .card-sub { font-size:13.5px; color:var(--gray2); margin-bottom:22px; }
+  .drop-zone { border:2.5px dashed #aab4d4; border-radius:10px; background:#f7f9fd; padding:34px 20px; text-align:center; cursor:pointer; transition:border-color .2s, background .2s; position:relative; }
+  .drop-zone.dragging { border-color:var(--yellow); background:#fffbea; }
+  .drop-zone:hover { border-color:var(--blue2); background:#f0f4ff; }
+  .drop-zone input[type="file"] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+  .drop-icon { font-size:46px; margin-bottom:10px; line-height:1; }
+  .drop-label { font-size:15px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+  .drop-hint { font-size:12.5px; color:var(--gray2); margin-bottom:12px; }
+  .drop-formats { display:flex; gap:8px; justify-content:center; }
+  .fmt-badge { border:1.5px solid #aab4d4; border-radius:5px; padding:2px 10px; font-size:12px; font-weight:700; color:#6b7a99; }
+  .slots-title { font-size:13px; font-weight:700; color:var(--navy); margin:20px 0 10px; text-transform:uppercase; letter-spacing:.5px; }
+  .slots-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .slot { border:1.5px solid var(--gray1); border-radius:9px; padding:10px 13px; display:flex; align-items:center; gap:10px; transition:border-color .2s, background .2s; }
+  .slot.loaded { border-color:var(--green); background:#f0faf4; }
+  .slot.error { border-color:var(--red); background:#fff5f5; }
+  .slot.waiting { border-color:var(--gray1); background:#f9fafc; }
+  .slot-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .slot.waiting .slot-dot { background:#d1d5e8; }
+  .slot.loaded .slot-dot { background:var(--green); }
+  .slot.error .slot-dot { background:var(--red); }
+  .slot-info { flex:1; min-width:0; }
+  .slot-name { font-size:12px; font-weight:700; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .slot-desc { font-size:11px; color:var(--gray2); margin-top:1px; }
+  .slot-file { font-size:10.5px; color:var(--green); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .slot-icon { font-size:18px; }
+  .files-counter { display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding:12px 16px; background:var(--gray1); border-radius:8px; }
+  .counter-label { font-size:13px; color:var(--gray2); }
+  .counter-val { font-size:22px; font-weight:900; color:var(--navy); }
+  .counter-badge { font-size:11px; color:#fff; background:var(--blue2); border-radius:12px; padding:2px 10px; font-weight:700; }
+  .counter-badge.complete { background:var(--green); }
+  .btn-process { display:block; width:100%; margin-top:20px; background:var(--yellow); color:var(--navy); border:none; border-radius:10px; padding:15px 20px; font-size:15px; font-weight:800; cursor:pointer; transition:background .2s, transform .1s, opacity .2s; }
+  .btn-process:hover:not(:disabled) { background:var(--yellow2); transform:translateY(-1px); }
+  .btn-process:disabled { opacity:.45; cursor:not-allowed; }
+  .progress-wrap { margin-top:18px; display:none; }
+  .progress-bar-bg { background:var(--gray1); border-radius:8px; height:8px; overflow:hidden; }
+  .progress-bar { height:100%; background:linear-gradient(90deg,var(--blue2),var(--yellow)); border-radius:8px; transition:width .3s; width:0; }
+  .progress-text { font-size:12px; color:var(--gray2); margin-top:6px; text-align:center; }
+  .download-area { margin-top:18px; padding:16px; border-radius:9px; background:#f0faf4; border:1.5px solid var(--green); display:none; text-align:center; }
+  .download-area .dl-title { font-size:14px; font-weight:800; color:#166534; margin-bottom:10px; }
+  .btn-dl { background:var(--green); color:#fff; border:none; border-radius:8px; padding:10px 24px; font-size:13.5px; font-weight:700; cursor:pointer; transition:background .2s; display:inline-flex; align-items:center; gap:7px; }
+  .btn-dl:hover { background:#16a34a; }
+  .alert { margin-top:14px; padding:11px 15px; border-radius:8px; font-size:13px; font-weight:600; display:none; }
+  .alert.error { background:#fff5f5; border:1.5px solid #fca5a5; color:#b91c1c; }
+  .alert.success { background:#f0fdf4; border:1.5px solid #86efac; color:#166534; }
+  .panel-title { font-size:15px; font-weight:800; color:var(--yellow); margin-bottom:18px; display:flex; align-items:center; gap:7px; }
+  .steps { display:flex; flex-direction:column; gap:14px; margin-bottom:24px; }
+  .step { display:flex; align-items:flex-start; gap:12px; }
+  .step-num { width:26px; height:26px; border-radius:50%; background:var(--yellow); color:var(--navy); font-size:12px; font-weight:900; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .step-head { font-size:13px; font-weight:700; color:var(--navy); }
+  .step-desc { font-size:12px; color:var(--gray2); margin-top:2px; }
+  .sources-title { font-size:13px; font-weight:800; color:var(--navy); margin-bottom:10px; text-transform:uppercase; letter-spacing:.4px; }
+  .source-item { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--gray1); font-size:12px; }
+  .source-item:last-child { border-bottom:none; }
+  .source-dot { width:3px; height:22px; border-radius:2px; background:var(--yellow); flex-shrink:0; }
+  .source-text { color:var(--text); font-weight:600; }
+  .source-sub { color:var(--gray2); font-size:11px; margin-top:1px; }
+  .log-area { margin-top:16px; padding:12px; background:#f1f5ff; border-radius:8px; font-size:11.5px; color:#475069; max-height:160px; overflow-y:auto; display:none; }
+  .log-line { padding:2px 0; }
+  .log-line.ok { color:#16a34a; }
+  .log-line.warn { color:#d97706; }
+  .log-line.err { color:#ef4444; }
+  .chart-section { margin:24px 0 40px; display:none; }
+  .chart-card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px 28px 24px; }
+  .chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:12px; }
+  .chart-title { font-size:17px; font-weight:800; color:var(--navy); display:flex; align-items:center; gap:10px; }
+  .incidents-badge { background:#ef4444; color:#fff; font-size:13px; font-weight:700; padding:4px 14px; border-radius:20px; }
+  .chart-legend { display:flex; align-items:center; gap:20px; font-size:12.5px; font-weight:700; color:var(--text); }
+  .legend-item { display:flex; align-items:center; gap:6px; }
+  .legend-bar { width:20px; height:12px; background:#1e4a8a; border-radius:2px; }
+  .legend-line { width:28px; height:3px; background:#22c55e; border-radius:2px; }
+  .chart-sub { font-size:12.5px; color:var(--gray2); margin-bottom:18px; }
+  .chart-wrap { position:relative; height:400px; background:#b8d4f0; border-radius:8px; }
+  .btn-dl-chart { background:var(--navy); color:#fff; border:none; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:background .2s; }
+  .btn-dl-chart:hover { background:var(--navy2); }
+  .chart-incidents-list { margin-top:18px; font-size:12.5px; color:var(--text); }
+  .incident-item { display:flex; align-items:flex-start; gap:10px; padding:7px 10px; border-radius:7px; background:#fff5f5; border:1px solid #fca5a5; margin-bottom:6px; }
+  .incident-dot { color:#ef4444; font-size:14px; flex-shrink:0; margin-top:1px; }
+  .incident-text { color:#7f1d1d; font-weight:600; }
+  .incident-time { color:#b91c1c; font-size:11.5px; margin-top:2px; }
+  @media(max-width:800px){ .two-col{ grid-template-columns:1fr; } .slots-grid{ grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tool-banner" style="background:linear-gradient(135deg,{{ cfg.color }},{{ cfg.color2 }})">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-size:28px;">{{ cfg.icon }}</div>
+    <div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFC72C;">Trafic International</div>
+      <div style="font-size:18px;font-weight:700;color:#fff;">{{ cfg.label }}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Cumul 7 jours — 6 sources CSV</div>
+    </div>
+  </div>
+  <a href="{% url 'reporting_platform' platform %}" class="tool-banner-back">&#8592; Retour</a>
+</div>
+
+<div class="page-wrap">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">⬆ Générer le Rapport TRAFIC INTERNATIONAL</div>
+      <div class="card-sub">Importez les 6 fichiers CSV exportés depuis la plateforme YAS et générez le rapport consolidé CUMUL 7 JOURS.</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" multiple accept=".csv" />
+        <div class="drop-icon">📁</div>
+        <div class="drop-label">Glissez vos fichiers ici</div>
+        <div class="drop-hint">ou cliquez pour parcourir — sélectionnez les 6 fichiers CSV en une fois</div>
+        <div class="drop-formats"><span class="fmt-badge">.CSV</span></div>
+      </div>
+      <div class="slots-title">📋 Fichiers attendus (6 / 6)</div>
+      <div class="slots-grid" id="slotsGrid"></div>
+      <div class="files-counter">
+        <div>
+          <div class="counter-label">Fichiers chargés</div>
+          <div class="counter-val"><span id="loadedCount">0</span> / 6</div>
+        </div>
+        <span class="counter-badge" id="statusBadge">En attente</span>
+      </div>
+      <div class="alert" id="alertBox"></div>
+      <button class="btn-process" id="btnProcess" disabled>⚙ Lancer le traitement</button>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-text" id="progressText">Traitement en cours…</div>
+      </div>
+      <div class="download-area" id="downloadArea">
+        <div class="dl-title">✅ Rapport généré avec succès !</div>
+        <button class="btn-dl" id="btnDownload">⬇ Télécharger le rapport Excel</button>
+      </div>
+      <div class="log-area" id="logArea"></div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="panel-title">💡 Comment ça marche</div>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-head">Importez les 6 fichiers CSV</div><div class="step-desc">Fichiers exportés depuis la plateforme YAS de supervision IGW/CORE.</div></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-head">Détection automatique</div><div class="step-desc">Chaque fichier est reconnu par son nom et assigné à la bonne source.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-head">Nettoyage & Fusion</div><div class="step-desc">Suppression des colonnes dupliquées, fusion par horodatage sur 7 jours.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel multi-feuilles : rapport consolidé + données par source.</div></div></div>
+        </div>
+        <div class="sources-title">📡 Sources de données</div>
+        <div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">TOTAL INTERNET YAS</div><div class="source-sub">Trafic global (MTN Paris, TERACO, COGENT, GOOGLE, BICS)</div></div></div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">EQUIANO 30G — TOGOCOM</div><div class="source-sub">CACA ↔ CSQUARED (câble sous-marin Equiano)</div></div></div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">PARIS 20G — WACS-LONDRES</div><div class="source-sub">CACA → Paris via WACS</div></div></div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">LONDON 1 10G — BICS</div><div class="source-sub">CACA → London (interface 10GE-1)</div></div></div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">LONDON 2 10G — BICS</div><div class="source-sub">CACA → London (interface 10GE-2)</div></div></div>
+          <div class="source-item"><div class="source-dot"></div><div><div class="source-text">TATA 20G — VIA WACS</div><div class="source-sub">LOME → TATA via WACS</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section" id="chartSection">
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title">📊 TRAFIC INTERNET TOTAL — CUMUL 7 JOURS
+        <span class="incidents-badge" id="incidentsBadge" style="display:none"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-bar"></div> TOTAL TRAFIC</div>
+          <div class="legend-item"><div class="legend-line"></div> TOTAL DISPONIBLE</div>
+        </div>
+        <button class="btn-dl-chart" id="btnDlChart">⬇ Télécharger l'image</button>
+      </div>
+    </div>
+    <div class="chart-sub" id="chartSub"></div>
+    <div class="chart-wrap"><canvas id="trafficChart"></canvas></div>
+    <div class="chart-incidents-list" id="incidentsList"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const FILE_CONFIGS = [
+  { key:'total_yas', pattern:/TOTAL.*INTERNET.*YAS|YAS.*data/i, label:'TOTAL INTERNET YAS', desc:'Trafic global (tous fournisseurs)', icon:'🌐', sheetName:'TOTAL INTERNET YAS', dedup:true },
+  { key:'equiano',  pattern:/EQUIANO/i,      label:'TOTAL EQUIANO 30G (TOGOCOM)', desc:'CACA ↔ EQUIANO via CSQUARED', icon:'🔗', sheetName:'EQUIANO 30G' },
+  { key:'paris',    pattern:/PARIS/i,         label:'20G CACA — PARIS (WACS-LONDRES)', desc:'CACA → Paris via WACS', icon:'🔗', sheetName:'PARIS 20G' },
+  { key:'london1',  pattern:/LONDON\s*1/i,    label:'10G CACA — LONDON 1 (BICS)', desc:'CACA → London 10GE-1', icon:'🔗', sheetName:'LONDON 1 10G' },
+  { key:'london2',  pattern:/LONDON\s*2/i,    label:'10G CACA — LONDON 2 (BICS)', desc:'CACA → London 10GE-2', icon:'🔗', sheetName:'LONDON 2 10G' },
+  { key:'tata',     pattern:/TATA/i,          label:'20G LOME — TATA (VIA-WACS)', desc:'LOME → TATA via WACS', icon:'🔗', sheetName:'TATA 20G' }
+];
+const loadedFiles = {};
+let workbookBlob = null;
+const $ = id => document.getElementById(id);
+function log(msg,type=''){const area=$('logArea');area.style.display='block';const line=document.createElement('div');line.className='log-line '+type;line.textContent=new Date().toLocaleTimeString('fr')+'  '+msg;area.appendChild(line);area.scrollTop=area.scrollHeight;}
+function showAlert(msg,type){const el=$('alertBox');el.textContent=msg;el.className='alert '+type;el.style.display='block';}
+function hideAlert(){$('alertBox').style.display='none';}
+function setProgress(pct,text){$('progressWrap').style.display='block';$('progressBar').style.width=pct+'%';$('progressText').textContent=text;}
+function buildSlots(){const grid=$('slotsGrid');grid.innerHTML='';FILE_CONFIGS.forEach(cfg=>{const div=document.createElement('div');div.className='slot waiting';div.id='slot-'+cfg.key;div.innerHTML=`<span class="slot-icon">${cfg.icon}</span><div class="slot-dot"></div><div class="slot-info"><div class="slot-name">${cfg.label}</div><div class="slot-desc">${cfg.desc}</div><div class="slot-file" id="slot-file-${cfg.key}">En attente…</div></div>`;grid.appendChild(div);});}
+function refreshUI(){const count=Object.keys(loadedFiles).length;$('loadedCount').textContent=count;const badge=$('statusBadge');if(count===6){badge.textContent='Prêt ✓';badge.className='counter-badge complete';}else{badge.textContent=`${count}/6 chargé${count>1?'s':''}`;badge.className='counter-badge';} $('btnProcess').disabled=count<6;}
+function detectConfig(filename){return FILE_CONFIGS.find(c=>c.pattern.test(filename))||null;}
+function toGbps(value){if(!value||value.toString().trim()==='')return '';const str=value.toString().trim();const match=str.match(/^([\d.]+)\s*(Gb|Mb|kb|b)\/s$/i);if(!match)return str;const num=parseFloat(match[1]);const unit=match[2].toLowerCase();let gbps;if(unit==='gb')gbps=num;else if(unit==='mb')gbps=num/1000;else if(unit==='kb')gbps=num/1000000;else gbps=num/1000000000;return gbps.toFixed(2);}
+function parseCSV(file,cfg){return new Promise((resolve,reject)=>{Papa.parse(file,{header:false,skipEmptyLines:true,complete:result=>{if(!result.data||result.data.length<2)return reject(new Error('Fichier vide : '+file.name));let headers=result.data[0].map(h=>h.trim());const rawRows=result.data.slice(1);const keepIdx=[];headers.forEach((h,i)=>{if(i===0||/bits received/i.test(h))keepIdx.push(i);else log(`Colonne supprimée : "${h}"`, 'warn');});headers=keepIdx.map(i=>headers[i]);let filteredRows=rawRows.map(row=>keepIdx.map(i=>row[i]));if(cfg.dedup){const seen=new Set();const dedupIdx=[];headers.forEach((h,i)=>{if(!seen.has(h)){seen.add(h);dedupIdx.push(i);}else log(`Colonne dupliquée : "${h}"`, 'warn');});headers=dedupIdx.map(i=>headers[i]);filteredRows=filteredRows.map(row=>dedupIdx.map(i=>row[i]));}const convertedRows=filteredRows.map(row=>row.map((cell,i)=>i===0?cell:toGbps(cell)));resolve({headers,rows:convertedRows});},error:err=>reject(err)});});}
+async function handleFiles(fileList){hideAlert();const files=Array.from(fileList);const unrecognized=[];for(const file of files){const cfg=detectConfig(file.name);if(!cfg){unrecognized.push(file.name);log(`Non reconnu : ${file.name}`,'warn');continue;}try{log(`Lecture : ${file.name}`);const parsed=await parseCSV(file,cfg);loadedFiles[cfg.key]={file,parsed,cfg};const slot=$('slot-'+cfg.key);slot.className='slot loaded';$('slot-file-'+cfg.key).textContent='✓ '+file.name;log(`${cfg.label} — ${parsed.rows.length} enreg.`, 'ok');}catch(err){log(`Erreur ${file.name}: ${err.message}`, 'err');const slot=$('slot-'+cfg.key);if(slot){slot.className='slot error';$('slot-file-'+cfg.key).textContent='✗ Erreur';}}}if(unrecognized.length)showAlert(`Fichier(s) non reconnu(s) : ${unrecognized.join(', ')}`,'error');refreshUI();}
+function mergeByTime(){const timeSet=new Map();for(const key of Object.keys(loadedFiles)){const{parsed}=loadedFiles[key];parsed.rows.forEach(row=>{const ts=row[0];if(ts&&!timeSet.has(ts))timeSet.set(ts,timeSet.size);});}const timestamps=Array.from(timeSet.keys()).sort();const mergedHeaders=['Time'];const colSources=[];const sourceOrder=['total_yas','equiano','paris','london1','london2','tata'];sourceOrder.forEach(key=>{if(!loadedFiles[key])return;const{parsed}=loadedFiles[key];for(let i=1;i<parsed.headers.length;i++){mergedHeaders.push(parsed.headers[i]);colSources.push({key,colIdx:i});}});const lookup={};sourceOrder.forEach(key=>{if(!loadedFiles[key])return;lookup[key]={};loadedFiles[key].parsed.rows.forEach(row=>{if(row[0])lookup[key][row[0]]=row;});});const mergedRows=timestamps.map(ts=>{const row=[ts];colSources.forEach(({key,colIdx})=>{const src=lookup[key];const srcRow=src?src[ts]:null;row.push(srcRow?(srcRow[colIdx]??''):'');});return row;});return{headers:mergedHeaders,rows:mergedRows};}
+const TOTAL_CAPACITY_GB=210;
+function getNominalCapacity(header){if(/MTN.*PARIS|LIEN.*MTN/i.test(header))return 30;const match=header.match(/[-(_\s<](\d+)G[Ee]?(?:\b|[-_\d]|$)/i);if(match)return parseFloat(match[1]);return 0;}
+function buildConsolidatedData(mergedRaw){const nominalCaps=mergedRaw.headers.slice(1).map(h=>getNominalCapacity(h));const headers=[...mergedRaw.headers,'Duration (Gb/s)','TOTAL DISPONIBLE (Gb/s)'];const rows=mergedRaw.rows.map(row=>{let downed=0,totalTraffic=0;row.slice(1).forEach((cell,i)=>{const v=parseFloat(cell);if(!isNaN(v)){totalTraffic+=v;if(v===0&&nominalCaps[i]>0)downed+=nominalCaps[i];}});const disponible=Math.max(0,TOTAL_CAPACITY_GB-downed);return[...row,totalTraffic.toFixed(2),disponible.toFixed(0)];});return{headers,rows};}
+function styleSheet(ws,ncols){const headerStyle={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0D2461'}},alignment:{horizontal:'center',wrapText:true}};const range=XLSX.utils.decode_range(ws['!ref']);for(let c=range.s.c;c<=range.e.c;c++){const cell=XLSX.utils.encode_cell({r:0,c});if(ws[cell])ws[cell].s=headerStyle;}ws['!cols']=Array.from({length:ncols},(_,i)=>i===0?{wch:20}:{wch:18});}
+function buildWorkbook(){const wb=XLSX.utils.book_new();log('Fusion des sources…');const mergedRaw=mergeByTime();const merged=buildConsolidatedData(mergedRaw);const dates=merged.rows.map(r=>r[0]).filter(Boolean).sort();const dateFrom=dates[0]?dates[0].substring(0,10):'';const dateTo=dates[dates.length-1]?dates[dates.length-1].substring(0,10):'';log(`Plage : ${dateFrom} → ${dateTo} (${merged.rows.length} enreg.)`, 'ok');const wsConsolidate=XLSX.utils.aoa_to_sheet([merged.headers,...merged.rows]);styleSheet(wsConsolidate,merged.headers.length);const dispColIdx=merged.headers.length-1;const dispCell=XLSX.utils.encode_cell({r:0,c:dispColIdx});if(wsConsolidate[dispCell])wsConsolidate[dispCell].s={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'166534'}},alignment:{horizontal:'center',wrapText:true}};XLSX.utils.book_append_sheet(wb,wsConsolidate,'RAPPORT CONSOLIDÉ');const sourceOrder=['total_yas','equiano','paris','london1','london2','tata'];sourceOrder.forEach(key=>{const entry=loadedFiles[key];if(!entry)return;const withDur={headers:[...entry.parsed.headers,'Duration (Gb/s)'],rows:entry.parsed.rows.map(row=>{const sum=row.slice(1).reduce((acc,cell)=>{const v=parseFloat(cell);return acc+(isNaN(v)?0:v);},0);return[...row,sum.toFixed(2)];})};const ws=XLSX.utils.aoa_to_sheet([withDur.headers,...withDur.rows]);styleSheet(ws,withDur.headers.length);XLSX.utils.book_append_sheet(wb,ws,entry.cfg.sheetName);log(`Feuille "${entry.cfg.sheetName}" (${withDur.rows.length} lignes)`, 'ok');});const buf=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});return{blob,dateFrom,dateTo,mergedData:merged};}
+let trafficChartInstance=null;
+function renderChart(mergedData){const timeIdx=0;const durationIdx=mergedData.headers.indexOf('Duration (Gb/s)');const dispIdx=mergedData.headers.indexOf('TOTAL DISPONIBLE (Gb/s)');const labels=mergedData.rows.map(r=>r[timeIdx]);const traffic=mergedData.rows.map(r=>parseFloat(r[durationIdx])||0);const dispo=mergedData.rows.map(r=>parseFloat(r[dispIdx])||TOTAL_CAPACITY_GB);const incidents=[];mergedData.rows.forEach((r,i)=>{const cap=parseFloat(r[dispIdx]);if(!isNaN(cap)&&cap<TOTAL_CAPACITY_GB){const downLinks=[];r.slice(1,durationIdx).forEach((cell,ci)=>{if(parseFloat(cell)===0){const hdr=mergedData.headers[ci+1];const m=hdr.match(/\(([^)]+)\)/);downLinks.push(m?m[1]:hdr);}});incidents.push({time:r[timeIdx],dispo:cap,downLinks});}});$('chartSection').style.display='block';const allTimes=mergedData.rows.map(r=>r[timeIdx]).filter(Boolean).sort();$('chartSub').textContent=allTimes.length?`${allTimes[0].substring(0,10)} → ${allTimes[allTimes.length-1].substring(0,10)}  |  ${mergedData.rows.length} enregistrements  |  Capacité : ${TOTAL_CAPACITY_GB} Gb/s`:'';const incCount=new Set(incidents.map(i=>i.time.substring(0,10))).size;const badge=$('incidentsBadge');if(incCount>0){badge.textContent=incCount+(incCount===1?' INCIDENT':' INCIDENTS');badge.style.display='';}else badge.style.display='none';const listEl=$('incidentsList');listEl.innerHTML='';if(incidents.length>0){const seen=new Set();incidents.forEach(inc=>{const key=inc.time+'|'+inc.downLinks.join(',');if(seen.has(key))return;seen.add(key);const div=document.createElement('div');div.className='incident-item';div.innerHTML=`<div class="incident-dot">⚠</div><div><div class="incident-text">Lien(s) tombé(s) : ${inc.downLinks.join(', ')} — DISPO ${inc.dispo} Gb/s</div><div class="incident-time">${inc.time}</div></div>`;listEl.appendChild(div);});}
+if(trafficChartInstance){trafficChartInstance.destroy();trafficChartInstance=null;}
+const blueBgPlugin={id:'blueBg',beforeDraw(chart){const{ctx,chartArea}=chart;if(!chartArea)return;ctx.save();ctx.fillStyle='#a8c8e8';ctx.fillRect(chartArea.left,chartArea.top,chartArea.width,chartArea.height);ctx.restore();},afterDraw(chart){const{ctx,chartArea}=chart;if(!chartArea)return;ctx.save();const pad=8,txt=`${TOTAL_CAPACITY_GB}G`;ctx.font='bold 13px Segoe UI,Arial,sans-serif';const tw=ctx.measureText(txt).width;const bx=chartArea.right-tw-pad*2-2,by=chartArea.top+4,bw=tw+pad*2,bh=22;ctx.fillStyle='#f5c000';ctx.beginPath();ctx.roundRect(bx,by,bw,bh,4);ctx.fill();ctx.fillStyle='#0d2461';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,bx+bw/2,by+bh/2);ctx.restore();}};
+const dateGroupPlugin={id:'dateGroup',afterDraw(chart){const{ctx,data,scales:{x},chartArea}=chart;if(!x)return;const days=new Map();data.labels.forEach((lbl,i)=>{if(!lbl)return;const p=lbl.substring(0,10).split('-');const key=`${p[2]}/${p[1]}/${p[0]}`;if(!days.has(key))days.set(key,{first:i,last:i});else days.get(key).last=i;});const n=data.labels.length;const step=n>1?(x.getPixelForValue(n-1)-x.getPixelForValue(0))/(n-1):0;const halfStep=step/2;const yLabel=chartArea.bottom+44;ctx.save();days.forEach((range,dateStr)=>{const x1=x.getPixelForValue(range.first),x2=x.getPixelForValue(range.last),cx=(x1+x2)/2,sepX=x1-halfStep;if(sepX>chartArea.left+2){ctx.save();ctx.strokeStyle='rgba(0,0,0,.18)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(sepX,chartArea.bottom+2);ctx.lineTo(sepX,yLabel+9);ctx.stroke();ctx.setLineDash([]);ctx.restore();}ctx.font='bold 10.5px Segoe UI,Arial,sans-serif';ctx.fillStyle='#1a2340';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dateStr,cx,yLabel);});ctx.restore();}};
+const ctx=document.getElementById('trafficChart').getContext('2d');
+trafficChartInstance=new Chart(ctx,{plugins:[blueBgPlugin,dateGroupPlugin],data:{labels,datasets:[{type:'bar',label:'TOTAL TRAFIC',data:traffic,backgroundColor:'rgba(30,74,138,.75)',borderColor:'rgba(30,74,138,1)',borderWidth:1,order:2,yAxisID:'y'},{type:'line',label:'TOTAL DISPONIBLE',data:dispo,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.08)',borderWidth:2.5,pointRadius:0,tension:0,fill:false,order:1,yAxisID:'y'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:24}},interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label} : ${ctx.parsed.y.toFixed(2)} Gb/s`}}},scales:{x:{ticks:{maxRotation:45,minRotation:45,autoSkip:false,font:{size:9.5},callback:(val,idx)=>{const lbl=labels[idx];if(!lbl)return null;const time=lbl.substring(11,16);const[hh]=time.split(':').map(Number);if(hh%2!==0)return null;return time;}},grid:{color:'rgba(0,0,0,.06)'}},y:{beginAtZero:true,max:TOTAL_CAPACITY_GB+20,ticks:{font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:'Gb/s',font:{size:12,weight:'bold'}}}}}});
+$('btnDlChart').onclick=()=>{const canvas=document.getElementById('trafficChart');const tmp=document.createElement('canvas');tmp.width=canvas.width;tmp.height=canvas.height;const tc=tmp.getContext('2d');tc.fillStyle='#ffffff';tc.fillRect(0,0,tmp.width,tmp.height);tc.drawImage(canvas,0,0);const a=document.createElement('a');a.href=tmp.toDataURL('image/png');const allTimes=mergedData.rows.map(r=>r[0]).filter(Boolean).sort();const df=allTimes[0]?allTimes[0].substring(0,10):'debut';const dt=allTimes[allTimes.length-1]?allTimes[allTimes.length-1].substring(0,10):'fin';a.download=`TRAFIC_INTERNET_${df}_AU_${dt}.png`;a.click();};}
+async function runProcess(){$('downloadArea').style.display='none';$('logArea').style.display='block';$('logArea').innerHTML='';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des fichiers CSV…');await new Promise(r=>setTimeout(r,200));setProgress(50,'Fusion et nettoyage…');await new Promise(r=>setTimeout(r,100));const{blob,dateFrom,dateTo,mergedData}=buildWorkbook();workbookBlob=blob;setProgress(85,'Rendu du graphique…');await new Promise(r=>setTimeout(r,100));renderChart(mergedData);log('Graphique rendu','ok');setProgress(90,'Génération Excel…');await new Promise(r=>setTimeout(r,100));setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';area.querySelector('.dl-title').textContent=`✅ Rapport généré — ${dateFrom} au ${dateTo}`;const filename=`TOTAL TRAFIC INTERNATIONAL - CUMUL 7 JOURS ${dateFrom} AU ${dateTo}.xlsx`;$('btnDownload').onclick=()=>{const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);};showAlert('Rapport consolidé généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
+document.addEventListener('DOMContentLoaded',()=>{buildSlots();refreshUI();$('fileInput').addEventListener('change',e=>{handleFiles(e.target.files);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');handleFiles(e.dataTransfer.files);});$('btnProcess').addEventListener('click',runProcess);});
+</script>
+{% endblock %}

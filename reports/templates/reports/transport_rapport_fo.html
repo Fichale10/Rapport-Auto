@@ -1,0 +1,346 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Rapport DCO Liens FO — Transport — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / Transport / Rapport DCO Liens FO{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="{% static 'reports/yas_logo.js' %}"></script>
+<style>
+  :root { --navy:#0d2461; --navy2:#162d72; --yellow:#f5c000; --yellow2:#ffe066; --bg:#f0f3fa; --white:#fff; --gray1:#e8ecf4; --gray2:#9aa3ba; --text:#1a2340; --green:#22c55e; --red:#ef4444; --blue:#2563eb; --radius:12px; --shadow:0 2px 16px rgba(13,36,97,.10); --steel:#4a78b0; }
+  .tool-banner { border-radius:16px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .tool-banner-back { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:10px; border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:rgba(255,255,255,.85); font-size:13px; font-weight:600; text-decoration:none; }
+  .tool-banner-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+  .page-wrap { max-width:1200px; margin:0 auto; padding:0 0 32px; }
+  .two-col { display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start; }
+  .card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px 28px 24px; }
+  .card-title { font-size:20px; font-weight:800; color:var(--navy); display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .card-sub { font-size:13.5px; color:var(--gray2); margin-bottom:22px; }
+  .drop-zone { border:2.5px dashed #aab4d4; border-radius:10px; background:#f7f9fd; padding:28px 20px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; position:relative; }
+  .drop-zone.dragging { border-color:var(--yellow); background:#fffbea; }
+  .drop-zone:hover { border-color:var(--blue); background:#f0f4ff; }
+  .drop-zone input[type="file"] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+  .drop-icon { font-size:40px; margin-bottom:8px; line-height:1; }
+  .drop-label { font-size:14px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+  .drop-hint { font-size:12px; color:var(--gray2); margin-bottom:10px; }
+  .drop-formats { display:flex; gap:8px; justify-content:center; }
+  .fmt-badge { border:1.5px solid #aab4d4; border-radius:5px; padding:2px 10px; font-size:12px; font-weight:700; color:#6b7a99; }
+  .file-status { margin-top:14px; padding:12px 16px; border-radius:9px; border:1.5px solid var(--gray1); background:#f9fafc; display:flex; align-items:center; gap:12px; }
+  .file-status.loaded { border-color:var(--green); background:#f0faf4; }
+  .file-status.error { border-color:var(--red); background:#fff5f5; }
+  .fs-dot { width:12px; height:12px; border-radius:50%; background:#d1d5e8; flex-shrink:0; }
+  .file-status.loaded .fs-dot { background:var(--green); }
+  .file-status.error .fs-dot { background:var(--red); }
+  .fs-info { flex:1; min-width:0; }
+  .fs-name { font-size:13px; font-weight:700; color:var(--navy); }
+  .fs-sub { font-size:11.5px; color:var(--gray2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .btn-process { display:block; width:100%; margin-top:18px; background:var(--yellow); color:var(--navy); border:none; border-radius:10px; padding:14px 20px; font-size:15px; font-weight:800; cursor:pointer; transition:background .2s,transform .1s,opacity .2s; }
+  .btn-process:hover:not(:disabled) { background:var(--yellow2); transform:translateY(-1px); }
+  .btn-process:disabled { opacity:.45; cursor:not-allowed; }
+  .alert { margin-top:14px; padding:11px 15px; border-radius:8px; font-size:13px; font-weight:600; display:none; }
+  .alert.error { background:#fff5f5; border:1.5px solid #fca5a5; color:#b91c1c; }
+  .alert.success { background:#f0fdf4; border:1.5px solid #86efac; color:#166534; }
+  .log-area { margin-top:14px; padding:12px; background:#f1f5ff; border-radius:8px; font-size:11.5px; color:#475069; max-height:140px; overflow-y:auto; display:none; }
+  .log-line { padding:2px 0; }
+  .log-line.ok { color:#16a34a; }
+  .log-line.warn { color:#d97706; }
+  .log-line.err { color:#ef4444; }
+  .panel-title { font-size:15px; font-weight:800; color:var(--yellow); margin-bottom:18px; display:flex; align-items:center; gap:7px; }
+  .steps { display:flex; flex-direction:column; gap:14px; margin-bottom:24px; }
+  .step { display:flex; align-items:flex-start; gap:12px; }
+  .step-num { width:26px; height:26px; border-radius:50%; background:var(--yellow); color:var(--navy); font-size:12px; font-weight:900; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .step-head { font-size:13px; font-weight:700; color:var(--navy); }
+  .step-desc { font-size:12px; color:var(--gray2); margin-top:2px; }
+  .info-box { background:var(--gray1); border-radius:9px; padding:14px 16px; font-size:12.5px; color:var(--text); }
+  .info-box b { color:var(--navy); }
+  /* ── SLIDE SECTION ── */
+  .slide-section { max-width:1240px; margin:0 auto 50px; display:none; }
+  .slide-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:12px; }
+  .slide-toolbar h2 { font-size:16px; font-weight:800; color:var(--navy); }
+  .btn-dl-img { background:var(--navy); color:#fff; border:none; border-radius:8px; padding:9px 20px; font-size:13.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:background .2s; }
+  .btn-dl-img:hover { background:var(--navy2); }
+  .btn-dl-img:disabled { opacity:.45; cursor:not-allowed; }
+  #calibBar { display:none; background:#fff8e1; border:1.5px solid var(--yellow); border-radius:10px; padding:12px 16px; margin-bottom:14px; }
+  #calibBar .cb-title { font-size:13px; font-weight:800; color:var(--navy); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  #calibBar .cb-title .cb-reset { margin-left:auto; background:none; border:1px solid #c9a800; color:#8a6d00; font-size:11px; font-weight:700; padding:3px 10px; border-radius:6px; cursor:pointer; }
+  #calibChips { display:flex; flex-wrap:wrap; gap:8px; }
+  .calib-chip { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d7c389; background:#fff; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:700; color:var(--navy); cursor:pointer; transition:all .15s; }
+  .calib-chip:hover { border-color:var(--blue); background:#f0f4ff; }
+  .calib-chip.placed { border-color:var(--green); background:#f0faf4; color:#166534; }
+  .calib-chip.active { border-color:var(--blue); background:#dbe7ff; box-shadow:0 0 0 2px rgba(37,99,235,.25); }
+  .calib-chip .cc-state { font-size:13px; }
+
+  /* ── Slide canvas ── */
+  #slide { width:1120px; height:720px; background:#ecf0f9; position:relative; box-shadow:0 4px 32px rgba(13,36,97,.18); border-radius:10px; overflow:hidden; font-family:'Segoe UI',Arial,sans-serif; }
+
+  /* Header navy gradient */
+  .sl-head { position:absolute; top:0; left:0; right:0; height:88px; background:linear-gradient(120deg,#0b1e52 0%,#1d3b8a 100%); display:flex; align-items:center; padding:0 22px 0 26px; gap:18px; box-sizing:border-box; }
+  .sl-title-wrap { flex:1; min-width:0; }
+  .sl-title1 { font-size:22px; font-weight:900; color:#fff; line-height:1.1; letter-spacing:-.2px; }
+  .sl-title2 { font-size:13px; font-weight:600; color:rgba(255,255,255,.62); line-height:1.2; display:flex; align-items:center; gap:12px; margin-top:5px; }
+  .sl-count { background:#f5c000; color:#0d2461; font-size:11.5px; font-weight:800; padding:3px 10px; border-radius:4px; white-space:nowrap; letter-spacing:.2px; }
+  .sl-logo { height:54px; width:auto; object-fit:contain; flex-shrink:0; }
+
+  /* Band labels */
+  .sl-band { position:absolute; background:linear-gradient(135deg,#f5c000,#fdd835); color:#0d2461; font-size:13px; font-weight:800; padding:4px 0; text-align:center; border-radius:6px; letter-spacing:.5px; pointer-events:none; box-shadow:0 2px 8px rgba(245,192,0,.28); }
+
+  /* Map */
+  #mapWrap { position:absolute; left:252px; top:116px; width:376px; height:560px; border-radius:10px; }
+  #mapImg { width:100%; height:100%; object-fit:contain; display:none; border-radius:8px; }
+  #mapPlaceholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:20px; color:#9aa3ba; font-size:13px; font-weight:600; border:2px dashed #cdd5e6; border-radius:10px; background:#f7f9fd; }
+  #markerLayer { position:absolute; inset:0; pointer-events:none; }
+  .map-pin { position:absolute; transform:translate(-50%,-50%); pointer-events:none; }
+  .map-pin .pin-dot { width:16px; height:16px; border-radius:50% 50% 50% 0; background:#e00000; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.4); transform:rotate(-45deg); position:relative; }
+  .map-pin .pin-num { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(45deg); color:#fff; font-size:9px; font-weight:900; }
+  .map-pin .pin-label { position:absolute; left:14px; top:-4px; white-space:nowrap; background:#fff; border:1.5px solid #e00000; color:#c00000; font-size:9.5px; font-weight:800; padding:1px 5px; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  #mapWrap.placing { cursor:crosshair; }
+  #mapWrap.placing #mapImg, #mapWrap.placing #mapPlaceholder { outline:3px solid var(--yellow); outline-offset:-3px; }
+
+  /* Right panel */
+  #bhPanel { position:absolute; right:18px; top:104px; width:420px; bottom:30px; border:2px solid #16306b; border-top:3px solid #f5c000; border-radius:22px; padding:14px 14px 14px; background:#fff; box-shadow:0 2px 16px rgba(13,36,97,.10); }
+  #bhPanelTitle { font-size:11px; font-weight:900; color:#16306b; letter-spacing:.8px; text-transform:uppercase; text-align:center; padding:6px 0 10px; border-bottom:1.5px solid #e8edf5; margin-bottom:10px; }
+
+  /* Zone BACKBONE gauche */
+  #bbZone { position:absolute; left:8px; top:108px; width:234px; bottom:30px; background:#fff; border-radius:14px; border:2px solid #16306b; border-top:3px solid #f5c000; box-shadow:0 2px 12px rgba(13,36,97,.10); }
+  #bbZoneTitle { position:absolute; left:8px; top:108px; width:234px; height:30px; background:linear-gradient(135deg,#f5c000,#fdd835); border-radius:12px 12px 0 0; border:2px solid #16306b; border-bottom:none; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; color:#0d2461; letter-spacing:.8px; pointer-events:none; }
+
+  /* Footer */
+  .sl-footer { position:absolute; left:0; right:0; bottom:0; height:26px; background:linear-gradient(90deg,#0b1e52 0%,#162d72 100%); display:flex; align-items:center; justify-content:space-between; padding:0 20px; box-sizing:border-box; font-size:9.5px; font-weight:700; letter-spacing:.35px; color:rgba(255,255,255,.55); font-family:'Segoe UI',Arial,sans-serif; }
+  .sl-footer-r { color:rgba(255,255,255,.82); font-size:10px; }
+
+  /* Incident boxes */
+  .inc-box { border:1.5px solid #e53e3e; border-radius:6px; background:#fff; padding:6px 8px; font-size:11px; line-height:1.35; color:#1a1a1a; box-shadow:0 1px 4px rgba(200,0,0,.08); }
+  .inc-box .ib-title { color:#c00000; font-weight:800; font-size:11px; text-transform:uppercase; margin-bottom:3px; border-bottom:1px solid #ffd0d0; padding-bottom:2px; }
+  .inc-box .ib-impact { background:#00b050; color:#fff; font-weight:800; display:inline-block; padding:1px 5px; border-radius:3px; }
+  .inc-box .ib-esc { color:#1f3864; font-weight:700; }
+  .inc-box .ib-debut { color:#1f3864; font-weight:700; }
+  .inc-box .ib-cause { color:#1f3864; font-weight:700; }
+  .inc-box .ib-duree { color:#c00000; font-weight:800; }
+  .bb-box { position:absolute; width:214px; }
+  #bhGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-content:start; height:100%; overflow:hidden; }
+  #arrowSvg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .empty-note { position:absolute; left:252px; top:360px; width:376px; text-align:center; color:#888; font-size:14px; font-weight:600; }
+  @media(max-width:800px){ .two-col{ grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tool-banner" style="background:linear-gradient(135deg,{{ cfg.color }},{{ cfg.color2 }})">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-size:28px;">{{ cfg.icon }}</div>
+    <div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFC72C;">Rapport DCO</div>
+      <div style="font-size:18px;font-weight:700;color:#fff;">Indisponibilité des Liens FO — {{ cfg.label }}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Coupures fibre sur carte interactive — Export PNG/PPTX</div>
+    </div>
+  </div>
+  <a href="{% url 'reporting_platform' platform %}" class="tool-banner-back">&#8592; Retour</a>
+</div>
+
+<div class="page-wrap">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">🗺️ Rapport Hebdo DCO — Indisponibilité des Liens FO</div>
+      <div class="card-sub">Importez le fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> puis <strong>votre image de carte</strong>. Le système détecte les coupures de fibre et vous situez chaque incident sur la carte (les positions sont mémorisées).</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+        <div class="drop-icon">🗂️</div>
+        <div class="drop-label">1. Fichier TRANSMISSION</div>
+        <div class="drop-hint">glissez ici ou cliquez — fichier TRANSMISSION_*.xlsx</div>
+        <div class="drop-formats"><span class="fmt-badge">.XLSX</span></div>
+      </div>
+      <div class="drop-zone" id="mapDropZone" style="margin-top:14px;">
+        <input type="file" id="mapInput" accept="image/*" />
+        <div class="drop-icon">🗺️</div>
+        <div class="drop-label">2. Image de la carte</div>
+        <div class="drop-hint">glissez ici ou cliquez — PNG / JPG de la carte backbone</div>
+        <div class="drop-formats"><span class="fmt-badge">.PNG</span><span class="fmt-badge">.JPG</span></div>
+      </div>
+      <div class="file-status" id="fileStatus">
+        <div class="fs-dot"></div>
+        <div class="fs-info">
+          <div class="fs-name">Aucun fichier chargé</div>
+          <div class="fs-sub">En attente du fichier TRANSMISSION_*.xlsx</div>
+        </div>
+      </div>
+      <div class="alert" id="alertBox"></div>
+      <button class="btn-process" id="btnProcess" disabled>⚙ Générer le rapport carte</button>
+      <div class="log-area" id="logArea"></div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="panel-title">💡 Comment ça marche</div>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Fichier <strong>TRANSMISSION_*.xlsx</strong> de la semaine.</div></div></div>
+          <div class="step"><div class="step-num">2</div><div><div class="step-head">Importez votre image de carte</div><div class="step-desc">Votre carte backbone/backhaul en <strong>PNG/JPG</strong>.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div><div class="step-head">Situez chaque incident</div><div class="step-desc">Cliquez sur une puce puis pointez le lieu sur la carte. Les positions sont <em>mémorisées</em>.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div><div class="step-head">Export image ou PPTX</div><div class="step-desc">PNG pour diffusion, PPTX éditable pour présentation.</div></div></div>
+        </div>
+        <div class="info-box"><b>Contenu d'un encadré :</b><br>Coupure de fibre entre 2 sites, Impact Service, Escalade, Début (Alarm Time), Cause, et Durée (si fermé).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="slide-section" id="slideSection">
+  <div class="slide-toolbar">
+    <h2 id="slideHeading">📷 Aperçu du rapport</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-dl-img" id="btnDlImg">⬇ PNG</button>
+      <button class="btn-dl-img" id="btnDlPptx">⬇ PowerPoint (.pptx)</button>
+    </div>
+  </div>
+  <div id="calibBar">
+    <div class="cb-title">📍 Situez chaque incident sur la carte <button class="cb-reset" id="btnResetPts">Réinitialiser les positions</button></div>
+    <div id="calibChips"></div>
+  </div>
+  <div style="overflow:auto;">
+    <div id="slide">
+      <div class="sl-head">
+        <div class="sl-title-wrap">
+          <div class="sl-title1">Rapport Hebdo DCO</div>
+          <div class="sl-title2">Transport — Indisponibilité des Liens FO
+            <span class="sl-count" id="slCount">0 incident enregistré</span>
+          </div>
+        </div>
+        <img class="sl-logo" id="slLogo" alt="yas" />
+      </div>
+      <div class="sl-band" id="bandBackbone" style="left:250px;top:120px;width:380px;">BACKBONE</div>
+      <div class="sl-band" id="bandBackhaul" style="right:140px;top:104px;width:200px;">BACKHAUL</div>
+      <div id="mapWrap">
+        <img id="mapImg" alt="carte" />
+        <div id="mapPlaceholder">Importez une image de carte (étape 2) pour situer les incidents.</div>
+        <div id="markerLayer"></div>
+      </div>
+      <div id="bbZone" style="display:none;"></div>
+      <div id="bbZoneTitle" style="display:none;">BACKBONE</div>
+      <div id="bhPanel"><div id="bhPanelTitle">Incidents Backhaul</div><div id="bhGrid"></div></div>
+      <div id="bbLayer"></div>
+      <div class="empty-note" id="emptyNote" style="display:none;">Aucune coupure FO sur la période.</div>
+      <div class="sl-footer"><span id="slFooterL">RAPPORT HEBDO DCO — TRANSPORT — INDISPONIBILITÉ LIENS FO</span><span class="sl-footer-r" id="slFooterR"></span></div>
+      <svg id="arrowSvg" viewBox="0 0 1120 720" preserveAspectRatio="none">
+        <defs>
+          <marker id="arrowHead" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0,0 L9,4.5 L0,9 Z" fill="#e00000"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const EQUIP_RE=/^(IXR|IXRE|IXREC|R6|R7|SARM|SRA\d*|SAST|SAS|SR\d?S?\d*|SR7|PE|P|CORE|COM|MOOV|OLT|DWDM|OSN)$/i;
+const STOP=new Set(['INDISPONIBILITE','INDISPONIBILITÉ','INDISPONIBLITE','DISPONIBILITE','FLUCTUATION','BAISSE','TRAFIC','LIAISON','PARTENAIRE','ROUTEUR','LINK','DOWN','LIEN','FIBRE','COUPURE','VERS','ENTRE','SERVICE','IMPACT','AUCUN','VOIX','DATA','DES']);
+function isPlaceToken(t){if(!t)return false;if(STOP.has(t))return false;if(/^\d+$/.test(t))return false;if(EQUIP_RE.test(t))return false;if(t.length<3)return false;if(/\d/.test(t)&&/^[A-Z]+\d/.test(t)&&t.length<=5)return false;return true;}
+function extractPlaces(str){if(!str)return[];const tokens=String(str).toUpperCase().replace(/[()]/g,' ').split(/[\s\-_/]+/).filter(Boolean);const places=[];tokens.forEach(t=>{if(isPlaceToken(t)&&!places.includes(t))places.push(t);});return places;}
+function placesFromNature(nat){if(!nat)return[];const s=String(nat).toUpperCase();let m=s.match(/ENTRE\s+(.+?)\s+ET\s+(.+?)(?:\(|$)/);if(m){const a=extractPlaces(m[1]),b=extractPlaces(m[2]);return[a[0],b[0]].filter(Boolean);}m=s.match(/(.+?)\s+VERS\s+(.+)/);if(m){const a=extractPlaces(m[1]),b=extractPlaces(m[2]);return[a[a.length-1],b[0]].filter(Boolean);}return[];}
+const $=id=>document.getElementById(id);
+function log(m,t=''){const a=$('logArea');a.style.display='block';const l=document.createElement('div');l.className='log-line '+t;l.textContent=new Date().toLocaleTimeString('fr')+'  '+m;a.appendChild(l);a.scrollTop=a.scrollHeight;}
+function showAlert(m,t){const e=$('alertBox');e.textContent=m;e.className='alert '+t;e.style.display='block';}
+function hideAlert(){$('alertBox').style.display='none';}
+let mapImageData=null;
+const PTS_KEY='fo_map_points_v1';
+let mapPoints=loadPoints(),placingSite=null;
+function loadPoints(){try{return JSON.parse(localStorage.getItem(PTS_KEY))||{};}catch(e){return{};}}
+function savePoints(){try{localStorage.setItem(PTS_KEY,JSON.stringify(mapPoints));}catch(e){}}
+function renderMap(){const img=$('mapImg'),ph=$('mapPlaceholder');if(mapImageData){img.src=mapImageData;img.style.display='block';ph.style.display='none';}else{img.style.display='none';ph.style.display='flex';}}
+let currentIncidents=[];
+function renderMarkers(){const layer=$('markerLayer');layer.innerHTML='';currentIncidents.forEach((inc,idx)=>{const site=inc.site;if(!site)return;const p=mapPoints[site];if(!p)return;const pin=document.createElement('div');pin.className='map-pin';pin.style.left=(p.x*100)+'%';pin.style.top=(p.y*100)+'%';pin.dataset.node=site;pin.innerHTML=`<div class="pin-dot"><span class="pin-num">${idx+1}</span></div><div class="pin-label">${site}</div>`;layer.appendChild(pin);});}
+function renderCalibChips(){const bar=$('calibBar'),chips=$('calibChips');const sites=[...new Set(currentIncidents.map(i=>i.site).filter(Boolean))];if(!sites.length){bar.style.display='none';return;}bar.style.display='block';chips.innerHTML='';sites.forEach(site=>{const placed=!!mapPoints[site];const c=document.createElement('div');c.className='calib-chip'+(placed?' placed':'')+(placingSite===site?' active':'');c.innerHTML=`<span class="cc-state">${placingSite===site?'🎯':(placed?'✓':'📍')}</span>${site}`;c.title=placed?'Cliquez pour repositionner':'Cliquez puis pointez sur la carte';c.addEventListener('click',()=>startPlacing(site));chips.appendChild(c);});}
+function startPlacing(site){placingSite=(placingSite===site)?null:site;$('mapWrap').classList.toggle('placing',!!placingSite);if(placingSite)log(`Cliquez sur la carte pour situer : ${site}`);renderCalibChips();}
+function onMapClick(e){if(!placingSite)return;if(!mapImageData){showAlert("Importez d'abord une image de carte.",'error');return;}const wrap=$('mapWrap');const r=wrap.getBoundingClientRect();const x=(e.clientX-r.left)/r.width;const y=(e.clientY-r.top)/r.height;mapPoints[placingSite]={x:Math.min(1,Math.max(0,x)),y:Math.min(1,Math.max(0,y))};savePoints();log(`Position enregistrée : ${placingSite}`,'ok');placingSite=null;$('mapWrap').classList.remove('placing');renderMarkers();renderCalibChips();requestAnimationFrame(()=>requestAnimationFrame(drawArrows));}
+function handleMapImage(file){if(!file||!/^image\//.test(file.type)){showAlert('Sélectionnez une image (PNG/JPG).','error');return;}const r=new FileReader();r.onload=ev=>{mapImageData=ev.target.result;log('Image de carte chargée : '+file.name,'ok');$('mapImg').onload=()=>{if($('slideSection').style.display==='block'){renderMarkers();drawArrows();}};renderMap();if($('slideSection').style.display==='block'){renderMarkers();requestAnimationFrame(()=>requestAnimationFrame(drawArrows));setTimeout(drawArrows,200);}};r.readAsDataURL(file);}
+function parseFile(wb){const ws=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});if(data.length<2)throw new Error('Fichier vide');const H=data[0].map(h=>String(h||'').trim());const col=re=>H.findIndex(h=>re.test(h));const idx={ticket:col(/num[ée]ro.*ticket|ticket/i),nature:col(/nature/i),alarm:col(/alarm.*time/i),sp:col(/site\s*parent/i),sn:col(/site\s*name/i),impSvc:col(/impact.*service/i),tech:col(/technolog/i),cause:col(/^cause$/i),esc:col(/^escalade$/i),dur:col(/duration/i),status:col(/^status$/i)};const rows=data.slice(1).filter(r=>r.some(c=>c!==''&&c!=null));return{rows,idx};}
+function buildIncidents(parsed){const{rows,idx}=parsed;const groups=new Map();rows.forEach(r=>{const cause=String(r[idx.cause]||'').toUpperCase();const nat=String(r[idx.nature]||'').toUpperCase();const isFO=cause.includes('COUPURE FO');const isLink=/LIEN|FIBRE|\bFO\b/.test(nat);if(!(isFO&&isLink))return;const key=String(r[idx.ticket]||'').trim()||JSON.stringify(r.slice(0,4));if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);});const incidents=[];groups.forEach(g=>{const r=g[0];const tech=String(r[idx.tech]||'').trim().toUpperCase();const zone=tech.startsWith('BACKBONE')?'BACKBONE':'BACKHAUL';let places=placesFromNature(r[idx.nature]);if(places.length<2){const sp=extractPlaces(r[idx.sp]);sp.forEach(p=>{if(!places.includes(p))places.push(p);});}if(places.length<2){g.forEach(row=>{extractPlaces(row[idx.sn]).forEach(p=>{if(!places.includes(p))places.push(p);});});}places=places.slice(0,2);const disp=[...new Set(places.map(p=>p))];const status=String(r[idx.status]||'').toUpperCase();const open=!status.includes('FERME');let impact=String(r[idx.impSvc]||'').trim();if(!impact||/^n\/?a$/i.test(impact))impact='AUCUN';incidents.push({zone,title:disp.length>=2?`COUPURE DE FIBRE ENTRE ${disp[0]} ET ${disp[1]}`:disp.length===1?`COUPURE DE FIBRE — ${disp[0]}`:'COUPURE DE FIBRE',impact,escalade:String(r[idx.esc]||'').trim()||'TRANS FO',debut:String(r[idx.alarm]||'').trim().replace(/:\d{2}$/,''),cause:'COUPURE FO',duree:String(r[idx.dur]||'').trim(),open,site:disp[0]||null});});return incidents;}
+function boxHTML(inc){const debut=inc.open?`${inc.debut} (EN COURS)`:inc.debut;const dureeLine=(!inc.open&&inc.duree&&!/^n\/?a$/i.test(inc.duree))?`<div class="ib-duree">DUREE: ${inc.duree}</div>`:'';return `<div class="ib-title">${inc.title}</div><div><span class="ib-impact">IMPACT SERVICE : ${inc.impact}</span></div><div class="ib-esc">Escalade : ${inc.escalade}</div><div class="ib-debut">DEBUT: ${debut}</div><div class="ib-cause">CAUSE: ${inc.cause}</div>${dureeLine}`;}
+function renderSlide(incidents){
+  currentIncidents=incidents;renderMap();
+  const backbone=incidents.filter(i=>i.zone==='BACKBONE');
+  const backhaul=incidents.filter(i=>i.zone==='BACKHAUL');
+  const n=incidents.length;
+  $('slCount').textContent=`${n} incident${n>1?'s':''} enregistré${n>1?'s':''}`;
+  $('emptyNote').style.display=n?'none':'block';
+
+  /* Zone BACKBONE */
+  const hasbb=backbone.length>0;
+  $('bbZone').style.display=hasbb?'block':'none';
+  $('bbZoneTitle').style.display=hasbb?'flex':'none';
+
+  /* Grille BACKHAUL */
+  const grid=$('bhGrid');grid.innerHTML='';
+  backhaul.forEach(inc=>{
+    const d=document.createElement('div');d.className='inc-box';
+    d.innerHTML=boxHTML(inc);d.dataset.inc=currentIncidents.indexOf(inc);
+    grid.appendChild(d);
+  });
+
+  /* Boxes BACKBONE */
+  const layer=$('bbLayer');layer.innerHTML='';
+  const topStart=146,gap=18,boxApproxH=92;
+  backbone.forEach((inc,i)=>{
+    const d=document.createElement('div');d.className='inc-box bb-box';
+    d.innerHTML=boxHTML(inc);d.dataset.inc=currentIncidents.indexOf(inc);
+    d.style.left='16px';d.style.top=(topStart+i*(boxApproxH+gap))+'px';
+    d.dataset.target=inc.site||'';layer.appendChild(d);
+  });
+
+  /* Footer période */
+  const m=loadedName.match(/(\d{8})[_-](\d{8})/);
+  if(m){
+    const parseD=s=>new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8));
+    const d1=parseD(m[1]),d2=parseD(m[2]);
+    const MOIS=['JAN','FÉV','MAR','AVR','MAI','JUN','JUL','AOÛ','SEP','OCT','NOV','DÉC'];
+    const fmt=d=>`${d.getDate()} ${MOIS[d.getMonth()]} ${d.getFullYear()}`;
+    $('slFooterR').textContent=`Du ${fmt(d1)} au ${fmt(d2)}`;
+  }
+
+  renderMarkers();renderCalibChips();
+  requestAnimationFrame(()=>requestAnimationFrame(drawArrows));
+  setTimeout(drawArrows,150);
+}
+function drawArrows(){const svg=$('arrowSvg');[...svg.querySelectorAll('.arrow')].forEach(e=>e.remove());const slideRect=$('slide').getBoundingClientRect();const sx=1120/slideRect.width,sy=720/slideRect.height;const NS='http://www.w3.org/2000/svg';document.querySelectorAll('.bb-box').forEach(box=>{const nodeName=box.dataset.target;if(!nodeName)return;const marker=$('markerLayer').querySelector(`[data-node="${CSS.escape(nodeName)}"]`);if(!marker)return;const br=box.getBoundingClientRect(),mr=marker.getBoundingClientRect();const x1=(br.right-slideRect.left)*sx,y1=(br.top+br.height/2-slideRect.top)*sy;const x2=(mr.left+mr.width/2-slideRect.left)*sx,y2=(mr.top+mr.height/2-slideRect.top)*sy;const ln=document.createElementNS(NS,'line');ln.setAttribute('class','arrow');ln.setAttribute('x1',x1);ln.setAttribute('y1',y1);ln.setAttribute('x2',x2);ln.setAttribute('y2',y2);ln.setAttribute('stroke','#e00000');ln.setAttribute('stroke-width','3');svg.appendChild(ln);const a=Math.atan2(y2-y1,x2-x1),L=16,W=8;const ux=Math.cos(a),uy=Math.sin(a),px=-uy,py=ux;const bx=x2-L*ux,by=y2-L*uy;const head=document.createElementNS(NS,'polygon');head.setAttribute('class','arrow');head.setAttribute('points',`${x2},${y2} ${bx+px*W},${by+py*W} ${bx-px*W},${by-py*W}`);head.setAttribute('fill','#e00000');svg.appendChild(head);});}
+let parsedData=null,loadedName='';
+function readExcel(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{try{res(XLSX.read(new Uint8Array(e.target.result),{type:'array'}));}catch(err){rej(err);}};r.onerror=rej;r.readAsArrayBuffer(file);});}
+async function handleFile(file){hideAlert();$('logArea').innerHTML='';$('logArea').style.display='block';const st=$('fileStatus');st.className='file-status';$('btnProcess').disabled=true;parsedData=null;if(!file)return;if(!/\.xlsx?$/i.test(file.name)){st.className='file-status error';st.querySelector('.fs-name').textContent='✗ Format non supporté';st.querySelector('.fs-sub').textContent='Sélectionnez un fichier .xlsx';showAlert('Format non supporté.','error');return;}try{log(`Lecture : ${file.name}`);const wb=await readExcel(file);parsedData=parseFile(wb);loadedName=file.name;const nFO=buildIncidents(parsedData).length;st.className='file-status loaded';st.querySelector('.fs-name').textContent='✓ '+file.name;st.querySelector('.fs-sub').textContent=`${parsedData.rows.length} lignes — ${nFO} coupure(s) FO détectée(s)`;log(`Fichier chargé. ${nFO} coupure(s) FO.`,'ok');$('btnProcess').disabled=false;}catch(err){st.className='file-status error';st.querySelector('.fs-name').textContent='✗ Erreur';st.querySelector('.fs-sub').textContent=err.message;log('Erreur : '+err.message,'err');showAlert('Erreur : '+err.message,'error');}}
+function runProcess(){if(!parsedData)return;try{const incidents=buildIncidents(parsedData);log(`${incidents.length} incident(s) FO — BACKBONE: ${incidents.filter(i=>i.zone==='BACKBONE').length}, BACKHAUL: ${incidents.filter(i=>i.zone==='BACKHAUL').length}`,'ok');incidents.forEach(i=>log(`  [${i.zone}] ${i.title}`));renderSlide(incidents);$('slideSection').style.display='block';$('slideHeading').textContent=`📷 Aperçu — ${incidents.length} coupure(s) FO`;$('slideSection').scrollIntoView({behavior:'smooth',block:'start'});showAlert('Rapport carte généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur : '+err.message,'error');}}
+function baseName(){return `RAPPORT_DCO_LIENS_FO_${(loadedName.match(/(\d{8})[_-](\d{8})/)||['',''])[0]||'semaine'}`;}
+function getSlideCanvas(){return new Promise((resolve,reject)=>{drawArrows();requestAnimationFrame(()=>requestAnimationFrame(()=>{html2canvas($('slide'),{scale:2,backgroundColor:'#ffffff',useCORS:true,width:1120,height:720}).then(resolve).catch(reject);}));});}
+function downloadImage(){getSlideCanvas().then(canvas=>{const a=document.createElement('a');a.download=baseName()+'.png';a.href=canvas.toDataURL('image/png');a.click();log('Image PNG téléchargée.','ok');}).catch(err=>{log('Erreur export : '+err.message,'err');showAlert('Erreur export image : '+err.message,'error');});}
+async function downloadPptx(){
+  if(typeof PptxGenJS==='undefined'){showAlert('Librairie PowerPoint non chargée.','error');return;}
+  if(typeof html2canvas==='undefined'){showAlert('Librairie html2canvas non chargée.','error');return;}
+  const btn=$('btnDlPptx');
+  btn.disabled=true;btn.textContent='⏳ Génération…';
+  try{
+    log('Génération du PowerPoint…');
+    drawArrows();
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    const el=$('slide');
+    const W=10,H=6.4286;
+    const canvas=await html2canvas(el,{scale:2,backgroundColor:'#ecf0f9',useCORS:true,logging:false,allowTaint:true,width:1120,height:720});
+    const pptx=new PptxGenJS();
+    pptx.defineLayout({name:'FO',width:W,height:H});
+    pptx.layout='FO';
+    const slide=pptx.addSlide();
+    slide.addImage({data:canvas.toDataURL('image/png'),x:0,y:0,w:W,h:H});
+    await pptx.writeFile({fileName:baseName()+'.pptx'});
+    log('PowerPoint (.pptx) téléchargé.','ok');
+    showAlert('PowerPoint généré avec succès !','success');
+  }catch(err){
+    log('Erreur pptx : '+err.message,'err');
+    showAlert('Erreur PowerPoint : '+err.message,'error');
+  }finally{
+    btn.disabled=false;btn.textContent='⬇ PowerPoint (.pptx)';
+  }
+}
+let logoPngData=null;
+function buildLogo(){const el=$('slLogo');if(window.YAS_LOGO_DATA){const img=new Image();img.onload=()=>{const w=img.naturalWidth||240,h=img.naturalHeight||200;const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(img,0,0);try{const id=g.getImageData(0,0,w,h);const d=id.data;for(let i=0;i<d.length;i+=4){const r=d[i],gg=d[i+1],b=d[i+2];if(r>225&&gg>225&&b>225)d[i+3]=0;}g.putImageData(id,0,0);logoPngData=c.toDataURL('image/png');}catch(e){logoPngData=window.YAS_LOGO_DATA;}if(el)el.src=logoPngData;};img.onerror=()=>{logoPngData=window.YAS_LOGO_DATA;if(el)el.src=logoPngData;};img.src=window.YAS_LOGO_DATA;return;}const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="180" viewBox="0 0 100 90"><path d="M41.97 25.84 Q50 12 58.03 25.84 L77.97 60.16 Q86 74 70 74 L30 74 Q14 74 22.03 60.16 Z" fill="#142f6e"/><text x="50" y="61" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="30" fill="#f5c000">yas</text></svg>`;const url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=200;c.height=180;c.getContext('2d').drawImage(img,0,0,200,180);try{logoPngData=c.toDataURL('image/png');}catch(e){logoPngData=url;}if(el)el.src=logoPngData;};img.onerror=()=>{if(el)el.src=url;logoPngData=url;};img.src=url;}
+document.addEventListener('DOMContentLoaded',()=>{buildLogo();$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});$('btnProcess').addEventListener('click',runProcess);$('btnDlImg').addEventListener('click',downloadImage);$('btnDlPptx').addEventListener('click',downloadPptx);$('mapInput').addEventListener('change',e=>{if(e.target.files[0])handleMapImage(e.target.files[0]);e.target.value='';});const mdz=$('mapDropZone');mdz.addEventListener('dragover',e=>{e.preventDefault();mdz.classList.add('dragging');});mdz.addEventListener('dragleave',()=>mdz.classList.remove('dragging'));mdz.addEventListener('drop',e=>{e.preventDefault();mdz.classList.remove('dragging');if(e.dataTransfer.files[0])handleMapImage(e.dataTransfer.files[0]);});$('mapWrap').addEventListener('click',onMapClick);$('btnResetPts').addEventListener('click',()=>{if(!confirm('Réinitialiser toutes les positions mémorisées ?'))return;mapPoints={};savePoints();placingSite=null;$('mapWrap').classList.remove('placing');renderMarkers();renderCalibChips();drawArrows();log('Positions réinitialisées.','warn');});window.addEventListener('resize',()=>{if($('slideSection').style.display==='block')drawArrows();});});
+</script>
+{% endblock %}

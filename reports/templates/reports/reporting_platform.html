@@ -9,124 +9,215 @@
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
   :root { --blue:#003087; --yellow:#FFC72C; }
 
-  /* Banner */
+  /* ══════════════════════════════════════
+     BANNER
+  ══════════════════════════════════════ */
   .plat-banner {
-    border-radius:16px; padding:22px 28px;
-    display:flex; align-items:center; justify-content:space-between;
-    flex-wrap:wrap; gap:16px; margin-bottom:28px;
+    border-radius: 22px;
+    padding: 0;
+    margin-bottom: 28px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.22);
+    position: relative; overflow: hidden;
   }
-  .plat-banner-left { display:flex; align-items:center; gap:14px; }
-  .plat-banner-icon { width:52px; height:52px; border-radius:14px;
-    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0; }
-  .plat-banner-tag  { font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; }
-  .plat-banner-ttl  { font-size:19px; font-weight:700; color:#fff; margin-top:2px; }
-  .plat-banner-sub  { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
-  .plat-banner-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 
+  /* Top section avec gradient */
+  .plat-banner-top {
+    padding: 28px 32px 22px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+    position: relative; z-index: 1;
+  }
+  .plat-banner-top::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(0,0,0,.12) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .plat-banner-top::after {
+    content: ''; position: absolute; right: -60px; top: -60px;
+    width: 280px; height: 280px; border-radius: 50%;
+    background: rgba(255,255,255,.08); pointer-events: none;
+  }
+
+  .plat-banner-identity { display: flex; align-items: center; gap: 18px; position: relative; z-index: 1; }
+  .plat-banner-icon {
+    width: 64px; height: 64px; border-radius: 18px;
+    background: rgba(255,255,255,.22); border: 2px solid rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,.15);
+  }
+  .plat-banner-tag   { font-size: 10px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: var(--yellow); margin-bottom: 5px; }
+  .plat-banner-ttl   { font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: #fff; letter-spacing: 2px; line-height: 1; }
+  .plat-banner-sub   { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 5px; }
+
+  .plat-banner-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; position: relative; z-index: 1; }
   .btn-back {
-    display:inline-flex; align-items:center; gap:6px;
-    padding:8px 16px; border-radius:10px;
-    border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08);
-    color:rgba(255,255,255,.85); font-size:13px; font-weight:600;
-    text-decoration:none; transition:all .15s;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: 10px;
+    border: 1.5px solid rgba(255,255,255,.3); background: rgba(255,255,255,.10);
+    color: rgba(255,255,255,.85); font-size: 13px; font-weight: 600;
+    text-decoration: none; transition: all .15s;
   }
-  .btn-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+  .btn-back:hover { border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.18); color: #fff; }
 
-  /* KPIs banner */
-  .kpi-band {
-    display:flex; gap:20px; flex-wrap:wrap;
-    background:rgba(255,255,255,.12); border-radius:12px;
-    padding:10px 20px; margin-top:4px;
+  /* KPI band en bas du banner */
+  .plat-banner-kpis {
+    display: flex; border-top: 1px solid rgba(255,255,255,.12);
+    background: rgba(0,0,0,.15);
   }
-  .kpi-band-item { text-align:center; }
-  .kpi-band-val { font-family:'Bebas Neue',sans-serif; font-size:22px; color:#fff; line-height:1; }
-  .kpi-band-lbl { font-size:10px; color:rgba(255,255,255,.6); text-transform:uppercase; letter-spacing:.5px; }
+  .plat-kpi {
+    flex: 1; padding: 16px 20px; text-align: center;
+    border-right: 1px solid rgba(255,255,255,.08);
+  }
+  .plat-kpi:last-child { border-right: none; }
+  .plat-kpi-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #fff; letter-spacing: 1px; line-height: 1; margin-bottom: 4px; }
+  .plat-kpi-val.yellow { color: #FFC72C; }
+  .plat-kpi-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .7px; font-weight: 600; }
 
-  /* Section titre */
+  /* ══════════════════════════════════════
+     SECTION HEADERS
+  ══════════════════════════════════════ */
   .section-hdr {
-    display:flex; align-items:center; gap:10px;
-    margin:28px 0 16px; padding-bottom:12px;
-    border-bottom:2px solid #e8edf5;
+    display: flex; align-items: center; gap: 12px;
+    margin: 28px 0 16px;
   }
-  .section-hdr-icon { font-size:20px; }
-  .section-hdr-ttl { font-size:15px; font-weight:800; color:#003087; }
-  .section-hdr-cnt { margin-left:auto; background:#f0f4ff; color:#003087;
-    font-size:11px; font-weight:700; padding:3px 12px; border-radius:20px; }
+  .section-hdr-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 16px; border-radius: 12px;
+    font-size: 13px; font-weight: 800; color: #fff;
+  }
+  .section-hdr-pill.excel  { background: linear-gradient(135deg,#003087,#0047cc); }
+  .section-hdr-pill.pptx   { background: linear-gradient(135deg,#b34700,#e05a00); }
+  .section-hdr-pill.tool   { background: linear-gradient(135deg,#166534,#22c55e); }
+  .section-hdr-pill.import { background: linear-gradient(135deg,#374151,#4b5563); }
+  .section-hdr-line { flex: 1; height: 1px; background: #e8edf5; }
+  .section-hdr-cnt {
+    background: #e8f0ff; color: #003087;
+    font-size: 11px; font-weight: 700; padding: 4px 13px;
+    border-radius: 20px; border: 1px solid #c8d8f8;
+    white-space: nowrap;
+  }
 
-  /* Grille rapports */
+  /* ══════════════════════════════════════
+     GRILLE RAPPORTS
+  ══════════════════════════════════════ */
   .reports-grid {
-    display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
-    gap:16px;
-    margin-bottom:8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px; margin-bottom: 8px;
   }
-  @media(max-width:600px){ .reports-grid{ grid-template-columns:1fr; } }
+  @media(max-width:600px){ .reports-grid{ grid-template-columns: 1fr; } }
 
-  /* Carte rapport */
+  /* ── Carte rapport ── */
   .rpt-card {
-    background:#fff; border-radius:16px; border:1px solid #e8edf5;
-    box-shadow:0 1px 6px rgba(0,48,135,.06);
-    text-decoration:none; color:inherit;
-    display:flex; flex-direction:column;
-    overflow:hidden;
-    transition:box-shadow .2s, transform .2s;
-    position:relative;
+    background: #fff; border-radius: 18px; border: 1px solid #e8edf5;
+    box-shadow: 0 2px 14px rgba(0,48,135,.07);
+    text-decoration: none; color: inherit;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    transition: box-shadow .22s, transform .22s;
   }
-  .rpt-card:hover { box-shadow:0 6px 24px rgba(0,48,135,.13); transform:translateY(-3px); }
+  .rpt-card:hover { box-shadow: 0 12px 40px rgba(0,48,135,.16); transform: translateY(-5px); }
 
-  .rpt-card-top { height:3px; }
-  .rpt-card-body { padding:20px 22px 16px; flex:1; }
-  .rpt-num {
-    display:inline-block; padding:3px 12px; border-radius:20px;
-    font-size:11px; font-weight:700; margin-bottom:10px;
+  /* Header coloré de chaque carte */
+  .rpt-card-head {
+    padding: 18px 20px 14px;
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 12px;
   }
-  .rpt-num.excel { background:#e8f0ff; color:#003087; }
-  .rpt-num.pptx  { background:#fff3e0; color:#c75a00; }
+  .rpt-card-head::after {
+    content: ''; position: absolute; right: -20px; top: -20px;
+    width: 90px; height: 90px; border-radius: 50%;
+    background: rgba(255,255,255,.12); pointer-events: none;
+  }
+  .rpt-head-icon {
+    width: 40px; height: 40px; border-radius: 11px;
+    background: rgba(255,255,255,.22); border: 1.5px solid rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .rpt-head-title { font-size: 14px; font-weight: 800; color: #fff; line-height: 1.3; }
+  .rpt-head-sub   { font-size: 11px; color: rgba(255,255,255,.65); margin-top: 2px; font-weight: 500; }
 
-  .rpt-title   { font-size:16px; font-weight:800; color:#1e3a6e; margin-bottom:4px; }
-  .rpt-subtitle { font-size:13px; font-weight:600; color:#003087; margin-bottom:8px; }
-  .rpt-desc    { font-size:12px; color:#888; line-height:1.5; }
+  /* Corps de la carte */
+  .rpt-card-body { padding: 16px 20px 14px; flex: 1; }
+  .rpt-desc { font-size: 12.5px; color: #6b7a99; line-height: 1.6; }
 
+  /* Footer carte */
   .rpt-card-footer {
-    padding:12px 22px; border-top:1px solid #f0f4ff;
-    display:flex; align-items:center; justify-content:space-between;
-    font-size:12px; font-weight:700; color:#003087;
+    padding: 12px 20px;
+    border-top: 1px solid #f0f4ff;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #fafbff; transition: background .18s;
   }
-  .rpt-card-footer-icon { font-size:18px; }
+  .rpt-card:hover .rpt-card-footer { background: #f0f4ff; }
+  .rpt-card-footer-label { font-size: 12px; font-weight: 700; color: #003087; }
+  .rpt-card-footer-arrow {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: #003087; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+    transition: background .15s, transform .15s;
+  }
+  .rpt-card:hover .rpt-card-footer-arrow { background: #FFC72C; color: #003087; transform: translateX(3px); }
 
-  /* Section import */
+  /* ══════════════════════════════════════
+     IMPORT CARD
+  ══════════════════════════════════════ */
   .import-card {
-    background:#fff; border-radius:16px; border:1px solid #e8edf5;
-    box-shadow:0 1px 6px rgba(0,48,135,.06);
-    padding:22px 24px;
+    background: #fff; border-radius: 20px; border: 1px solid #e8edf5;
+    box-shadow: 0 2px 16px rgba(0,48,135,.07);
+    overflow: hidden;
   }
-  .import-form-row {
-    display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;
-    margin-top:14px;
+  .import-card-head {
+    background: linear-gradient(135deg,#1e293b,#334155);
+    padding: 18px 24px; display: flex; align-items: center; gap: 12px;
   }
-  .import-file-wrap { flex:1; min-width:200px; }
-  .import-label { font-size:12px; font-weight:600; color:#666; margin-bottom:4px; display:block; }
-  .import-file-input {
-    width:100%; padding:9px 12px; border-radius:10px;
-    border:1.5px solid #d0d8e8; background:#f8faff;
-    font-size:13px; color:#333; cursor:pointer;
-    transition:border-color .15s;
+  .import-card-head-icon {
+    width: 38px; height: 38px; background: rgba(255,255,255,.12); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
   }
-  .import-file-input:hover { border-color:#003087; }
-  .import-hint { font-size:11px; color:#aaa; margin-top:4px; }
-  .import-check { display:flex; align-items:center; gap:6px; font-size:12px; color:#666; padding:6px 0; }
-  .btn-import {
-    display:inline-flex; align-items:center; gap:8px;
-    padding:10px 22px; border-radius:10px;
-    background:#003087; color:#fff;
-    font-size:13px; font-weight:700; border:none; cursor:pointer;
-    white-space:nowrap; transition:all .15s;
-  }
-  .btn-import:hover { background:#0047cc; }
+  .import-card-head-title { font-size: 14px; font-weight: 800; color: #fff; }
+  .import-card-head-sub   { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
+  .import-card-body { padding: 22px 24px; }
+  .import-desc { font-size: 13px; color: #667; line-height: 1.6; margin-bottom: 18px; }
 
-  .msg-success { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px 16px; color:#16a34a; font-size:13px; margin-bottom:16px; }
-  .msg-warning { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px 16px; color:#d97706; font-size:13px; margin-bottom:16px; }
-  .msg-error   { background:#fff0f0; border:1px solid #fca5a5; border-radius:10px; padding:10px 16px; color:#dc2626; font-size:13px; margin-bottom:16px; }
+  .import-form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .import-file-wrap { flex: 1; min-width: 200px; }
+  .import-label { font-size: 11px; font-weight: 700; color: #8896b3; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; display: block; }
+  .import-file-input {
+    width: 100%; padding: 10px 14px; border-radius: 10px;
+    border: 1.5px solid #d0d8e8; background: #f8faff;
+    font-size: 13px; color: #333; cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .import-file-input:hover  { border-color: #003087; }
+  .import-file-input:focus  { border-color: #003087; outline: none; box-shadow: 0 0 0 3px rgba(0,48,135,.08); }
+  .import-hint { font-size: 11px; color: #b0b8cc; margin-top: 5px; }
+
+  .import-actions { display: flex; flex-direction: column; gap: 8px; justify-content: flex-end; }
+  .import-check { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #555; cursor: pointer; }
+  .import-check input { width: 14px; height: 14px; cursor: pointer; accent-color: #003087; }
+  .btn-import {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 24px; border-radius: 11px;
+    background: linear-gradient(135deg,#003087,#0047cc); color: #fff;
+    font-size: 13px; font-weight: 700; border: none; cursor: pointer;
+    white-space: nowrap; transition: all .15s;
+    box-shadow: 0 3px 12px rgba(0,48,135,.3);
+  }
+  .btn-import:hover { box-shadow: 0 6px 20px rgba(0,48,135,.4); transform: translateY(-1px); }
+
+  /* Messages */
+  .msg-success { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px 16px; color:#16a34a; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .msg-warning { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px 16px; color:#d97706; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .msg-error   { background:#fff0f0; border:1px solid #fca5a5; border-radius:10px; padding:10px 16px; color:#dc2626; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+
+  @media(max-width:700px){
+    .plat-banner-kpis { flex-wrap: wrap; }
+    .plat-kpi { min-width: 33%; }
+    .import-form-row { flex-direction: column; }
+  }
 </style>
 {% endblock %}
 
@@ -135,122 +226,187 @@
 {% if messages %}
 {% for msg in messages %}
 <div class="msg-{% if msg.tags == 'success' %}success{% elif msg.tags == 'warning' %}warning{% else %}error{% endif %}">
+  {% if msg.tags == 'success' %}✓{% elif msg.tags == 'warning' %}⚠{% else %}✕{% endif %}
   {{ msg }}
 </div>
 {% endfor %}
 {% endif %}
 
-<!-- Banner plateforme -->
+<!-- ══ Banner ══ -->
 <div class="plat-banner" style="background:linear-gradient(135deg,{{ cfg.color }} 0%,{{ cfg.color2 }} 100%)">
-  <div class="plat-banner-left">
-    <div class="plat-banner-icon" style="background:rgba(255,255,255,.15)">{{ cfg.icon }}</div>
-    <div>
-      <div class="plat-banner-tag" style="color:var(--yellow)">Reporting</div>
-      <div class="plat-banner-ttl">{{ cfg.label }}</div>
-      {% if dernier_mois %}
-      <div class="kpi-band">
-        <div class="kpi-band-item">
-          <div class="kpi-band-val">{{ total }}</div>
-          <div class="kpi-band-lbl">Incidents</div>
-        </div>
-        <div class="kpi-band-item">
-          <div class="kpi-band-val">{{ outage_h }}h</div>
-          <div class="kpi-band-lbl">Outage</div>
-        </div>
-        <div class="kpi-band-item">
-          <div class="kpi-band-val">{{ dernier_mois|date:"M Y" }}</div>
-          <div class="kpi-band-lbl">Dernier mois</div>
-        </div>
+
+  <div class="plat-banner-top">
+    <div class="plat-banner-identity">
+      <div class="plat-banner-icon">{{ cfg.icon }}</div>
+      <div>
+        <div class="plat-banner-tag">Reporting</div>
+        <div class="plat-banner-ttl">{{ cfg.label }}</div>
+        <div class="plat-banner-sub">Rapports et outils de la plateforme</div>
       </div>
-      {% endif %}
+    </div>
+    <div class="plat-banner-actions">
+      <a href="{% url 'reporting' %}" class="btn-back">&#8592; Plateformes</a>
     </div>
   </div>
-  <div class="plat-banner-right">
-    <a href="{% url 'reporting' %}" class="btn-back">&#8592; Retour</a>
+
+  {% if dernier_mois %}
+  <div class="plat-banner-kpis">
+    <div class="plat-kpi">
+      <div class="plat-kpi-val yellow">{{ total }}</div>
+      <div class="plat-kpi-lbl">Incidents total</div>
+    </div>
+    <div class="plat-kpi">
+      <div class="plat-kpi-val">{{ outage_h }}h</div>
+      <div class="plat-kpi-lbl">Outage total</div>
+    </div>
+    <div class="plat-kpi">
+      <div class="plat-kpi-val">{{ dernier_mois|date:"M Y" }}</div>
+      <div class="plat-kpi-lbl">Dernier mois</div>
+    </div>
+    {% if excel_reports %}
+    <div class="plat-kpi">
+      <div class="plat-kpi-val">{{ excel_reports|length }}</div>
+      <div class="plat-kpi-lbl">Rapports Excel</div>
+    </div>
+    {% endif %}
+    {% if pptx_reports %}
+    <div class="plat-kpi">
+      <div class="plat-kpi-val">{{ pptx_reports|length }}</div>
+      <div class="plat-kpi-lbl">PowerPoint</div>
+    </div>
+    {% endif %}
   </div>
+  {% endif %}
+
 </div>
 
-<!-- ── Rapports Excel ── -->
+<!-- ══ Rapports Excel ══ -->
 {% if excel_reports %}
 <div class="section-hdr">
-  <span class="section-hdr-icon">📊</span>
-  <span class="section-hdr-ttl">Rapports Excel</span>
+  <div class="section-hdr-pill excel">📊 Rapports Excel</div>
+  <div class="section-hdr-line"></div>
   <span class="section-hdr-cnt">{{ excel_reports|length }} rapport{% if excel_reports|length > 1 %}s{% endif %}</span>
 </div>
 
 <div class="reports-grid">
   {% for rpt in excel_reports %}
   <a href="{{ rpt.url }}" class="rpt-card">
-    <div class="rpt-card-top" style="background:{{ cfg.color }}"></div>
+    <div class="rpt-card-head" style="background:linear-gradient(135deg,{{ cfg.color }},{{ cfg.color2 }})">
+      <div class="rpt-head-icon">📊</div>
+      <div>
+        <div class="rpt-head-title">{{ rpt.title }}</div>
+        <div class="rpt-head-sub">{{ rpt.subtitle }}</div>
+      </div>
+    </div>
     <div class="rpt-card-body">
-      <div class="rpt-num excel">{{ rpt.title }}</div>
-      <div class="rpt-subtitle">{{ rpt.subtitle }}</div>
       <div class="rpt-desc">{{ rpt.desc }}</div>
     </div>
     <div class="rpt-card-footer">
-      <span>Ouvrir le rapport</span>
-      <span class="rpt-card-footer-icon">›</span>
+      <span class="rpt-card-footer-label">Ouvrir le rapport</span>
+      <span class="rpt-card-footer-arrow">›</span>
     </div>
   </a>
   {% endfor %}
 </div>
 {% endif %}
 
-<!-- ── Rapports PowerPoint ── -->
+<!-- ══ Rapports PowerPoint ══ -->
 {% if pptx_reports %}
 <div class="section-hdr">
-  <span class="section-hdr-icon">🎯</span>
-  <span class="section-hdr-ttl">Rapports PowerPoint</span>
+  <div class="section-hdr-pill pptx">🎯 Rapports PowerPoint</div>
+  <div class="section-hdr-line"></div>
   <span class="section-hdr-cnt">{{ pptx_reports|length }} rapport{% if pptx_reports|length > 1 %}s{% endif %}</span>
 </div>
 
 <div class="reports-grid">
   {% for rpt in pptx_reports %}
   <a href="{{ rpt.url }}" class="rpt-card">
-    <div class="rpt-card-top" style="background:#c75a00"></div>
+    <div class="rpt-card-head" style="background:linear-gradient(135deg,#b34700,#e05a00)">
+      <div class="rpt-head-icon">🎯</div>
+      <div>
+        <div class="rpt-head-title">{{ rpt.title }}</div>
+        <div class="rpt-head-sub">{{ rpt.subtitle }}</div>
+      </div>
+    </div>
     <div class="rpt-card-body">
-      <div class="rpt-num pptx">{{ rpt.title }}</div>
-      <div class="rpt-subtitle">{{ rpt.subtitle }}</div>
       <div class="rpt-desc">{{ rpt.desc }}</div>
     </div>
     <div class="rpt-card-footer">
-      <span>Télécharger (.pptx)</span>
-      <span class="rpt-card-footer-icon">⬇</span>
+      <span class="rpt-card-footer-label">Télécharger (.pptx)</span>
+      <span class="rpt-card-footer-arrow">⬇</span>
     </div>
   </a>
   {% endfor %}
 </div>
 {% endif %}
 
-<!-- ── Import ── -->
+<!-- ══ Outils Interactifs ══ -->
+{% if tool_reports %}
 <div class="section-hdr">
-  <span class="section-hdr-icon">📂</span>
-  <span class="section-hdr-ttl">Import des données — {{ cfg.label }}</span>
+  <div class="section-hdr-pill tool">🛠 Outils Interactifs</div>
+  <div class="section-hdr-line"></div>
+  <span class="section-hdr-cnt">{{ tool_reports|length }} outil{% if tool_reports|length > 1 %}s{% endif %}</span>
+</div>
+
+<div class="reports-grid">
+  {% for rpt in tool_reports %}
+  <a href="{{ rpt.url }}" class="rpt-card">
+    <div class="rpt-card-head" style="background:linear-gradient(135deg,#166534,#22c55e)">
+      <div class="rpt-head-icon">🛠</div>
+      <div>
+        <div class="rpt-head-title">{{ rpt.title }}</div>
+        <div class="rpt-head-sub">{{ rpt.subtitle }}</div>
+      </div>
+    </div>
+    <div class="rpt-card-body">
+      <div class="rpt-desc">{{ rpt.desc }}</div>
+    </div>
+    <div class="rpt-card-footer">
+      <span class="rpt-card-footer-label">Ouvrir l'outil</span>
+      <span class="rpt-card-footer-arrow">›</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ══ Import ══ -->
+<div class="section-hdr" style="margin-top:32px;">
+  <div class="section-hdr-pill import">📂 Import des données</div>
+  <div class="section-hdr-line"></div>
 </div>
 
 <div class="import-card">
-  <p style="font-size:13px;color:#666;margin:0 0 4px">
-    Importez les données de la plateforme <strong>{{ cfg.label }}</strong> depuis un fichier Excel du ticketing ou depuis le fichier Bases des Incidents.
-  </p>
-
-  <form method="post" action="{% url 'reporting_platform_import' platform %}" enctype="multipart/form-data">
-    {% csrf_token %}
-    <div class="import-form-row">
-      <div class="import-file-wrap">
-        <label class="import-label" for="incidents_file">Fichier Excel</label>
-        <input type="file" name="incidents_file" id="incidents_file"
-               accept="{{ cfg.import.accept }}" class="import-file-input" required>
-        <div class="import-hint">{{ cfg.import.hint }}</div>
-      </div>
-      <div>
-        <label class="import-check">
-          <input type="checkbox" name="clear_mois" value="1">
-          Remplacer les données existantes du même mois
-        </label>
-        <button type="submit" class="btn-import">📂 Importer</button>
-      </div>
+  <div class="import-card-head">
+    <div class="import-card-head-icon">📂</div>
+    <div>
+      <div class="import-card-head-title">Importer — {{ cfg.label }}</div>
+      <div class="import-card-head-sub">Fichier Excel du ticketing ou Bases des Incidents</div>
     </div>
-  </form>
+  </div>
+  <div class="import-card-body">
+    <p class="import-desc">
+      Importez les données de la plateforme <strong>{{ cfg.label }}</strong> pour alimenter les rapports.
+    </p>
+    <form method="post" action="{% url 'reporting_platform_import' platform %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="import-form-row">
+        <div class="import-file-wrap">
+          <label class="import-label" for="incidents_file">Fichier Excel</label>
+          <input type="file" name="incidents_file" id="incidents_file"
+                 accept="{{ cfg.import.accept }}" class="import-file-input" required>
+          <div class="import-hint">{{ cfg.import.hint }}</div>
+        </div>
+        <div class="import-actions">
+          <label class="import-check">
+            <input type="checkbox" name="clear_mois" value="1">
+            Remplacer les données du même mois
+          </label>
+          <button type="submit" class="btn-import">📂 Importer</button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
 {% endblock %}

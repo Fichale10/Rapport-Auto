@@ -2569,11 +2569,16 @@ def reporting_platform(request, platform):
     for rep in cfg.get('pptx_reports', []):
         pptx_reports.append({**rep, 'url': _build_url(rep)})
 
+    tool_reports = []
+    for rep in cfg.get('tool_reports', []):
+        tool_reports.append({**rep, 'url': _build_url(rep)})
+
     return render(request, 'reports/reporting_platform.html', {
         'platform':      platform,
         'cfg':           cfg,
         'excel_reports': excel_reports,
         'pptx_reports':  pptx_reports,
+        'tool_reports':  tool_reports,
         'dernier_mois':  dernier_mois,
         'total':         agg['total'] or 0,
         'outage_h':      round((agg['outage'] or 0) / 3600, 1),
@@ -3567,3 +3572,35 @@ def platform_bases_incidents_export(request, platform):
     )
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
+
+
+# ── Outils interactifs ────────────────────────────────────────────────────────
+
+def igw_rapport_noc(request):
+    from .reporting_config import PLATFORMS
+    cfg = PLATFORMS['igw']
+    return render(request, 'reports/igw_rapport_noc.html', {'cfg': cfg, 'platform': 'igw'})
+
+
+def igw_trafic_international(request):
+    from .reporting_config import PLATFORMS
+    cfg = PLATFORMS['igw']
+    return render(request, 'reports/igw_trafic_international.html', {'cfg': cfg, 'platform': 'igw'})
+
+
+def transport_rapport_noc(request):
+    from .reporting_config import PLATFORMS
+    cfg = PLATFORMS['transmission']
+    return render(request, 'reports/transport_rapport_noc.html', {'cfg': cfg, 'platform': 'transmission'})
+
+
+def transport_rapport_fo(request):
+    from .reporting_config import PLATFORMS
+    cfg = PLATFORMS['transmission']
+    return render(request, 'reports/transport_rapport_fo.html', {'cfg': cfg, 'platform': 'transmission'})
+
+
+def fixe_rapport_ftth(request):
+    from .reporting_config import PLATFORMS
+    cfg = PLATFORMS['fixe']
+    return render(request, 'reports/fixe_rapport_ftth.html', {'cfg': cfg, 'platform': 'fixe'})

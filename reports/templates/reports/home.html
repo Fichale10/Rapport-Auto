@@ -69,8 +69,12 @@
 
   /* ── Main grid ── */
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
-  .card { background: #fff; border-radius: 16px; padding: 24px; border: 1px solid #e8edf5; box-shadow: 0 1px 4px rgba(0,48,135,.05); }
-  .sec-title { font-size: 15px; font-weight: 700; color: #003087; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+  .card { background: #fff; border-radius: 20px; padding: 24px; border: 1px solid #e8edf5; box-shadow: 0 2px 16px rgba(0,48,135,.07); }
+  .sec-title {
+    font-size: 14px; font-weight: 800; color: #003087;
+    margin-bottom: 18px; display: flex; align-items: center; gap: 10px;
+    padding-left: 12px; border-left: 3px solid #FFC72C;
+  }
   .sec-title::after { content: ''; flex: 1; height: 1px; background: #e8edf5; }
 
   /* ── Évolution incidents (lignes séparées) ── */
@@ -183,14 +187,28 @@
 
   /* ── Sidebar ── */
   .sidebar { display: flex; flex-direction: column; gap: 20px; height: 100%; }
-  .last-report-card { background: linear-gradient(135deg,#003087,#0047cc); border-radius: 14px; padding: 20px; }
-  .lr-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #FFC72C; text-transform: uppercase; margin-bottom: 8px; }
-  .lr-name  { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .lr-stats { display: flex; gap: 16px; margin-bottom: 14px; }
-  .lr-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: #fff; letter-spacing: 1px; line-height: 1; }
-  .lr-stat-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; }
-  .lr-btn { display: block; text-align: center; background: #FFC72C; color: #003087; border-radius: 8px; padding: 9px; font-weight: 700; font-size: 13px; text-decoration: none; transition: box-shadow .15s; }
-  .lr-btn:hover { box-shadow: 0 4px 16px rgba(255,199,44,.4); }
+  .last-report-card {
+    background: linear-gradient(135deg,#001f5c 0%,#002776 40%,#0047cc 100%);
+    border-radius: 18px; padding: 22px;
+    box-shadow: 0 6px 28px rgba(0,48,135,.30);
+    position: relative; overflow: hidden;
+  }
+  .last-report-card::after { content:''; position:absolute; right:-30px; top:-30px; width:140px; height:140px; border-radius:50%; background:rgba(255,199,44,.06); pointer-events:none; }
+  .lr-label { font-size: 10px; font-weight: 800; letter-spacing: 2.5px; color: #FFC72C; text-transform: uppercase; margin-bottom: 10px; }
+  .lr-name  { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lr-stats { display: flex; gap: 16px; margin-bottom: 16px; }
+  .lr-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: #fff; letter-spacing: 1px; line-height: 1; }
+  .lr-stat-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .4px; }
+  .lr-btn {
+    display: block; text-align: center;
+    background: linear-gradient(135deg,#FFC72C,#fdd835);
+    color: #003087; border-radius: 10px; padding: 11px;
+    font-weight: 800; font-size: 13px; text-decoration: none;
+    transition: box-shadow .15s, transform .15s;
+    box-shadow: 0 4px 14px rgba(255,199,44,.35);
+    position: relative; z-index: 1;
+  }
+  .lr-btn:hover { box-shadow: 0 6px 20px rgba(255,199,44,.5); transform: translateY(-1px); }
 
   /* ── Statut Sites ── */
   .sites-table { width: 100%; border-collapse: collapse; font-size: 12px; }

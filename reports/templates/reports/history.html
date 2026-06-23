@@ -4,26 +4,71 @@
 
 {% block extra_css %}
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
   :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
 
-  /* ── Période ── */
-  .period-bar { display:flex; align-items:center; gap:10px; margin-bottom:24px; flex-wrap:wrap; }
-  .period-bar span { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-right:4px; }
-  .period-btn { padding:8px 20px; border-radius:8px; font-size:13px; font-weight:600; border:1.5px solid #e8edf5; background:#fff; color:#555; text-decoration:none; transition:all .15s; }
-  .period-btn:hover { border-color:#003087; color:#003087; }
-  .period-btn.active { background:#003087; color:#fff; border-color:#003087; }
+  /* ── Hero Banner ── */
+  .hist-hero {
+    background: linear-gradient(120deg,#001f5c 0%,#002776 40%,#003087 70%,#0044bb 100%);
+    border-radius: 20px; padding: 30px 36px; margin-bottom: 24px;
+    position: relative; overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,48,135,.30);
+    display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
+  }
+  .hist-hero::before {
+    content: 'HISTORIQUE'; font-family: 'Bebas Neue', sans-serif;
+    font-size: 120px; letter-spacing: 8px; color: rgba(255,255,255,.03);
+    position: absolute; right: 20px; bottom: -18px; pointer-events: none; line-height: 1;
+    white-space: nowrap;
+  }
+  .hist-hero::after {
+    content: ''; position: absolute; left: -60px; top: -60px;
+    width: 260px; height: 260px; border-radius: 50%;
+    background: rgba(255,199,44,.06); pointer-events: none;
+  }
+  .hist-hero-left { position: relative; z-index: 1; }
+  .hist-hero-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,199,44,.15); border: 1px solid rgba(255,199,44,.35);
+    color: #FFC72C; font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 4px 14px; border-radius: 20px; margin-bottom: 12px;
+  }
+  .hist-hero-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: #fff;
+    letter-spacing: 2px; line-height: 1.05; margin-bottom: 6px;
+  }
+  .hist-hero-sub { color: rgba(255,255,255,.55); font-size: 13px; }
 
-  /* ── KPIs ── */
-  .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
-  .kpi { background:#fff; border-radius:14px; padding:18px 20px; border:1px solid #e8edf5; display:flex; align-items:center; gap:14px; transition:box-shadow .2s,transform .2s; }
-  .kpi:hover { box-shadow:0 4px 20px rgba(0,48,135,.1); transform:translateY(-2px); }
-  .kpi-icon { width:44px; height:44px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
-  .kpi-icon.blue   { background:#e8f0ff; }
-  .kpi-icon.yellow { background:#fff8e1; }
-  .kpi-icon.green  { background:#f0fff4; }
-  .kpi-icon.red    { background:#fff0f0; }
-  .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:28px; color:#003087; letter-spacing:1px; line-height:1; }
-  .kpi-lbl { font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
+  .hist-kpi-band {
+    display: flex; gap: 6px; flex-wrap: wrap; position: relative; z-index: 1;
+  }
+  .hist-kpi-pill {
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px; padding: 14px 20px; text-align: center; min-width: 90px;
+    transition: background .15s;
+  }
+  .hist-kpi-pill:hover { background: rgba(255,255,255,.16); }
+  .hist-kpi-num { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: #fff; letter-spacing: 1px; line-height: 1; }
+  .hist-kpi-num.yellow { color: #FFC72C; }
+  .hist-kpi-num.green  { color: #4ade80; }
+  .hist-kpi-num.red    { color: #f87171; }
+  .hist-kpi-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
+
+  /* ── Période ── */
+  .period-bar {
+    display: flex; align-items: center; gap: 4px; margin-bottom: 20px; flex-wrap: wrap;
+    background: #fff; border-radius: 14px; padding: 8px 12px;
+    border: 1px solid #e8edf5; box-shadow: 0 2px 12px rgba(0,48,135,.06);
+  }
+  .period-bar-label { font-size: 11px; font-weight: 700; color: #8896b3; text-transform: uppercase; letter-spacing: 1px; padding: 0 8px; flex-shrink: 0; }
+  .period-sep { width: 1px; height: 20px; background: #e0e8f0; margin: 0 4px; flex-shrink: 0; }
+  .period-btn { padding: 7px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; border: none; background: transparent; color: #667; text-decoration: none; transition: all .15s; }
+  .period-btn:hover { background: #f0f4ff; color: #003087; }
+  .period-btn.active { background: linear-gradient(135deg,#003087,#0047cc); color: #fff; box-shadow: 0 3px 10px rgba(0,48,135,.25); }
+
+  /* ── KPIs (gardés pour compatibilité mais remplacés par la hero band) ── */
+  .kpi-row { display: none; }
 
   /* ── Toolbar ── */
   .toolbar {
@@ -85,8 +130,8 @@
 
   /* ── Table ── */
   .table-wrap {
-    background: #fff; border-radius: 16px; border: 1px solid #e8edf5;
-    box-shadow: 0 1px 4px rgba(0,48,135,.05); overflow-x: auto;
+    background: #fff; border-radius: 20px; border: 1px solid #e8edf5;
+    box-shadow: 0 2px 16px rgba(0,48,135,.07); overflow-x: auto;
   }
   table.rtable { width: 100%; border-collapse: collapse; }
   table.rtable th {
@@ -202,9 +247,37 @@
 
 {% block content %}
 
+<!-- Hero Banner -->
+<div class="hist-hero">
+  <div class="hist-hero-left">
+    <div class="hist-hero-tag">📋 Rapports</div>
+    <div class="hist-hero-title">Historique des traitements</div>
+    <div class="hist-hero-sub">Tous vos rapports traités, consultables et téléchargeables</div>
+  </div>
+  <div class="hist-kpi-band">
+    <div class="hist-kpi-pill">
+      <div class="hist-kpi-num">{{ total_reports }}</div>
+      <div class="hist-kpi-lbl">Rapports</div>
+    </div>
+    <div class="hist-kpi-pill">
+      <div class="hist-kpi-num yellow">{{ total_incidents }}</div>
+      <div class="hist-kpi-lbl">Incidents</div>
+    </div>
+    <div class="hist-kpi-pill">
+      <div class="hist-kpi-num green">{{ total_resolved }}</div>
+      <div class="hist-kpi-lbl">Résolus</div>
+    </div>
+    <div class="hist-kpi-pill">
+      <div class="hist-kpi-num red">{{ total_unresolved }}</div>
+      <div class="hist-kpi-lbl">Ouverts</div>
+    </div>
+  </div>
+</div>
+
 <!-- Filtres période -->
 <div class="period-bar">
-  <span>Période :</span>
+  <span class="period-bar-label">Période</span>
+  <div class="period-sep"></div>
   <a href="?period=day"   class="period-btn {% if period_filter == 'day' %}active{% endif %}">Journalier</a>
   <a href="?period=week"  class="period-btn {% if period_filter == 'week' %}active{% endif %}">Hebdomadaire</a>
   <a href="?period=month" class="period-btn {% if period_filter == 'month' %}active{% endif %}">Mensuel</a>
@@ -212,25 +285,8 @@
   <a href="?period=all"   class="period-btn {% if period_filter == 'all' %}active{% endif %}">Tout</a>
 </div>
 
-<!-- KPIs -->
-<div class="kpi-row">
-  <div class="kpi">
-    <div class="kpi-icon blue">📋</div>
-    <div><div class="kpi-val">{{ total_reports }}</div><div class="kpi-lbl">Rapports traités</div></div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-icon yellow">⚡</div>
-    <div><div class="kpi-val">{{ total_incidents }}</div><div class="kpi-lbl">Incidents détectés</div></div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-icon green">✅</div>
-    <div><div class="kpi-val">{{ total_resolved }}</div><div class="kpi-lbl">Rapports résolus</div></div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-icon red">⚠️</div>
-    <div><div class="kpi-val">{{ total_unresolved }}</div><div class="kpi-lbl">Incidents ouverts</div></div>
-  </div>
-</div>
+<!-- KPIs (hidden, replaced by hero band) -->
+<div class="kpi-row"></div>
 
 <!-- Toolbar -->
 <div class="toolbar">

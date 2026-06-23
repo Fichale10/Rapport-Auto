@@ -79,6 +79,7 @@ class Site(models.Model):
     ge_auto             = models.CharField(max_length=20,  blank=True, default='')
     site_lithium        = models.CharField(max_length=20,  blank=True, default='')
     site_esm            = models.CharField(max_length=20,  blank=True, default='')
+    site_solaire_neteco = models.CharField(max_length=20,  blank=True, default='')
     config_2g           = models.CharField(max_length=50,  blank=True, default='')
     config_3g           = models.CharField(max_length=50,  blank=True, default='')
     config_4g           = models.CharField(max_length=100, blank=True, default='')

@@ -1,18 +1,100 @@
 {% extends "base.html" %}
 
 {% block title %}Erreur — ReportXCare{% endblock %}
+{% block breadcrumb %}Erreur{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  .error-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 55vh; text-align: center;
+    padding: 40px 20px;
+  }
+
+  .error-icon-ring {
+    width: 100px; height: 100px; border-radius: 50%;
+    background: linear-gradient(135deg, #fff0f0, #ffe4e4);
+    border: 2px solid #fca5a5;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 44px; margin-bottom: 28px;
+    box-shadow: 0 8px 32px rgba(229,62,62,.15);
+  }
+
+  .error-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px; letter-spacing: 2px;
+    color: #c53030; margin-bottom: 8px;
+  }
+
+  .error-box {
+    background: #fff; border-radius: 20px; padding: 32px 40px;
+    border: 1px solid #e8edf5; max-width: 560px; width: 100%;
+    box-shadow: 0 4px 24px rgba(0,48,135,.09);
+    margin-bottom: 24px;
+  }
+
+  .error-msg {
+    background: #fff5f5; border: 1px solid #fca5a5; border-left: 4px solid #e53e3e;
+    border-radius: 10px; padding: 14px 18px;
+    font-size: 14px; color: #c53030; font-weight: 600;
+    margin-bottom: 18px; text-align: left; word-break: break-word;
+  }
+
+  .error-hint {
+    font-size: 13px; color: #8896b3; line-height: 1.7; text-align: left;
+    background: #f7f9ff; border-radius: 10px; padding: 14px 18px;
+    border: 1px solid #e8edf5;
+  }
+  .error-hint ul { margin: 8px 0 0 16px; padding: 0; }
+  .error-hint li { margin-bottom: 4px; }
+
+  .error-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  .btn-retry {
+    background: var(--yas-yellow); color: var(--yas-blue);
+    padding: 13px 28px; border-radius: 11px; font-size: 14px; font-weight: 800;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    transition: transform .15s, box-shadow .15s;
+    box-shadow: 0 4px 16px rgba(255,199,44,.35);
+  }
+  .btn-retry:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,199,44,.4); }
+
+  .btn-home {
+    background: #fff; color: var(--yas-blue); border: 1.5px solid #d0dcf0;
+    padding: 13px 28px; border-radius: 11px; font-size: 14px; font-weight: 700;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .btn-home:hover { border-color: var(--yas-blue); box-shadow: 0 4px 16px rgba(0,48,135,.1); }
+</style>
+{% endblock %}
 
 {% block content %}
-<section class="section">
-    <div class="container container-sm">
-        <div class="card" style="text-align:center;padding:3rem;">
-            <div style="font-size:3rem;margin-bottom:1rem;">&#9888;</div>
-            <h1 class="page-title" style="color:#e74c3c;">Erreur de traitement</h1>
-            <p style="margin-bottom:1rem;">Une erreur est survenue lors du traitement de votre fichier :</p>
-            <div class="alert alert-error">{{ error }}</div>
-            <p style="margin-top:1.5rem;color:#666;">Vérifiez que votre fichier contient bien les colonnes attendues (Alarm text, Alarm Time, Cancel Time, Escalade, etc.)</p>
-            <a href="{% url 'upload' %}" class="btn btn-primary" style="margin-top:1.5rem;">Réessayer</a>
-        </div>
+<div class="error-wrap">
+
+  <div class="error-icon-ring">⚠</div>
+  <div class="error-title">Erreur de traitement</div>
+
+  <div class="error-box">
+    <div class="error-msg">{{ error }}</div>
+
+    <div class="error-hint">
+      Vérifiez que votre fichier contient bien les colonnes attendues :
+      <ul>
+        <li>Alarm text</li>
+        <li>Alarm Time</li>
+        <li>Cancel Time</li>
+        <li>Escalade</li>
+      </ul>
     </div>
-</section>
+  </div>
+
+  <div class="error-actions">
+    <a href="{% url 'upload' %}" class="btn-retry">↑ Réessayer</a>
+    <a href="{% url 'home' %}" class="btn-home">← Retour à l'accueil</a>
+  </div>
+
+</div>
 {% endblock %}
