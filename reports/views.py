@@ -3383,6 +3383,11 @@ def sites_import_excel(request):
                 val = row[idx] if idx < len(row) else None
                 data[field] = val if val is not None else ''
 
+            # Nettoyer tous les champs texte (espaces insécables, etc.)
+            for k, v in list(data.items()):
+                if isinstance(v, str):
+                    data[k] = v.strip('\xa0 \t')
+
             site_name = str(data.get('site_name', '')).strip()
             if not site_name:
                 skipped += 1
@@ -3395,6 +3400,24 @@ def sites_import_excel(request):
                         data[fld] = float(data[fld]) if data[fld] not in ('', None) else None
                     except (ValueError, TypeError):
                         data[fld] = None
+
+            # Nettoyer date_mes
+            if 'date_mes' in data:
+                val = data['date_mes']
+                if val is None or (isinstance(val, str) and not val.strip('\xa0 \t')):
+                    data['date_mes'] = None
+                elif hasattr(val, 'date'):
+                    data['date_mes'] = val.date()
+                else:
+                    from datetime import datetime as _dt
+                    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d.%m.%Y'):
+                        try:
+                            data['date_mes'] = _dt.strptime(str(val).strip(), fmt).date()
+                            break
+                        except ValueError:
+                            pass
+                    else:
+                        data['date_mes'] = None
 
             obj, is_new = Site.objects.update_or_create(
                 site_name=site_name,
