@@ -75,9 +75,11 @@ class ExcelDataProcessor:
         ]]
         
         cols_to_convert = ["AVAILABILITY 2G", "AVAILABILITY 3G", "AVAILABILITY 4G"]
-        df_result[cols_to_convert] = df_result[cols_to_convert].astype(str).apply(lambda x: x.str.replace(",", "."))
-        df_result[cols_to_convert] = df_result[cols_to_convert].apply(pd.to_numeric, errors="coerce")
-        
+        for col in cols_to_convert:
+            df_result[col] = pd.to_numeric(
+                df_result[col].apply(lambda v: str(v).replace(",", ".")), errors="coerce"
+            )
+
         df_res = df_result[(df_result["AVAILABILITY 2G"] <= 99) | (df_result["AVAILABILITY 3G"] <= 99) | (df_result["AVAILABILITY 4G"] <= 99)]
         df_res = df_res.astype(object).fillna("N/A")
 
@@ -154,8 +156,10 @@ class ExcelDataProcessor:
         df_result_final = df_result_final.astype(object).fillna("N/A")
         
         cols_to_convert = ["AVAILABILITY 2G", "AVAILABILITY 3G", "AVAILABILITY 4G"]
-        df_result_final[cols_to_convert] = df_result_final[cols_to_convert].astype(str).apply(lambda x: x.str.replace(",", "."))
-        df_result_final[cols_to_convert] = df_result_final[cols_to_convert].apply(pd.to_numeric, errors="coerce")
+        for col in cols_to_convert:
+            df_result_final[col] = pd.to_numeric(
+                df_result_final[col].apply(lambda v: str(v).replace(",", ".")), errors="coerce"
+            )
         
         df_res = df_result_final[(df_result_final["AVAILABILITY 2G"] <= 99) | (df_result_final["AVAILABILITY 3G"] <= 99) | (df_result_final["AVAILABILITY 4G"] <= 99)]
         df_res = df_res.astype(object).fillna("N/A")
@@ -473,9 +477,9 @@ class ExcelGraphProcessor:
         self.df_avail_4G.rename(columns={"MRBTS name": "Etiquettes de ligne", "Availability_4G": "AVAILABILITY 4G"}, inplace=True)
 
         # Mettre en majuscule les étiquettes pour comparaison
-        self.df_avail_2G["Etiquettes de ligne"] = self.df_avail_2G["Etiquettes de ligne"].str.upper()
-        self.df_avail_3G["Etiquettes de ligne"] = self.df_avail_3G["Etiquettes de ligne"].str.upper()
-        self.df_avail_4G["Etiquettes de ligne"] = self.df_avail_4G["Etiquettes de ligne"].str.upper()
+        self.df_avail_2G["Etiquettes de ligne"] = self.df_avail_2G["Etiquettes de ligne"].apply(lambda v: str(v).upper() if pd.notna(v) else v)
+        self.df_avail_3G["Etiquettes de ligne"] = self.df_avail_3G["Etiquettes de ligne"].apply(lambda v: str(v).upper() if pd.notna(v) else v)
+        self.df_avail_4G["Etiquettes de ligne"] = self.df_avail_4G["Etiquettes de ligne"].apply(lambda v: str(v).upper() if pd.notna(v) else v)
 
         # Filtrage des données
         df_avail_2G = self.df_avail_2G[self.df_avail_2G["Etiquettes de ligne"] == self.site_to_process]
@@ -494,7 +498,9 @@ class ExcelGraphProcessor:
         # Conversion des valeurs en numérique
         cols_to_convert = ["AVAILABILITY 2G", "AVAILABILITY 3G", "AVAILABILITY 4G"]
         for col in cols_to_convert:
-            df_result[col] = pd.to_numeric(df_result[col].astype(str).str.replace(",", "."), errors='coerce')
+            df_result[col] = pd.to_numeric(
+                df_result[col].apply(lambda v: str(v).replace(",", ".")), errors='coerce'
+            )
 
         # Remplacement des valeurs manquantes par "N/A"
         df_result = df_result.astype(object).fillna("N/A")

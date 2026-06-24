@@ -330,7 +330,7 @@
         </div>
       </div>
       <div class="isocep-card-body">
-        <form method="post" action="/incident-tracking/process/" enctype="multipart/form-data">
+        <form id="courbe-form" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="mode" value="courbe">
 
@@ -347,11 +347,38 @@
             <div class="isocep-hint">Insensible à la casse — doit correspondre à un site dans le fichier</div>
           </div>
 
-          <button type="submit" class="btn-isocep courbe">⬇ Générer Graphe_courbe_kpi.xlsx</button>
+          <button type="submit" id="courbe-btn" class="btn-isocep courbe">📈 Générer le graphe</button>
         </form>
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ══ Résultat Courbe de disponibilité ══ -->
+<div id="courbe-result" style="display:none; margin:0 0 28px 0; padding:0 4px;">
+  <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,.10); overflow:hidden;">
+    <!-- En-tête résultat -->
+    <div style="background:linear-gradient(135deg,#166534,#22c55e); padding:14px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:1.5rem;">📊</span>
+        <div>
+          <div style="color:#fff; font-size:1rem; font-weight:700; letter-spacing:.5px;">Courbe générée</div>
+          <div id="courbe-site-label" style="color:rgba(255,255,255,.85); font-size:.82rem;"></div>
+        </div>
+      </div>
+      <a id="courbe-dl-btn" href="#"
+         style="display:inline-flex; align-items:center; gap:7px; background:#fff; color:#166534;
+                font-weight:700; font-size:.88rem; padding:9px 20px; border-radius:10px;
+                text-decoration:none; box-shadow:0 2px 8px rgba(0,0,0,.15); transition:all .2s;">
+        ⬇ Exporter en Excel
+      </a>
+    </div>
+    <!-- Graphe -->
+    <div style="padding:18px 22px;">
+      <img id="courbe-chart-img" src="" alt="Courbe de disponibilité"
+           style="width:100%; border-radius:10px; border:1px solid #e5e7eb;">
+    </div>
   </div>
 </div>
 
@@ -483,4 +510,62 @@
   {% endif %}
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const form   = document.getElementById('courbe-form');
+  const btn    = document.getElementById('courbe-btn');
+  const result = document.getElementById('courbe-result');
+  const img    = document.getElementById('courbe-chart-img');
+  const label  = document.getElementById('courbe-site-label');
+  const dlBtn  = document.getElementById('courbe-dl-btn');
+
+  if (!form) return;
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    btn.disabled    = true;
+    btn.textContent = '⏳ Traitement en cours…';
+    result.style.display = 'none';
+
+    const formData = new FormData(form);
+    const csrf     = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    fetch('/incident-tracking/process/', {
+      method:  'POST',
+      body:    formData,
+      headers: { 'X-CSRFToken': csrf },
+    })
+    .then(function (r) {
+      if (!r.ok) throw new Error('Réponse serveur : ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      btn.disabled    = false;
+      btn.textContent = '📈 Générer le graphe';
+
+      if (data.success) {
+        img.src           = data.image;
+        label.textContent = 'Site : ' + data.site;
+        dlBtn.href        = '/incident-tracking/process/download/' + data.token + '/';
+        result.style.display = 'block';
+        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        alert('Erreur : ' + data.error);
+      }
+    })
+    .catch(function (err) {
+      btn.disabled    = false;
+      btn.textContent = '📈 Générer le graphe';
+      alert('Erreur réseau : ' + err);
+    });
+  });
+
+  dlBtn.addEventListener('mouseover', function () { this.style.background = '#f0fdf4'; });
+  dlBtn.addEventListener('mouseout',  function () { this.style.background = '#fff'; });
+})();
+</script>
 {% endblock %}

@@ -16,7 +16,8 @@ urlpatterns = [
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
     path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),
-    path('incident-tracking/process/',            login_required(views.isocep_process),    name='isocep_process'),
+    path('incident-tracking/process/',                      login_required(views.isocep_process),  name='isocep_process'),
+    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download), name='isocep_download'),
 
     # ── Reporting ──────────────────────────────────────────────────────────────
     path('reporting/',                            login_required(views.reporting),       name='reporting'),
