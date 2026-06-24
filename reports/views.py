@@ -2402,8 +2402,170 @@ def statistiques(request):
     })
 
 
-def sites_instables(request):
-    return render(request, 'reports/sites_instables.html')
+def incident_tracking(request):
+    from .models import Incident
+    from django.db.models import Count, Sum, Q
+    from django.core.paginator import Paginator
+
+    # Filtres
+    domain  = request.GET.get('domain', '')
+    mois    = request.GET.get('mois', '')
+    statut  = request.GET.get('statut', '')   # 'ouvert' | 'resolu' | ''
+    q       = request.GET.get('q', '').strip()
+
+    qs = Incident.objects.all()
+
+    if domain:
+        qs = qs.filter(domain=domain)
+    if mois:
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(mois, '%Y-%m')
+            qs = qs.filter(mois_rapport__year=d.year, mois_rapport__month=d.month)
+        except ValueError:
+            pass
+    if statut == 'ouvert':
+        qs = qs.filter(cancel_time__isnull=True)
+    elif statut == 'resolu':
+        qs = qs.filter(cancel_time__isnull=False)
+    if q:
+        qs = qs.filter(
+            Q(numero_ticket__icontains=q) |
+            Q(site_name__icontains=q) |
+            Q(nature__icontains=q) |
+            Q(region__icontains=q)
+        )
+
+    # KPIs globaux (sans filtre)
+    total_all   = Incident.objects.count()
+    total_open  = Incident.objects.filter(cancel_time__isnull=True).count()
+    total_clos  = Incident.objects.filter(cancel_time__isnull=False).count()
+
+    # Mois disponibles pour le filtre
+    mois_list = (
+        Incident.objects
+        .exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .order_by('-mois_rapport')
+        .distinct()[:24]
+    )
+
+    paginator = Paginator(qs.order_by('-alarm_time'), 50)
+    page      = request.GET.get('page', 1)
+    incidents = paginator.get_page(page)
+
+    return render(request, 'reports/incident_tracking.html', {
+        'incidents':   incidents,
+        'total_all':   total_all,
+        'total_open':  total_open,
+        'total_clos':  total_clos,
+        'total_filtre': qs.count(),
+        'domain_choices': Incident.DOMAIN_CHOICES,
+        'mois_list':   mois_list,
+        'f_domain':    domain,
+        'f_mois':      mois,
+        'f_statut':    statut,
+        'f_q':         q,
+    })
+
+
+def isocep_process(request):
+    """Traitement iSOCEP : KPI vs Incident ou Courbe de disponibilité."""
+    if request.method != 'POST':
+        return redirect('incident_tracking')
+
+    import tempfile, os
+    from django.http import HttpResponse
+    from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+
+    mode = request.POST.get('mode', 'kpi')
+
+    try:
+        def _save_tmp(uploaded_file):
+            suffix = os.path.splitext(uploaded_file.name)[1]
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            for chunk in uploaded_file.chunks():
+                tmp.write(chunk)
+            tmp.close()
+            return tmp.name
+
+        if mode == 'courbe':
+            f_avail   = request.FILES.get('avail_file')
+            site_name = request.POST.get('site_name', '').strip()
+            if not f_avail or not site_name:
+                messages.error(request, "Fichier disponibilité et nom du site requis.")
+                return redirect('incident_tracking')
+
+            path_avail = _save_tmp(f_avail)
+            try:
+                proc = ExcelGraphProcessor(path_avail, site_name)
+                proc.load_data_from_excel()
+                proc.merge_and_filter_data()
+                if proc.df_final is None or proc.df_final.empty:
+                    messages.error(request, f"Aucune donnée trouvée pour le site « {site_name} ».")
+                    return redirect('incident_tracking')
+                out = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                out.close()
+                proc.generate_excel_report(out.name)
+                filename = f"Graphe_courbe_kpi-{site_name.upper()}.xlsx"
+            finally:
+                os.unlink(path_avail)
+
+        else:  # mode kpi
+            f_incident = request.FILES.get('incident_file')
+            f_avail    = request.FILES.get('avail_file')
+            f_alarm    = request.FILES.get('alarm_file')
+            date_str   = request.POST.get('date_process', '').strip()
+
+            if not f_incident or not f_avail or not date_str:
+                messages.error(request, "Fichier incidents, disponibilité et date requis.")
+                return redirect('incident_tracking')
+
+            # Convertir DD/MM/YYYY → YYYY-MM-DD
+            try:
+                from datetime import datetime as _dt
+                d = _dt.strptime(date_str, '%d/%m/%Y')
+                date_fmt = d.strftime('%Y-%m-%d')
+            except ValueError:
+                date_fmt = date_str
+
+            path_incident = _save_tmp(f_incident)
+            path_avail    = _save_tmp(f_avail)
+            path_alarm    = _save_tmp(f_alarm) if f_alarm else None
+            try:
+                proc = ExcelDataProcessor(path_incident, path_avail, date_fmt, path_alarm)
+                proc.load_data_from_excel()
+                if path_alarm:
+                    df = proc.merge_and_filter_data_triple()
+                    out = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                    out.close()
+                    proc.generate_excel_report_triple(df, out.name)
+                else:
+                    df = proc.merge_and_filter_data()
+                    out = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                    out.close()
+                    proc.generate_excel_report(df, out.name)
+                filename = f"ANALYSE_KPI_VS_INC_{date_fmt}.xlsx"
+            finally:
+                os.unlink(path_incident)
+                os.unlink(path_avail)
+                if path_alarm:
+                    os.unlink(path_alarm)
+
+        # Servir le fichier
+        with open(out.name, 'rb') as fh:
+            content = fh.read()
+        os.unlink(out.name)
+        response = HttpResponse(
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except Exception as e:
+        messages.error(request, f"Erreur lors du traitement : {e}")
+        return redirect('incident_tracking')
 
 
 from .reporting_config import PLATFORMS as REPORTING_PLATFORMS
