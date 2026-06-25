@@ -593,6 +593,7 @@
 
 {% block extra_js %}
 <script src="{% static 'reports/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'reports/togo_geo.js' %}"></script>
 <script>
 (function(){
   // ── Données régions depuis Django ──────────────────────────────────────
@@ -626,13 +627,17 @@
     'LOME': [6.1631, 1.2869]
   };
 
-  // ── Init carte — fond blanc, Togo seul ───────────────────────────────
+  // ── Init carte — vraie carte (OpenStreetMap) ─────────────────────────
   var map = L.map('togo-map', {
-    zoomControl: false, scrollWheelZoom: false, attributionControl: false,
+    zoomControl: true, scrollWheelZoom: false, attributionControl: false,
     preferCanvas: true
   });
 
-  // Pas de tuile de fond — fond blanc CSS, seul le Togo est dessiné
+  // Fond de carte réel (OpenStreetMap)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, minZoom: 6,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
 
   // Centrage exact sur le Togo
   map.fitBounds([[6.05, -0.15], [11.15, 1.85]], { padding: [10, 10] });
@@ -651,51 +656,128 @@
   var layers = {};
   var activeKey = null;
 
-  function highlightRegion(key) {
-    Object.keys(layers).forEach(function(k) {
-      layers[k].setStyle({
-        color: '#3a6090', weight: 2.5, opacity: 1,
-        fillColor: REGION_COLORS[k] || '#e8edf5', fillOpacity: 0.85
+  // Anneaux des régions (clés → contour [lat,lng]) pour la surbrillance.
+  //  - 5 régions ADM1 depuis le GeoJSON réel
+  //  - Lomé depuis le polygone interne (absent du GeoJSON ADM1)
+  var REGION_RINGS = {};
+  var GEO_NAME_TO_KEY = {
+    'Savanes Region': 'SAVANES',
+    'Kara Region': 'KARA',
+    'Centrale Region': 'CENTRALE',
+    'Plateaux Region': 'PLATEAUX',
+    'Maritime Region': 'MARITIME'
+  };
+  if (window.TOGO_GEOJSON && window.TOGO_GEOJSON.features) {
+    window.TOGO_GEOJSON.features.forEach(function(feat){
+      var name = feat.properties && feat.properties.shapeName;
+      var key = GEO_NAME_TO_KEY[name];
+      if (!key || !feat.geometry) return;
+      var g = feat.geometry;
+      var poly = g.type === 'MultiPolygon' ? g.coordinates[0] : g.coordinates;
+      REGION_RINGS[key] = poly[0].map(function(c){ return [c[1], c[0]]; });
+    });
+  }
+  if (POLYGONS.LOME) { REGION_RINGS['LOME'] = POLYGONS.LOME; }
+
+  // ── Masque dynamique : ne laisse visible que le Togo (ou la région choisie) ──
+  //    Polygone couvrant toute la zone, percé de "trous" épousant les vrais
+  //    contours du Togo (GeoJSON OSM). Règle de remplissage even-odd de Leaflet.
+  var WORLD_RING = [[-85, -200], [-85, 200], [85, 200], [85, -200]];
+
+  // Trous = vrais contours des régions (GeoJSON [lng,lat] → [lat,lng])
+  var TOGO_HOLES = [];
+  if (window.TOGO_GEOJSON && window.TOGO_GEOJSON.features) {
+    window.TOGO_GEOJSON.features.forEach(function(feat){
+      var geom = feat.geometry;
+      if (!geom) return;
+      var polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
+      polys.forEach(function(poly){
+        TOGO_HOLES.push(poly[0].map(function(c){ return [c[1], c[0]]; }));
       });
     });
-    if (layers[key]) {
-      layers[key].setStyle({ color: '#003087', weight: 4, fillColor: '#FFC72C', fillOpacity: 0.75 });
-      layers[key].bringToFront();
-      map.flyTo(CENTERS[key], 7, { duration: 0.5 });
+  }
+  if (TOGO_HOLES.length === 0) {
+    TOGO_HOLES = Object.keys(POLYGONS).map(function(k){ return POLYGONS[k]; });
+  }
+
+  var maskLayer = null;
+  function drawMask(holes) {
+    if (maskLayer) { map.removeLayer(maskLayer); }
+    maskLayer = L.polygon([WORLD_RING].concat(holes), {
+      stroke: false, fillColor: '#eaf0f8', fillOpacity: 1, interactive: false
+    }).addTo(map);
+    maskLayer.bringToBack();
+  }
+  drawMask(TOGO_HOLES);   // état initial : tout le Togo visible
+
+  // Normalise une clé région (majuscules, sans accents) pour comparer
+  function normKey(s) {
+    return (s || '').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  // Infra de filtrage : contour national + marqueurs par région
+  var outlineLayer = null;   // contour de toutes les régions (assigné plus bas)
+  var allMarkers = [];       // [{ marker, key }]
+
+  // Affiche/masque le contour et les marqueurs selon la région active
+  function applyRegionFilter() {
+    // Contour national : visible seulement si aucune région sélectionnée
+    if (outlineLayer) {
+      if (activeKey && map.hasLayer(outlineLayer)) { map.removeLayer(outlineLayer); }
+      else if (!activeKey && !map.hasLayer(outlineLayer)) { outlineLayer.addTo(map); }
     }
+    // Marqueurs : seulement ceux de la région active (ou tous si aucune)
+    var ak = activeKey ? normKey(activeKey) : null;
+    allMarkers.forEach(function(m){
+      var show = !ak || m.key === ak;
+      if (show && !sitesLayer.hasLayer(m.marker)) { sitesLayer.addLayer(m.marker); }
+      else if (!show && sitesLayer.hasLayer(m.marker)) { sitesLayer.removeLayer(m.marker); }
+    });
+  }
+
+  // Calque de surbrillance de la région sélectionnée
+  var highlightLayer = L.layerGroup().addTo(map);
+
+  function highlightRegion(key) {
+    // Si on reclique la région active → on réaffiche tout le Togo
+    if (activeKey === key) {
+      activeKey = null;
+      highlightLayer.clearLayers();
+      drawMask(TOGO_HOLES);
+      applyRegionFilter();
+      map.flyToBounds([[6.05, -0.15], [11.15, 1.85]], { padding: [10, 10], duration: 0.6 });
+      document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
+        row.classList.remove('row-highlight');
+      });
+      return;
+    }
+    highlightLayer.clearLayers();
+    activeKey = key;
+    var ring = REGION_RINGS[key];
+    if (ring) {
+      // Ne laisse visible que la région sélectionnée (les autres sont masquées)
+      drawMask([ring]);
+      var poly = L.polygon(ring, {
+        color: '#003087', weight: 2.5, opacity: 0.95,
+        fillColor: '#003087', fillOpacity: 0.08
+      }).addTo(highlightLayer);
+      map.flyToBounds(poly.getBounds(), { padding: [25, 25], duration: 0.6, maxZoom: 9 });
+    } else {
+      drawMask(TOGO_HOLES);
+      if (CENTERS[key]) map.flyTo(CENTERS[key], 8, { duration: 0.5 });
+    }
+    applyRegionFilter();
     document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
       row.classList.toggle('row-highlight', row.dataset.region === key);
     });
   }
 
-  Object.keys(POLYGONS).forEach(function(key) {
-    var layer = L.polygon(POLYGONS[key], {
-      color:       '#3a6090',
-      weight:      2.5,
-      opacity:     1,
-      fillColor:   REGION_COLORS[key] || '#e8edf5',
-      fillOpacity: 0.85
+  // ── Contour national du Togo (limite extérieure réelle) ────────────────
+  if (window.TOGO_GEOJSON) {
+    outlineLayer = L.geoJSON(window.TOGO_GEOJSON, {
+      style: { color: '#003087', weight: 1.2, opacity: 0.55, fill: false }
     }).addTo(map);
-    layer.on('click', function(){ highlightRegion(key); });
-    layers[key] = layer;
-  });
-
-  // ── Labels des régions — bien visibles ────────────────────────────────
-  Object.keys(CENTERS).forEach(function(key) {
-    var d = REGION_DATA[key];
-    var label = d ? d.label : key;
-    L.marker(CENTERS[key], {
-      icon: L.divIcon({
-        className: '',
-        html: '<div style="font-size:11px;font-weight:800;color:#003087;' +
-              'background:rgba(255,255,255,0.95);padding:3px 8px;border-radius:4px;' +
-              'white-space:nowrap;border:1.5px solid rgba(0,48,135,.4);' +
-              'box-shadow:0 1px 5px rgba(0,0,0,.18);letter-spacing:.2px;">' + label + '</div>',
-        iconAnchor: [24, 9]
-      }),
-      interactive: false
-    }).addTo(map);
-  });
+  }
 
   // ── Sync clic table → carte + scroll ─────────────────────────────────
   document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
@@ -724,8 +806,9 @@
     marker.on('click', function(e) {
       L.DomEvent.stopPropagation(e);
       marker.openPopup();
-      if (s.region) highlightRegion(s.region.toUpperCase());
+      if (s.region) highlightRegion(normKey(s.region));
     });
+    allMarkers.push({ marker: marker, key: normKey(s.region) });
     sitesLayer.addLayer(marker);
   });
   sitesLayer.addTo(map);

@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}ReportXCare — Yas{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{% static 'reports/favicon.svg' %}">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -469,6 +470,13 @@
   }
 })();
 </script>
+{% endif %}
+
+{% if user.is_authenticated %}
+{% comment %}
+  Le chatbot ISOC_IA a été déplacé sur la page « Site Info » (à côté du nom
+  du site) afin d'assister le technicien sur le site qu'il consulte.
+{% endcomment %}
 {% endif %}
 
 {% block extra_js %}{% endblock %}

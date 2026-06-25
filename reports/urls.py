@@ -53,4 +53,5 @@ urlpatterns = [
     path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),
     path('api-import/',                           login_required(views.api_import_view),     name='api_import'),
     path('audit/',                                login_required(views.audit_view),          name='audit'),
+    path('chatbot/',                              login_required(views.chatbot_api),         name='chatbot_api'),
 ]

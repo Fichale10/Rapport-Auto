@@ -3396,6 +3396,26 @@ def sites_import_excel(request):
                     except (ValueError, TypeError):
                         data[fld] = None
 
+            # Nettoyer date_mes (gère cellules vides / espaces insécables)
+            if 'date_mes' in data:
+                raw_date = data['date_mes']
+                import datetime as _dt
+                if isinstance(raw_date, (_dt.datetime, _dt.date)):
+                    data['date_mes'] = raw_date.date() if isinstance(raw_date, _dt.datetime) else raw_date
+                else:
+                    txt = str(raw_date).replace('\xa0', ' ').strip() if raw_date is not None else ''
+                    if not txt:
+                        data['date_mes'] = None
+                    else:
+                        parsed = None
+                        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%Y/%m/%d'):
+                            try:
+                                parsed = _dt.datetime.strptime(txt, fmt).date()
+                                break
+                            except ValueError:
+                                continue
+                        data['date_mes'] = parsed
+
             obj, is_new = Site.objects.update_or_create(
                 site_name=site_name,
                 defaults={k: v for k, v in data.items() if k != 'site_name'},
@@ -3820,3 +3840,501 @@ def fixe_rapport_ftth(request):
     from .reporting_config import PLATFORMS
     cfg = PLATFORMS['fixe']
     return render(request, 'reports/fixe_rapport_ftth.html', {'cfg': cfg, 'platform': 'fixe'})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chatbot ISOC_IA — assistant intelligent connecté à la base de données
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fmt_duration(seconds):
+    """Convertit des secondes en chaîne lisible (Jj Hh Mm)."""
+    try:
+        seconds = int(float(seconds or 0))
+    except (ValueError, TypeError):
+        return '0s'
+    if seconds <= 0:
+        return '0s'
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, _ = divmod(rem, 60)
+    parts = []
+    if d:
+        parts.append(f"{d}j")
+    if h:
+        parts.append(f"{h}h")
+    if m:
+        parts.append(f"{m}min")
+    return ' '.join(parts) if parts else f"{seconds}s"
+
+
+def _build_chatbot_context(message):
+    """Construit un résumé compact de la base de données pour alimenter l'assistant.
+
+    Contient des statistiques globales (sites, incidents, rapports) et, si la
+    question mentionne un site précis, le détail de ce site et ses incidents.
+    """
+    from django.db.models import Count
+    from .models import Site, Incident, UploadedReport
+
+    lines = []
+
+    # ── Statistiques globales ──────────────────────────────────────────────
+    total_sites = Site.objects.count()
+    total_incidents = Incident.objects.count()
+    total_reports = UploadedReport.objects.filter(processed=True).count()
+
+    lines.append("=== STATISTIQUES GLOBALES ===")
+    lines.append(f"Nombre total de sites enregistrés : {total_sites}")
+    lines.append(f"Nombre total d'incidents enregistrés : {total_incidents}")
+    lines.append(f"Nombre total de rapports traités : {total_reports}")
+
+    # Sites par région
+    by_region = (
+        Site.objects.exclude(region='')
+        .values('region').annotate(n=Count('id')).order_by('-n')[:15]
+    )
+    if by_region:
+        reg_txt = ', '.join(f"{r['region']}: {r['n']}" for r in by_region)
+        lines.append(f"Répartition des sites par région : {reg_txt}")
+
+    # Répartition des sites selon les champs catégoriels (pour répondre aux
+    # questions du type « combien de sites en technologie X », « par type », etc.)
+    site_dist_fields = [
+        ('techno',              'Technologie'),
+        ('typ_trans',           'Type de transport'),
+        ('typ_energie',         "Type d'énergie"),
+        ('type_site',           'Type de site'),
+        ('zone',                'Zone'),
+        ('base',                'Base'),
+        ('config',              'Configuration'),
+        ('classif_tech',        'Classification technique'),
+        ('ge_auto',             'GE auto'),
+        ('site_lithium',        'Site lithium'),
+        ('site_esm',            'Site ESM'),
+        ('site_solaire_neteco', 'Solaire/Neteco'),
+        ('typologie_pylone',    'Typologie pylône'),
+    ]
+    dist_lines = []
+    for field, label in site_dist_fields:
+        rows = (
+            Site.objects.exclude(**{field: ''})
+            .values(field).annotate(n=Count('id')).order_by('-n')[:20]
+        )
+        rows = [r for r in rows if (r[field] or '').strip()]
+        if rows:
+            txt = ', '.join(f"{r[field]}: {r['n']}" for r in rows)
+            dist_lines.append(f"- Sites par {label} : {txt}")
+    if dist_lines:
+        lines.append("")
+        lines.append("=== RÉPARTITION DES SITES (toutes les valeurs et leurs effectifs) ===")
+        lines.extend(dist_lines)
+
+    # Incidents par domaine
+    by_domain = (
+        Incident.objects.values('domain').annotate(n=Count('id')).order_by('-n')
+    )
+    if by_domain:
+        dom_txt = ', '.join(f"{d['domain']}: {d['n']}" for d in by_domain)
+        lines.append(f"Incidents par domaine : {dom_txt}")
+
+    # Incidents non résolus (statut)
+    unresolved = (
+        Incident.objects.exclude(status__iexact='résolu')
+        .exclude(status__iexact='resolu')
+        .exclude(status__iexact='closed')
+        .exclude(status__iexact='clôturé')
+        .exclude(status='')
+        .count()
+    )
+    lines.append(f"Incidents avec un statut non clôturé (approx.) : {unresolved}")
+
+    # Incidents par escalade (top)
+    by_esc = (
+        Incident.objects.exclude(escalade='')
+        .values('escalade').annotate(n=Count('id')).order_by('-n')[:8]
+    )
+    if by_esc:
+        esc_txt = ', '.join(f"{e['escalade']}: {e['n']}" for e in by_esc)
+        lines.append(f"Incidents par type d'escalade : {esc_txt}")
+
+    # ── Liste complète des rapports (dates et type de période) ─────────────
+    all_reports = (
+        UploadedReport.objects.filter(processed=True)
+        .order_by('-date_rapport')[:200]
+    )
+    if all_reports:
+        _PERIOD_FR = {'day': 'Jour', 'week': 'Semaine', 'month': 'Mois', 'year': 'Année'}
+        lines.append("")
+        lines.append("=== LISTE DE TOUS LES RAPPORTS TRAITÉS (historique) ===")
+        for r in all_reports:
+            periode = _PERIOD_FR.get(r.period_type, r.period_type)
+            fin = f" → {r.date_fin}" if r.date_fin else ""
+            lines.append(
+                f"- {r.date_rapport}{fin} | {periode} | {r.original_filename} "
+                f"| incidents={r.total_incidents}, non résolus={r.unresolved_count}"
+            )
+
+    # ── Dernier rapport traité ─────────────────────────────────────────────
+    last_report = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at').first()
+    if last_report:
+        lines.append("")
+        lines.append("=== DERNIER RAPPORT TRAITÉ ===")
+        lines.append(f"Fichier : {last_report.original_filename}")
+        lines.append(f"Date du rapport : {last_report.date_rapport}")
+        lines.append(f"Total incidents : {last_report.total_incidents}, non résolus : {last_report.unresolved_count}")
+        lines.append(f"Durée totale d'indisponibilité : {_fmt_duration(last_report.total_duration_sec)}")
+        top_sites = last_report.top_sites_json or []
+        if top_sites:
+            try:
+                ts = ', '.join(
+                    f"{s.get('site') or s.get('name') or s.get('site_name','?')} ({s.get('count') or s.get('nb') or s.get('incidents','?')})"
+                    for s in top_sites[:10]
+                )
+                lines.append(f"Top sites impactés : {ts}")
+            except Exception:
+                pass
+        top_causes = last_report.top_causes_json or []
+        if top_causes:
+            try:
+                tc = ', '.join(
+                    f"{c.get('cause') or c.get('name','?')} ({c.get('count') or c.get('nb','?')})"
+                    for c in top_causes[:10]
+                )
+                lines.append(f"Principales causes : {tc}")
+            except Exception:
+                pass
+
+    # ── Détail des sites mentionnés dans la question ───────────────────────
+    msg_low = (message or '').lower()
+    matched_sites = []
+    if msg_low:
+        import re as _re
+        for site in Site.objects.all().only('site_name')[:5000]:
+            name = (site.site_name or '').lower().strip()
+            if name and len(name) >= 3:
+                # Limites de mots pour éviter les faux positifs
+                # (ex : le site « PORT » dans le mot « rapports »).
+                if _re.search(r'(?<![\w-])' + _re.escape(name) + r'(?![\w-])', msg_low):
+                    matched_sites.append(site.site_name)
+        matched_sites = matched_sites[:5]
+
+    if matched_sites:
+        lines.append("")
+        lines.append("=== DÉTAIL DES SITES MENTIONNÉS ===")
+        for sname in matched_sites:
+            s = Site.objects.filter(site_name=sname).first()
+            if not s:
+                continue
+            fields = [
+                ('ID site', s.site_id), ('Région', s.region), ('Zone', s.zone),
+                ('Base', s.base), ('OLT', s.olt), ('Latitude', s.latitude),
+                ('Longitude', s.longitude), ('Date MES', s.date_mes),
+                ('Configuration', s.config), ('Technologie', s.techno),
+                ('Type transport', s.typ_trans), ('Type énergie', s.typ_energie),
+                ('GE auto', s.ge_auto), ('Site lithium', s.site_lithium),
+                ('Site ESM', s.site_esm), ('Solaire/Neteco', s.site_solaire_neteco),
+                ('Config 2G', s.config_2g), ('Config 3G', s.config_3g),
+                ('Config 4G', s.config_4g), ('Classif. tech', s.classif_tech),
+                ('Type site', s.type_site), ('Hauteur pylône', s.hauteur_pylone),
+                ('Typologie pylône', s.typologie_pylone), ('N° agent', s.numero_agent),
+                ('Société gardiens', s.societe_gardiens),
+                ('Contacts surveillants', s.contacts_surveillants),
+            ]
+            detail = '; '.join(f"{k}={v}" for k, v in fields if v not in (None, '', ' '))
+            lines.append(f"- {s.site_name} : {detail}")
+
+            # Incidents récents de ce site
+            incs = (
+                Incident.objects.filter(site_name__iexact=s.site_name)
+                .order_by('-alarm_time')[:5]
+            )
+            for inc in incs:
+                lines.append(
+                    f"    • Incident {inc.numero_ticket or '?'} [{inc.domain}] "
+                    f"escalade={inc.escalade}, statut={inc.status}, "
+                    f"durée={_fmt_duration(inc.duration_sec)}, cause={(inc.cause or '')[:120]}"
+                )
+
+    return '\n'.join(lines)
+
+
+def _build_site_chatbot_context(site_name, message):
+    """Construit un contexte détaillé centré sur UN site précis.
+
+    Rassemble toutes les informations liées au site en fouillant la base :
+    fiche technique, nombre de pannes, causes les plus fréquentes, durée
+    d'indisponibilité, et historique — agrégés à partir des rapports traités
+    (top_sites_json, region_sites_json, top_causes_json) ET de la table des
+    incidents si elle est alimentée.
+    """
+    from django.db.models import Count, Sum
+    from .models import Site, Incident, UploadedReport
+
+    lines = []
+    site = (
+        Site.objects.filter(site_name__iexact=site_name).first()
+        or Site.objects.filter(site_name__icontains=site_name).first()
+    )
+    if not site:
+        return f"Aucun site nommé « {site_name} » n'a été trouvé dans la base de données."
+
+    sname = site.site_name
+    low = sname.lower().strip()
+
+    # ── Fiche technique complète ───────────────────────────────────────────
+    lines.append(f"=== FICHE TECHNIQUE DU SITE « {sname} » ===")
+    fields = [
+        ('ID site', site.site_id), ('Région', site.region), ('Zone', site.zone),
+        ('Base', site.base), ('OLT', site.olt), ('Latitude', site.latitude),
+        ('Longitude', site.longitude), ('Date MES', site.date_mes),
+        ('Configuration', site.config), ('Technologie', site.techno),
+        ('Type transport', site.typ_trans), ('Type énergie', site.typ_energie),
+        ('GE auto', site.ge_auto), ('Site lithium', site.site_lithium),
+        ('Site ESM', site.site_esm), ('Solaire/Neteco', site.site_solaire_neteco),
+        ('Config 2G', site.config_2g), ('Config 3G', site.config_3g),
+        ('Config 4G', site.config_4g), ('Classif. tech', site.classif_tech),
+        ('Type site', site.type_site), ('Hauteur pylône', site.hauteur_pylone),
+        ('Typologie pylône', site.typologie_pylone), ('N° agent', site.numero_agent),
+        ('Société gardiens', site.societe_gardiens),
+        ('Contacts surveillants', site.contacts_surveillants),
+    ]
+    for k, v in fields:
+        if v not in (None, '', ' '):
+            lines.append(f"- {k} : {v}")
+
+    def _num(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return 0
+
+    # ── Données de pannes issues des RAPPORTS traités ──────────────────────
+    _PERIOD_FR = {'day': 'Jour', 'week': 'Semaine', 'month': 'Mois', 'year': 'Année'}
+    reports = UploadedReport.objects.filter(processed=True).order_by('-date_rapport')[:400]
+
+    report_hits = []          # [{date, period, count, impacted_region}]
+    cause_durations = {}      # {cause_name: duration_sec cumulée (jours impactés)}
+    total_outages = 0         # somme des "count" (nombre de fois tombé)
+
+    for r in reports:
+        count = None
+        # 1) top_sites_json : {name/site, count}
+        for s in (r.top_sites_json or []):
+            nm = (s.get('site') or s.get('name') or s.get('site_name') or '')
+            if nm and nm.lower().strip() == low:
+                count = _num(s.get('count') or s.get('nb') or s.get('incidents') or 0)
+                break
+        # 2) region_sites_json : {region: [sites impactés]}
+        impacted_region = None
+        rsj = getattr(r, 'region_sites_json', None) or {}
+        if isinstance(rsj, dict):
+            for region, sites_list in rsj.items():
+                if isinstance(sites_list, (list, tuple)):
+                    for nm in sites_list:
+                        if isinstance(nm, str) and nm.lower().strip() == low:
+                            impacted_region = region
+                            break
+                if impacted_region:
+                    break
+
+        if count is not None or impacted_region is not None:
+            eff_count = count if count is not None else 1
+            total_outages += eff_count
+            report_hits.append({
+                'date': r.date_rapport,
+                'period': _PERIOD_FR.get(r.period_type, r.period_type),
+                'count': count,
+                'region': impacted_region,
+            })
+            # Causes du rapport (niveau rapport — jours où le site a été impacté)
+            for c in (r.top_causes_json or []):
+                cname = (c.get('cause') or c.get('name') or '').strip()
+                if not cname:
+                    continue
+                dur = c.get('duration_sec') or c.get('duration') or 0
+                try:
+                    dur = float(dur)
+                except (TypeError, ValueError):
+                    dur = 0.0
+                cause_durations[cname] = cause_durations.get(cname, 0.0) + dur
+
+    # ── Données issues de la table Incident (si alimentée) ─────────────────
+    incs = Incident.objects.filter(site_name__iexact=sname)
+    if not incs.exists() and site.site_id:
+        incs = Incident.objects.filter(site_id=site.site_id)
+    inc_count = incs.count()
+
+    lines.append("")
+    lines.append("=== HISTORIQUE DES PANNES / INDISPONIBILITÉS ===")
+
+    if total_outages or inc_count:
+        if total_outages:
+            lines.append(
+                f"Nombre total de fois où le site est tombé (cumulé sur les rapports) : {total_outages}"
+            )
+            lines.append(f"Le site apparaît comme impacté dans {len(report_hits)} rapport(s).")
+        if inc_count:
+            total_dur = incs.aggregate(s=Sum('duration_sec'))['s'] or 0
+            lines.append(
+                f"Incidents détaillés enregistrés (table incidents) : {inc_count} "
+                f"— durée cumulée : {_fmt_duration(total_dur)}"
+            )
+
+        # Détail par rapport
+        if report_hits:
+            lines.append("")
+            lines.append("Détail par rapport (date — nombre de pannes) :")
+            for h in report_hits[:40]:
+                cnt = h['count'] if h['count'] is not None else 'impacté'
+                reg = f" | région {h['region']}" if h['region'] else ''
+                lines.append(f"  • {h['date']} [{h['period']}] → {cnt}{reg}")
+
+        # Causes les plus fréquentes (agrégées sur les jours impactés)
+        if cause_durations:
+            top_causes = sorted(cause_durations.items(), key=lambda kv: kv[1], reverse=True)[:10]
+            lines.append("")
+            lines.append(
+                "Causes principales constatées les jours où le site a été impacté "
+                "(durées cumulées au niveau du rapport) :"
+            )
+            for cname, dur in top_causes:
+                lines.append(f"  • {cname} → {_fmt_duration(dur)}")
+
+        # Causes issues de la table incidents (réellement liées au site)
+        if inc_count:
+            by_cause = (
+                incs.exclude(cause='')
+                .values('cause').annotate(n=Count('id')).order_by('-n')[:10]
+            )
+            if by_cause:
+                lines.append("")
+                lines.append("Causes des incidents propres au site (table incidents) :")
+                for c in by_cause:
+                    cause_txt = (c['cause'] or '').strip().replace('\n', ' ')[:140]
+                    lines.append(f"  • {cause_txt} → {c['n']} fois")
+            # Derniers incidents détaillés
+            lines.append("")
+            lines.append("Derniers incidents détaillés :")
+            for inc in incs.order_by('-alarm_time')[:15]:
+                date_txt = inc.alarm_time.strftime('%Y-%m-%d %H:%M') if inc.alarm_time else '?'
+                lines.append(
+                    f"  • {date_txt} | ticket {inc.numero_ticket or '?'} | domaine={inc.domain} "
+                    f"| escalade={inc.escalade or '—'} | statut={inc.status or '—'} "
+                    f"| durée={_fmt_duration(inc.duration_sec)} | cause={(inc.cause or '—').strip()[:160]}"
+                )
+    else:
+        lines.append(
+            "Aucune panne enregistrée pour ce site dans les rapports traités "
+            "ni dans la table des incidents. Le site n'apparaît dans aucun rapport "
+            "comme ayant été impacté."
+        )
+
+    return '\n'.join(lines)
+
+
+def chatbot_api(request):
+    """Endpoint du chatbot ISOC_IA. Reçoit un message, interroge la base et l'API IA."""
+    import requests as _requests
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Méthode non autorisée.'}, status=405)
+
+    if not settings.RODIUM_API_KEY:
+        return JsonResponse(
+            {'error': "Le chatbot n'est pas configuré (clé API manquante)."},
+            status=503,
+        )
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'Requête invalide.'}, status=400)
+
+    user_message = (payload.get('message') or '').strip()
+    if not user_message:
+        return JsonResponse({'error': 'Message vide.'}, status=400)
+    if len(user_message) > 2000:
+        user_message = user_message[:2000]
+
+    history = payload.get('history') or []
+    site_focus = (payload.get('site') or '').strip()
+
+    # Contexte issu de la base de données
+    try:
+        if site_focus:
+            db_context = _build_site_chatbot_context(site_focus, user_message)
+        else:
+            db_context = _build_chatbot_context(user_message)
+    except Exception as exc:
+        db_context = f"(Contexte indisponible : {exc})"
+
+    if site_focus:
+        system_prompt = (
+            "Tu es ISOC_IA (Intelligent Services Operations Center), l'assistant intelligent "
+            "de la plateforme de reporting réseau de Yas Togo. Un technicien consulte la fiche "
+            f"du site « {site_focus} » et te pose des questions sur CE site.\n"
+            "Concentre-toi sur ce site : son historique de pannes, combien de fois il est tombé, "
+            "les causes les plus fréquentes, la durée d'indisponibilité, sa fiche technique et "
+            "toute information le concernant.\n"
+            "Réponds toujours en français, de manière claire, concise et professionnelle.\n"
+            "Base tes réponses UNIQUEMENT sur les données de contexte fournies ci-dessous. "
+            "Si une information n'est pas présente, indique-le clairement plutôt que d'inventer.\n"
+            "Tu peux faire des calculs simples et des synthèses à partir des chiffres fournis.\n\n"
+            "===== DONNÉES DE LA BASE (contexte du site) =====\n"
+            f"{db_context}\n"
+            "===== FIN DU CONTEXTE ====="
+        )
+    else:
+        system_prompt = (
+            "Tu es ISOC_IA (Intelligent Services Operations Center), l'assistant intelligent "
+            "de la plateforme de reporting réseau de Yas Togo. Tu aides les techniciens à "
+            "obtenir des informations sur les sites, les rapports, les statistiques, les "
+            "incidents et le reporting du réseau.\n"
+            "Réponds toujours en français, de manière claire, concise et professionnelle.\n"
+            "Base tes réponses UNIQUEMENT sur les données de contexte fournies ci-dessous. "
+            "Si une information demandée n'est pas présente dans le contexte, indique "
+            "clairement que tu ne disposes pas de cette donnée plutôt que d'inventer.\n"
+            "Tu peux faire des calculs simples et des synthèses à partir des chiffres fournis.\n\n"
+            "===== DONNÉES DE LA BASE (contexte) =====\n"
+            f"{db_context}\n"
+            "===== FIN DU CONTEXTE ====="
+        )
+
+    messages_payload = [{'role': 'system', 'content': system_prompt}]
+    # Historique récent (max 8 derniers échanges) pour garder le contexte conversationnel
+    for h in history[-8:]:
+        role = h.get('role')
+        content = (h.get('content') or '').strip()
+        if role in ('user', 'assistant') and content:
+            messages_payload.append({'role': role, 'content': content[:2000]})
+    messages_payload.append({'role': 'user', 'content': user_message})
+
+    try:
+        resp = _requests.post(
+            f"{settings.RODIUM_API_BASE}/chat/completions",
+            headers={
+                'Authorization': f'Bearer {settings.RODIUM_API_KEY}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'model': settings.RODIUM_MODEL,
+                'messages': messages_payload,
+            },
+            timeout=60,
+        )
+    except _requests.RequestException as exc:
+        return JsonResponse({'error': f"Impossible de joindre l'IA : {exc}"}, status=502)
+
+    if resp.status_code != 200:
+        return JsonResponse(
+            {'error': f"Erreur de l'API IA ({resp.status_code})."},
+            status=502,
+        )
+
+    try:
+        data = resp.json()
+        reply = data['choices'][0]['message']['content']
+    except (ValueError, KeyError, IndexError):
+        return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
+
+    return JsonResponse({'reply': reply})

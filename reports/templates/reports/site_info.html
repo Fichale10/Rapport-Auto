@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Recherche Site — Rapport Auto | YAS{% endblock %}
 {% block breadcrumb %}Recherche Site{% endblock %}
 
@@ -260,6 +261,11 @@
       <div class="site-header-name">{{ site.site_name }}</div>
       <div class="site-header-id">ID : {{ site.site_id|default:"—" }}</div>
     </div>
+    <button type="button" id="isoc-open-btn" class="isoc-open-btn"
+            title="Demander à ISOC_IA d'en savoir plus sur ce site">
+      <img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA">
+      <span class="isoc-open-txt">En savoir plus sur ce site<small>Demander à ISOC_IA</small></span>
+    </button>
     <div class="site-header-badges">
       {% if site.region %}<span class="sbadge">{{ site.region }}</span>{% endif %}
       {% if site.techno %}<span class="sbadge sbadge-yellow">{{ site.techno }}</span>{% endif %}
@@ -600,6 +606,176 @@
       if (e.target === statsOverlay) statsOverlay.classList.remove('show');
     });
   }
+})();
+</script>
+{% endif %}
+
+{% if site %}
+<!-- ════════════ CHATBOT ISOC_IA (centré sur le site consulté) ════════════ -->
+<style>
+  .isoc-open-btn {
+    display: flex; align-items: center; gap: 10px; margin-left: 18px;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28);
+    border-radius: 12px; padding: 7px 14px 7px 7px; cursor: pointer; color: #fff;
+    transition: background .2s, transform .15s; flex-shrink: 0;
+  }
+  .isoc-open-btn:hover { background: rgba(255,255,255,.24); transform: translateY(-1px); }
+  .isoc-open-btn img { width: 38px; height: 38px; border-radius: 10px; background: #fff; padding: 3px; }
+  .isoc-open-txt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; font-weight: 700; font-size: 13.5px; text-align: left; }
+  .isoc-open-txt small { font-weight: 500; font-size: 11px; opacity: .82; margin-top: 1px; }
+
+  #isoc-panel {
+    position: fixed; right: 24px; bottom: 24px; z-index: 9999;
+    width: 390px; max-width: calc(100vw - 32px); height: 600px; max-height: calc(100vh - 48px);
+    background: #fff; border-radius: 20px; overflow: hidden;
+    box-shadow: 0 18px 60px rgba(0,0,0,0.28); border: 1px solid #ececf3;
+    display: none; flex-direction: column; animation: isocIn .22s ease;
+  }
+  @keyframes isocIn { from { opacity:0; transform: translateY(16px) scale(.98); } to { opacity:1; transform:none; } }
+  #isoc-panel.open { display: flex; }
+
+  .isoc-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: linear-gradient(135deg,#0047cc,#003087); color: #fff; }
+  .isoc-head img { width: 34px; height: 34px; border-radius: 9px; background: #fff; }
+  .isoc-head .isoc-title { font-weight: 700; font-size: 15px; letter-spacing: .3px; }
+  .isoc-head .isoc-sub { font-size: 11px; opacity: .85; }
+  .isoc-head .isoc-close { margin-left: auto; background: rgba(255,255,255,.18); border: none; color: #fff; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1; }
+  .isoc-head .isoc-close:hover { background: rgba(255,255,255,.32); }
+
+  .isoc-body { flex: 1; overflow-y: auto; padding: 18px 16px; background: #f7f8fc; display: flex; flex-direction: column; gap: 12px; }
+  .isoc-welcome { text-align: center; margin: auto 0; color: #444; }
+  .isoc-welcome .isoc-wlogo { width: 86px; height: 86px; border-radius: 22px; margin: 0 auto 14px; background: linear-gradient(135deg,#0047cc,#003087); display:flex; align-items:center; justify-content:center; }
+  .isoc-welcome .isoc-wlogo img { width: 60px; height: 60px; border-radius: 16px; }
+  .isoc-welcome h3 { font-size: 17px; color: #1c2340; margin-bottom: 4px; }
+  .isoc-welcome p { font-size: 13px; color: #6b7a99; }
+  .isoc-suggests { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin-top: 14px; }
+  .isoc-suggest { font-size: 12px; background: #fff; border: 1px solid #e3e7f2; color: #003087; padding: 7px 12px; border-radius: 20px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .isoc-suggest:hover { background: #eef2ff; border-color: #c3d0f5; }
+
+  .isoc-msg { max-width: 84%; padding: 10px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .isoc-msg.user { align-self: flex-end; background: linear-gradient(135deg,#003087,#0047cc); color: #fff; border-bottom-right-radius: 4px; }
+  .isoc-msg.bot { align-self: flex-start; background: #fff; color: #1c2340; border: 1px solid #ececf3; border-bottom-left-radius: 4px; }
+  .isoc-msg.err { align-self: flex-start; background: #fff7e6; color: #8a5a00; border: 1px solid #ffe2a8; }
+  .isoc-typing { align-self: flex-start; display: flex; gap: 4px; padding: 12px 14px; background:#fff; border:1px solid #ececf3; border-radius: 14px; }
+  .isoc-typing span { width: 7px; height: 7px; border-radius: 50%; background: #003087; animation: isocBlink 1.2s infinite; }
+  .isoc-typing span:nth-child(2){ animation-delay:.2s; } .isoc-typing span:nth-child(3){ animation-delay:.4s; }
+  @keyframes isocBlink { 0%,80%,100%{ opacity:.25; } 40%{ opacity:1; } }
+
+  .isoc-foot { padding: 12px; background: #fff; border-top: 1px solid #eef0f6; }
+  .isoc-inputwrap { display: flex; align-items: flex-end; gap: 8px; background: #f2f4fa; border: 1px solid #e3e7f2; border-radius: 14px; padding: 8px 10px; }
+  .isoc-inputwrap textarea { flex: 1; border: none; background: transparent; resize: none; outline: none; font-family: inherit; font-size: 13.5px; color: #1c2340; max-height: 96px; line-height: 1.4; }
+  .isoc-send { width: 38px; height: 38px; border-radius: 11px; border: none; cursor: pointer; flex-shrink: 0; background: linear-gradient(135deg,#0047cc,#003087); color: #fff; font-size: 17px; display: flex; align-items: center; justify-content: center; transition: opacity .15s; }
+  .isoc-send:disabled { opacity: .5; cursor: default; }
+</style>
+
+<div id="isoc-panel" role="dialog" aria-label="Assistant ISOC_IA">
+  <div class="isoc-head">
+    <img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA">
+    <div>
+      <div class="isoc-title">ISOC_IA</div>
+      <div class="isoc-sub">Site : {{ site.site_name }}</div>
+    </div>
+    <button class="isoc-close" id="isoc-close" aria-label="Fermer">&times;</button>
+  </div>
+  <div class="isoc-body" id="isoc-body">
+    <div class="isoc-welcome" id="isoc-welcome">
+      <div class="isoc-wlogo"><img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA"></div>
+      <h3>{{ site.site_name }}</h3>
+      <p>Pose-moi tes questions sur ce site : pannes, causes, historique…</p>
+      <div class="isoc-suggests">
+        <button class="isoc-suggest">Combien de fois ce site est-il tombé ?</button>
+        <button class="isoc-suggest">Quelles sont les causes les plus fréquentes ?</button>
+        <button class="isoc-suggest">Durée totale d'indisponibilité ?</button>
+        <button class="isoc-suggest">Historique des derniers incidents</button>
+      </div>
+    </div>
+  </div>
+  <div class="isoc-foot">
+    <div class="isoc-inputwrap">
+      <textarea id="isoc-input" rows="1" placeholder="Pose ta question sur {{ site.site_name }}…"></textarea>
+      <button class="isoc-send" id="isoc-send" aria-label="Envoyer">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var openB   = document.getElementById('isoc-open-btn');
+  var panel   = document.getElementById('isoc-panel');
+  var closeB  = document.getElementById('isoc-close');
+  var body    = document.getElementById('isoc-body');
+  var input   = document.getElementById('isoc-input');
+  var sendB   = document.getElementById('isoc-send');
+  var welcome = document.getElementById('isoc-welcome');
+  var history = [];
+  var busy    = false;
+  var SITE    = "{{ site.site_name|escapejs }}";
+
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var CSRF = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+  function openPanel(){ panel.classList.add('open'); setTimeout(function(){ input.focus(); }, 80); }
+  function closePanel(){ panel.classList.remove('open'); }
+
+  if (openB) openB.addEventListener('click', openPanel);
+  closeB.addEventListener('click', closePanel);
+
+  function addMsg(text, cls){
+    if (welcome) { welcome.style.display='none'; }
+    var div = document.createElement('div');
+    div.className = 'isoc-msg ' + cls;
+    div.textContent = text;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+    return div;
+  }
+
+  function showTyping(){
+    var t = document.createElement('div');
+    t.className = 'isoc-typing'; t.id = 'isoc-typing';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    body.appendChild(t); body.scrollTop = body.scrollHeight;
+  }
+  function hideTyping(){ var t=document.getElementById('isoc-typing'); if(t) t.remove(); }
+
+  function send(text){
+    text = (text || input.value).trim();
+    if (!text || busy) return;
+    busy = true; sendB.disabled = true;
+    addMsg(text, 'user');
+    history.push({role:'user', content:text});
+    input.value=''; input.style.height='auto';
+    showTyping();
+
+    fetch('{% url "chatbot_api" %}', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ message: text, site: SITE, history: history.slice(0,-1) })
+    })
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(res){
+      hideTyping();
+      if (res.ok && res.d.reply) {
+        addMsg(res.d.reply, 'bot');
+        history.push({role:'assistant', content:res.d.reply});
+      } else {
+        addMsg(res.d.error || "Une erreur est survenue.", 'err');
+      }
+    })
+    .catch(function(){ hideTyping(); addMsg("Impossible de contacter l'assistant.", 'err'); })
+    .finally(function(){ busy=false; sendB.disabled=false; input.focus(); });
+  }
+
+  sendB.addEventListener('click', function(){ send(); });
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  input.addEventListener('input', function(){
+    input.style.height='auto'; input.style.height = Math.min(input.scrollHeight, 96) + 'px';
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.isoc-suggest'), function(b){
+    b.addEventListener('click', function(){ send(b.textContent); });
+  });
 })();
 </script>
 {% endif %}
