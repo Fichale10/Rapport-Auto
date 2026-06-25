@@ -278,7 +278,7 @@
       <a href="{% url 'home' %}"             class="{% if request.resolver_match.url_name == 'home' %}active{% endif %}">Accueil</a>
       <a href="{% url 'site_info' %}"          class="{% if request.resolver_match.url_name == 'site_info' %}active{% endif %}">Site Info</a>
       <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
-      <a href="{% url 'sites_instables' %}"    class="{% if request.resolver_match.url_name == 'sites_instables' %}active{% endif %}">Sites instables</a>
+      <a href="{% url 'incident_tracking' %}"  class="{% if request.resolver_match.url_name == 'incident_tracking' %}active{% endif %}">Incident Tracking</a>
       <a href="{% url 'reporting' %}"          class="{% if request.resolver_match.url_name == 'reporting' or request.resolver_match.url_name == 'reporting_network' %}active{% endif %}">Reporting</a>
       <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
     </div>

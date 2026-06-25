@@ -2402,8 +2402,270 @@ def statistiques(request):
     })
 
 
-def sites_instables(request):
-    return render(request, 'reports/sites_instables.html')
+def incident_tracking(request):
+    from .models import Incident
+    from django.db.models import Count, Sum, Q
+    from django.core.paginator import Paginator
+
+    # Filtres
+    domain  = request.GET.get('domain', '')
+    mois    = request.GET.get('mois', '')
+    statut  = request.GET.get('statut', '')   # 'ouvert' | 'resolu' | ''
+    q       = request.GET.get('q', '').strip()
+
+    qs = Incident.objects.all()
+
+    if domain:
+        qs = qs.filter(domain=domain)
+    if mois:
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(mois, '%Y-%m')
+            qs = qs.filter(mois_rapport__year=d.year, mois_rapport__month=d.month)
+        except ValueError:
+            pass
+    if statut == 'ouvert':
+        qs = qs.filter(cancel_time__isnull=True)
+    elif statut == 'resolu':
+        qs = qs.filter(cancel_time__isnull=False)
+    if q:
+        qs = qs.filter(
+            Q(numero_ticket__icontains=q) |
+            Q(site_name__icontains=q) |
+            Q(nature__icontains=q) |
+            Q(region__icontains=q)
+        )
+
+    # KPIs globaux (sans filtre)
+    total_all   = Incident.objects.count()
+    total_open  = Incident.objects.filter(cancel_time__isnull=True).count()
+    total_clos  = Incident.objects.filter(cancel_time__isnull=False).count()
+
+    # Mois disponibles pour le filtre
+    mois_list = (
+        Incident.objects
+        .exclude(mois_rapport__isnull=True)
+        .values_list('mois_rapport', flat=True)
+        .order_by('-mois_rapport')
+        .distinct()[:24]
+    )
+
+    paginator = Paginator(qs.order_by('-alarm_time'), 50)
+    page      = request.GET.get('page', 1)
+    incidents = paginator.get_page(page)
+
+    return render(request, 'reports/incident_tracking.html', {
+        'incidents':   incidents,
+        'total_all':   total_all,
+        'total_open':  total_open,
+        'total_clos':  total_clos,
+        'total_filtre': qs.count(),
+        'domain_choices': Incident.DOMAIN_CHOICES,
+        'mois_list':   mois_list,
+        'f_domain':    domain,
+        'f_mois':      mois,
+        'f_statut':    statut,
+        'f_q':         q,
+    })
+
+
+def isocep_process(request):
+    """Traitement iSOCEP : KPI vs Incident ou Courbe de disponibilité."""
+    if request.method != 'POST':
+        return redirect('incident_tracking')
+
+    import tempfile, os, uuid, io, base64
+    import pandas as pd
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from django.http import HttpResponse, JsonResponse
+    from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+
+    mode = request.POST.get('mode', 'kpi')
+
+    def _save_tmp(uploaded_file):
+        suffix = os.path.splitext(uploaded_file.name)[1]
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        for chunk in uploaded_file.chunks():
+            tmp.write(chunk)
+        tmp.close()
+        return tmp.name
+
+    # ── Mode Courbe de disponibilité ──────────────────────────────────────────
+    if mode == 'courbe':
+        try:
+            f_avail   = request.FILES.get('avail_file')
+            site_name = request.POST.get('site_name', '').strip()
+            if not f_avail or not site_name:
+                return JsonResponse({'success': False, 'error': "Fichier disponibilité et nom du site requis."})
+
+            path_avail = _save_tmp(f_avail)
+            try:
+                proc = ExcelGraphProcessor(path_avail, site_name)
+                proc.load_data_from_excel()
+                proc.merge_and_filter_data()
+            finally:
+                os.unlink(path_avail)
+
+            if proc.df_final is None or proc.df_final.empty:
+                return JsonResponse({'success': False, 'error': f"Aucune donnée trouvée pour le site « {site_name} »."})
+
+            # Générer l'Excel et le stocker en session via token
+            dl_token  = uuid.uuid4().hex
+            excel_path = os.path.join(tempfile.gettempdir(), f'isocep_courbe_{dl_token}.xlsx')
+            proc.generate_excel_report(excel_path)
+            filename  = f"Graphe_courbe_kpi-{site_name.upper()}.xlsx"
+            request.session[f'courbe_{dl_token}'] = {'path': excel_path, 'filename': filename}
+
+            # Construire le graphe matplotlib
+            df = proc.df_final.copy()
+            avail_cols = ["AVAILABILITY 2G", "AVAILABILITY 3G", "AVAILABILITY 4G"]
+            for col in avail_cols:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            df['Period start time'] = pd.to_datetime(df['Period start time'], errors='coerce')
+            df = df.dropna(subset=['Period start time']).sort_values('Period start time')
+
+            fig, ax = plt.subplots(figsize=(13, 5), facecolor='#f8fafc')
+            ax.set_facecolor('#f8fafc')
+            palette = {
+                "AVAILABILITY 2G": "#3b82f6",
+                "AVAILABILITY 3G": "#f59e0b",
+                "AVAILABILITY 4G": "#22c55e",
+            }
+            for col, color in palette.items():
+                mask = df[col].notna()
+                if mask.any():
+                    ax.plot(df.loc[mask, 'Period start time'], df.loc[mask, col],
+                            label=col, color=color, linewidth=2, marker='o', markersize=3)
+
+            ax.axhline(y=99, color='#ef4444', linestyle='--', linewidth=1.5,
+                       alpha=0.8, label='Seuil 99 %')
+            ax.set_title(f"Courbe de disponibilité — {site_name.upper()}",
+                         fontsize=13, fontweight='bold', pad=14)
+            ax.set_xlabel("Période", fontsize=9)
+            ax.set_ylabel("Disponibilité (%)", fontsize=9)
+            ax.legend(loc='lower right', fontsize=8, framealpha=0.9)
+            ax.grid(True, alpha=0.3, linestyle='--')
+
+            all_vals = df[avail_cols].stack()
+            y_min = max(0, float(all_vals.min()) - 2) if not all_vals.empty else 0
+            ax.set_ylim(y_min, 102)
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%d/%m\n%H:%M'))
+            plt.xticks(rotation=0, fontsize=7)
+            plt.tight_layout()
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+
+            return JsonResponse({
+                'success':  True,
+                'image':    f'data:image/png;base64,{img_b64}',
+                'token':    dl_token,
+                'site':     site_name.upper(),
+                'filename': filename,
+            })
+
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': f"Erreur lors du traitement : {e}"})
+
+    # ── Mode KPI vs Incident ───────────────────────────────────────────────────
+    try:
+        f_incident = request.FILES.get('incident_file')
+        f_avail    = request.FILES.get('avail_file')
+        f_alarm    = request.FILES.get('alarm_file')
+        date_str   = request.POST.get('date_process', '').strip()
+
+        if not f_incident or not f_avail or not date_str:
+            messages.error(request, "Fichier incidents, disponibilité et date requis.")
+            return redirect('incident_tracking')
+
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(date_str, '%d/%m/%Y')
+            date_fmt = d.strftime('%Y-%m-%d')
+        except ValueError:
+            date_fmt = date_str
+
+        path_incident = _save_tmp(f_incident)
+        path_avail    = _save_tmp(f_avail)
+        path_alarm    = _save_tmp(f_alarm) if f_alarm else None
+        try:
+            proc = ExcelDataProcessor(path_incident, path_avail, date_fmt, path_alarm)
+            proc.load_data_from_excel()
+            if path_alarm:
+                df = proc.merge_and_filter_data_triple()
+                out = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                out.close()
+                proc.generate_excel_report_triple(df, out.name)
+            else:
+                df = proc.merge_and_filter_data()
+                out = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                out.close()
+                proc.generate_excel_report(df, out.name)
+            filename = f"ANALYSE_KPI_VS_INC_{date_fmt}.xlsx"
+        finally:
+            os.unlink(path_incident)
+            os.unlink(path_avail)
+            if path_alarm:
+                os.unlink(path_alarm)
+
+        with open(out.name, 'rb') as fh:
+            content = fh.read()
+        os.unlink(out.name)
+        response = HttpResponse(
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except Exception as e:
+        messages.error(request, f"Erreur lors du traitement : {e}")
+        return redirect('incident_tracking')
+
+
+def isocep_download(request, token):
+    """Téléchargement de l'Excel Courbe généré par isocep_process (mode courbe)."""
+    import os
+    from django.http import HttpResponse
+
+    key  = f'courbe_{token}'
+    info = request.session.get(key)
+    if not info:
+        messages.error(request, "Lien de téléchargement expiré ou invalide.")
+        return redirect('incident_tracking')
+
+    path     = info['path']
+    filename = info['filename']
+
+    if not os.path.exists(path):
+        messages.error(request, "Fichier Excel introuvable. Veuillez régénérer le graphe.")
+        return redirect('incident_tracking')
+
+    with open(path, 'rb') as fh:
+        content = fh.read()
+
+    try:
+        os.unlink(path)
+    except Exception:
+        pass
+    try:
+        del request.session[key]
+        request.session.modified = True
+    except Exception:
+        pass
+
+    response = HttpResponse(
+        content,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 
 from .reporting_config import PLATFORMS as REPORTING_PLATFORMS
@@ -3382,6 +3644,11 @@ def sites_import_excel(request):
             for idx, field in col_map.items():
                 val = row[idx] if idx < len(row) else None
                 data[field] = val if val is not None else ''
+
+            # Nettoyer tous les champs texte (espaces insécables, etc.)
+            for k, v in list(data.items()):
+                if isinstance(v, str):
+                    data[k] = v.strip('\xa0 \t')
 
             site_name = str(data.get('site_name', '')).strip()
             if not site_name:

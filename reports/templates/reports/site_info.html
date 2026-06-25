@@ -497,6 +497,21 @@
 
 <script>
 (function () {
+  const STORAGE_KEY = 'site_info_last_q';
+  const currentQuery = '{{ query|escapejs }}';
+
+  // Restauration automatique : si on revient sur la page sans ?q=, on relance la dernière recherche
+  if (!currentQuery) {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      window.location.replace('{% url "site_info" %}?q=' + encodeURIComponent(stored));
+      return;
+    }
+  } else {
+    // On mémorise la requête courante
+    sessionStorage.setItem(STORAGE_KEY, currentQuery);
+  }
+
   const input   = document.getElementById('searchInput');
   const drop    = document.getElementById('acDrop');
   const clearBtn = document.getElementById('searchClear');
@@ -585,10 +600,8 @@
   });
 
   clearBtn.addEventListener('click', function () {
-    input.value = '';
-    clearBtn.classList.remove('show');
-    hideDrop();
-    input.focus();
+    sessionStorage.removeItem(STORAGE_KEY);
+    window.location.href = '{% url "site_info" %}';
   });
 })();
 </script>

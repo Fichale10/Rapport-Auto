@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Incident Tracking — ReportXCare{% endblock %}
+{% block breadcrumb %}Incident Tracking{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  /* ══ Banner ══ */
+  .it-banner {
+    background: linear-gradient(120deg,#001f5c 0%,#002776 40%,#003087 70%,#0044bb 100%);
+    border-radius: 22px; margin-bottom: 24px;
+    box-shadow: 0 8px 40px rgba(0,48,135,.30);
+    position: relative; overflow: hidden;
+  }
+  .it-banner::before {
+    content: 'TRACKING'; font-family: 'Bebas Neue', sans-serif;
+    font-size: 120px; letter-spacing: 10px; color: rgba(255,255,255,.03);
+    position: absolute; right: 16px; bottom: -18px; pointer-events: none; line-height: 1;
+  }
+  .it-banner-top {
+    padding: 26px 32px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
+    position: relative; z-index: 1;
+  }
+  .it-banner-identity { display: flex; align-items: center; gap: 16px; }
+  .it-banner-icon {
+    width: 58px; height: 58px; border-radius: 16px;
+    background: rgba(255,199,44,.16); border: 1.5px solid rgba(255,199,44,.3);
+    display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0;
+  }
+  .it-banner-tag   { font-size: 10px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: var(--yellow); margin-bottom: 4px; }
+  .it-banner-title { font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: #fff; letter-spacing: 2px; line-height: 1; }
+  .it-banner-sub   { font-size: 12.5px; color: rgba(255,255,255,.5); margin-top: 4px; }
+
+  /* KPI band */
+  .it-kpis {
+    display: flex; border-top: 1px solid rgba(255,255,255,.10);
+    background: rgba(0,0,0,.15);
+  }
+  .it-kpi { flex: 1; padding: 15px 20px; text-align: center; border-right: 1px solid rgba(255,255,255,.07); }
+  .it-kpi:last-child { border-right: none; }
+  .it-kpi-val { font-family: 'Bebas Neue', sans-serif; font-size: 30px; color: #fff; line-height: 1; margin-bottom: 3px; }
+  .it-kpi-val.yellow { color: #FFC72C; }
+  .it-kpi-val.red    { color: #f87171; }
+  .it-kpi-val.green  { color: #4ade80; }
+  .it-kpi-lbl { font-size: 10px; color: rgba(255,255,255,.45); text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
+
+  /* ══ Filtres ══ */
+  .it-filters {
+    background: #fff; border-radius: 16px; border: 1px solid #e8edf5;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+    box-shadow: 0 2px 10px rgba(0,48,135,.06);
+  }
+  .it-filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .it-filter-label { font-size: 10px; font-weight: 700; color: #8896b3; text-transform: uppercase; letter-spacing: .5px; }
+  .it-filter-select, .it-filter-input {
+    padding: 8px 12px; border-radius: 9px; border: 1.5px solid #d0d8e8;
+    background: #f8faff; font-size: 13px; color: #333;
+    font-family: inherit; min-width: 140px;
+    transition: border-color .15s;
+  }
+  .it-filter-select:focus, .it-filter-input:focus { border-color: #003087; outline: none; }
+  .it-filter-input { min-width: 200px; }
+  .it-filter-actions { display: flex; gap: 8px; margin-left: auto; align-items: flex-end; }
+  .btn-filter {
+    padding: 9px 20px; border-radius: 9px;
+    background: linear-gradient(135deg,#003087,#0047cc); color: #fff;
+    font-size: 13px; font-weight: 700; border: none; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,48,135,.25); transition: all .15s;
+  }
+  .btn-filter:hover { box-shadow: 0 4px 16px rgba(0,48,135,.35); transform: translateY(-1px); }
+  .btn-reset {
+    padding: 9px 16px; border-radius: 9px;
+    border: 1.5px solid #d0d8e8; background: #fff; color: #666;
+    font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none;
+    transition: border-color .15s;
+  }
+  .btn-reset:hover { border-color: #003087; color: #003087; }
+
+  /* ══ Résultats header ══ */
+  .it-results-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+  }
+  .it-results-count { font-size: 13px; color: #8896b3; font-weight: 600; }
+  .it-results-count strong { color: #003087; }
+
+  /* ══ Tableau ══ */
+  .it-table-wrap {
+    background: #fff; border-radius: 18px; border: 1px solid #e8edf5;
+    box-shadow: 0 2px 12px rgba(0,48,135,.07); overflow: hidden;
+  }
+  .it-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .it-table thead th {
+    background: #f4f7ff; padding: 12px 14px;
+    text-align: left; font-size: 11px; font-weight: 800;
+    color: #8896b3; text-transform: uppercase; letter-spacing: .6px;
+    border-bottom: 2px solid #e8edf5; white-space: nowrap;
+  }
+  .it-table tbody tr { border-bottom: 1px solid #f0f4ff; transition: background .12s; }
+  .it-table tbody tr:last-child { border-bottom: none; }
+  .it-table tbody tr:hover { background: #f8faff; }
+  .it-table tbody td { padding: 11px 14px; vertical-align: middle; }
+
+  .td-ticket { font-family: 'DM Mono', monospace, sans-serif; font-size: 12px; color: #003087; font-weight: 600; }
+  .td-site   { font-weight: 700; color: #111; font-size: 13px; }
+  .td-region { font-size: 12px; color: #888; }
+  .td-nature { font-size: 12px; color: #555; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .td-date   { font-size: 12px; color: #888; white-space: nowrap; }
+  .td-dur    { font-size: 12px; color: #888; white-space: nowrap; }
+
+  /* Badges domaine */
+  .badge-domain {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; letter-spacing: .3px;
+    white-space: nowrap;
+  }
+  .badge-mobile    { background:#e8f0ff; color:#003087; border:1px solid #c8d8ff; }
+  .badge-dr2       { background:#eef0ff; color:#4338ca; border:1px solid #c7d2fe; }
+  .badge-fixe      { background:#e8fdf4; color:#059669; border:1px solid #a7f3d0; }
+  .badge-transport { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+  .badge-igw       { background:#f5f0ff; color:#7c3aed; border:1px solid #ddd6fe; }
+  .badge-core      { background:#fff0f0; color:#dc2626; border:1px solid #fca5a5; }
+
+  /* Badge statut */
+  .badge-ouvert  { background:#fff0f0; color:#dc2626; border:1px solid #fca5a5; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
+  .badge-resolu  { background:#e8fdf4; color:#059669; border:1px solid #a7f3d0; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; }
+
+  /* ══ Pagination ══ */
+  .it-pagination {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 20px;
+    border-top: 1px solid #f0f4ff;
+  }
+  .pg-btn {
+    padding: 7px 14px; border-radius: 9px; font-size: 13px; font-weight: 600;
+    border: 1.5px solid #d0d8e8; background: #fff; color: #555;
+    text-decoration: none; transition: all .15s;
+  }
+  .pg-btn:hover { border-color: #003087; color: #003087; }
+  .pg-btn.active { background: #003087; color: #fff; border-color: #003087; }
+  .pg-info { font-size: 12px; color: #aaa; padding: 0 8px; }
+
+  /* Vide */
+  .it-empty { text-align: center; padding: 48px 24px; color: #bbb; }
+  .it-empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .it-empty-txt  { font-size: 14px; }
+
+  /* ══ Section traitement iSOCEP ══ */
+  .isocep-section { margin-top: 36px; }
+  .isocep-section-hdr {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+  }
+  .isocep-section-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 16px; border-radius: 12px;
+    font-size: 13px; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg,#1e293b,#334155);
+  }
+  .isocep-section-line { flex: 1; height: 1px; background: #e8edf5; }
+
+  .isocep-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media(max-width:800px){ .isocep-grid { grid-template-columns: 1fr; } }
+
+  .isocep-card {
+    background: #fff; border-radius: 20px; border: 1px solid #e8edf5;
+    box-shadow: 0 2px 14px rgba(0,48,135,.07); overflow: hidden;
+  }
+  .isocep-card-head {
+    padding: 18px 22px; display: flex; align-items: center; gap: 12px;
+    position: relative; overflow: hidden;
+  }
+  .isocep-card-head::after {
+    content:''; position:absolute; right:-16px; top:-16px;
+    width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.12);
+    pointer-events:none;
+  }
+  .isocep-card-head.kpi    { background: linear-gradient(135deg,#003087,#0047cc); }
+  .isocep-card-head.courbe { background: linear-gradient(135deg,#166534,#22c55e); }
+  .isocep-head-icon {
+    width: 40px; height: 40px; border-radius: 11px;
+    background: rgba(255,255,255,.2); border: 1.5px solid rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+  .isocep-head-title { font-size: 14px; font-weight: 800; color: #fff; }
+  .isocep-head-sub   { font-size: 11px; color: rgba(255,255,255,.6); margin-top: 2px; }
+
+  .isocep-card-body { padding: 20px 22px; }
+  .isocep-field { margin-bottom: 14px; }
+  .isocep-label {
+    font-size: 11px; font-weight: 700; color: #8896b3;
+    text-transform: uppercase; letter-spacing: .5px;
+    display: block; margin-bottom: 5px;
+  }
+  .isocep-input, .isocep-file {
+    width: 100%; padding: 9px 13px; border-radius: 10px;
+    border: 1.5px solid #d0d8e8; background: #f8faff;
+    font-size: 13px; color: #333; font-family: inherit;
+    transition: border-color .15s; box-sizing: border-box;
+  }
+  .isocep-input:focus, .isocep-file:focus { border-color: #003087; outline: none; }
+  .isocep-hint { font-size: 11px; color: #b0b8cc; margin-top: 4px; }
+  .isocep-optional { font-size: 10px; color: #b0b8cc; font-style: italic; margin-left: 4px; }
+
+  .btn-isocep {
+    display: inline-flex; align-items: center; gap: 8px;
+    width: 100%; justify-content: center;
+    padding: 11px 20px; border-radius: 11px;
+    font-size: 13px; font-weight: 700; border: none; cursor: pointer;
+    transition: all .15s; margin-top: 4px;
+  }
+  .btn-isocep.kpi {
+    background: linear-gradient(135deg,#003087,#0047cc); color: #fff;
+    box-shadow: 0 3px 12px rgba(0,48,135,.3);
+  }
+  .btn-isocep.kpi:hover { box-shadow: 0 6px 20px rgba(0,48,135,.4); transform: translateY(-1px); }
+  .btn-isocep.courbe {
+    background: linear-gradient(135deg,#166534,#22c55e); color: #fff;
+    box-shadow: 0 3px 12px rgba(22,101,52,.3);
+  }
+  .btn-isocep.courbe:hover { box-shadow: 0 6px 20px rgba(22,101,52,.4); transform: translateY(-1px); }
+
+  @media(max-width:900px){
+    .it-table thead th:nth-child(n+5) { display: none; }
+    .it-table tbody td:nth-child(n+5) { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ══ Banner ══ -->
+<div class="it-banner">
+  <div class="it-banner-top">
+    <div class="it-banner-identity">
+      <div class="it-banner-icon">🔍</div>
+      <div>
+        <div class="it-banner-tag">ReportXCare</div>
+        <div class="it-banner-title">Incident Tracking</div>
+        <div class="it-banner-sub">Suivi en temps réel des incidents par plateforme</div>
+      </div>
+    </div>
+  </div>
+  <div class="it-kpis">
+    <div class="it-kpi">
+      <div class="it-kpi-val yellow">{{ total_all }}</div>
+      <div class="it-kpi-lbl">Total incidents</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val red">{{ total_open }}</div>
+      <div class="it-kpi-lbl">Ouverts</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val green">{{ total_clos }}</div>
+      <div class="it-kpi-lbl">Résolus</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val">{{ total_filtre }}</div>
+      <div class="it-kpi-lbl">Filtrés</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Section traitement iSOCEP ══ -->
+<div class="isocep-section" style="margin-top:0; margin-bottom:28px;">
+  <div class="isocep-section-hdr">
+    <div class="isocep-section-pill">⚙️ Traitement iSOCEP</div>
+    <div class="isocep-section-line"></div>
+  </div>
+
+  <div class="isocep-grid">
+
+    <!-- Mode 1 : KPI vs Incident -->
+    <div class="isocep-card">
+      <div class="isocep-card-head kpi">
+        <div class="isocep-head-icon">📊</div>
+        <div>
+          <div class="isocep-head-title">KPI vs Incident</div>
+          <div class="isocep-head-sub">Analyse disponibilité ≤ 99% corrélée aux incidents</div>
+        </div>
+      </div>
+      <div class="isocep-card-body">
+        <form method="post" action="/incident-tracking/process/" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="mode" value="kpi">
+
+          <div class="isocep-field">
+            <label class="isocep-label">Fichier Incidents *</label>
+            <input type="file" name="incident_file" class="isocep-file" accept=".xlsx,.xls" required>
+            <div class="isocep-hint">Colonnes : Ingénieur NOC, Numero du ticket, Site Name, Status…</div>
+          </div>
+
+          <div class="isocep-field">
+            <label class="isocep-label">Fichier Disponibilité *</label>
+            <input type="file" name="avail_file" class="isocep-file" accept=".xlsx,.xls" required>
+            <div class="isocep-hint">3 onglets requis : 2G, 3G, 4G</div>
+          </div>
+
+          <div class="isocep-field">
+            <label class="isocep-label">Fichier Alarmes <span class="isocep-optional">(optionnel)</span></label>
+            <input type="file" name="alarm_file" class="isocep-file" accept=".xlsx,.xls">
+            <div class="isocep-hint">Export Netact — colonnes : Name, Alarm Text, Alarm Time, Cancel Time</div>
+          </div>
+
+          <div class="isocep-field">
+            <label class="isocep-label">Date de traitement *</label>
+            <input type="date" name="date_process" class="isocep-input" required>
+            <div class="isocep-hint">Filtre la période correspondante dans le fichier disponibilité</div>
+          </div>
+
+          <button type="submit" class="btn-isocep kpi">⬇ Générer ANALYSE_KPI_VS_INC.xlsx</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Mode 2 : Courbe de disponibilité -->
+    <div class="isocep-card">
+      <div class="isocep-card-head courbe">
+        <div class="isocep-head-icon">📈</div>
+        <div>
+          <div class="isocep-head-title">Courbe de disponibilité</div>
+          <div class="isocep-head-sub">Évolution 2G/3G/4G pour un site donné</div>
+        </div>
+      </div>
+      <div class="isocep-card-body">
+        <form id="courbe-form" enctype="multipart/form-data">
+          {% csrf_token %}
+          <input type="hidden" name="mode" value="courbe">
+
+          <div class="isocep-field">
+            <label class="isocep-label">Fichier Disponibilité *</label>
+            <input type="file" name="avail_file" class="isocep-file" accept=".xlsx,.xls" required>
+            <div class="isocep-hint">3 onglets requis : 2G, 3G, 4G</div>
+          </div>
+
+          <div class="isocep-field">
+            <label class="isocep-label">Nom du site *</label>
+            <input type="text" name="site_name" class="isocep-input"
+                   placeholder="Ex : ADJOGUIDI, DAPAONG…" required>
+            <div class="isocep-hint">Insensible à la casse — doit correspondre à un site dans le fichier</div>
+          </div>
+
+          <button type="submit" id="courbe-btn" class="btn-isocep courbe">📈 Générer le graphe</button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Résultat Courbe de disponibilité ══ -->
+<div id="courbe-result" style="display:none; margin:0 0 28px 0; padding:0 4px;">
+  <div style="background:#fff; border-radius:16px; box-shadow:0 4px 24px rgba(0,0,0,.10); overflow:hidden;">
+    <!-- En-tête résultat -->
+    <div style="background:linear-gradient(135deg,#166534,#22c55e); padding:14px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:1.5rem;">📊</span>
+        <div>
+          <div style="color:#fff; font-size:1rem; font-weight:700; letter-spacing:.5px;">Courbe générée</div>
+          <div id="courbe-site-label" style="color:rgba(255,255,255,.85); font-size:.82rem;"></div>
+        </div>
+      </div>
+      <a id="courbe-dl-btn" href="#"
+         style="display:inline-flex; align-items:center; gap:7px; background:#fff; color:#166534;
+                font-weight:700; font-size:.88rem; padding:9px 20px; border-radius:10px;
+                text-decoration:none; box-shadow:0 2px 8px rgba(0,0,0,.15); transition:all .2s;">
+        ⬇ Exporter en Excel
+      </a>
+    </div>
+    <!-- Graphe -->
+    <div style="padding:18px 22px;">
+      <img id="courbe-chart-img" src="" alt="Courbe de disponibilité"
+           style="width:100%; border-radius:10px; border:1px solid #e5e7eb;">
+    </div>
+  </div>
+</div>
+
+<!-- ══ Filtres ══ -->
+<form method="get" class="it-filters">
+  <div class="it-filter-group">
+    <span class="it-filter-label">Domaine</span>
+    <select name="domain" class="it-filter-select">
+      <option value="">Tous</option>
+      {% for val, lbl in domain_choices %}
+      <option value="{{ val }}" {% if f_domain == val %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="it-filter-group">
+    <span class="it-filter-label">Mois</span>
+    <select name="mois" class="it-filter-select">
+      <option value="">Tous</option>
+      {% for m in mois_list %}
+      <option value="{{ m|date:'Y-m' }}" {% if f_mois == m|date:'Y-m' %}selected{% endif %}>{{ m|date:"M Y" }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="it-filter-group">
+    <span class="it-filter-label">Statut</span>
+    <select name="statut" class="it-filter-select">
+      <option value="">Tous</option>
+      <option value="ouvert"  {% if f_statut == 'ouvert'  %}selected{% endif %}>Ouverts</option>
+      <option value="resolu"  {% if f_statut == 'resolu'  %}selected{% endif %}>Résolus</option>
+    </select>
+  </div>
+
+  <div class="it-filter-group">
+    <span class="it-filter-label">Recherche</span>
+    <input type="text" name="q" value="{{ f_q }}" placeholder="Ticket, site, nature…" class="it-filter-input">
+  </div>
+
+  <div class="it-filter-actions">
+    <a href="{% url 'incident_tracking' %}" class="btn-reset">Réinitialiser</a>
+    <button type="submit" class="btn-filter">🔍 Filtrer</button>
+  </div>
+</form>
+
+<!-- ══ Tableau ══ -->
+<div class="it-results-header">
+  <div class="it-results-count"><strong>{{ total_filtre }}</strong> incident{% if total_filtre != 1 %}s{% endif %} trouvé{% if total_filtre != 1 %}s{% endif %}</div>
+  <div class="it-results-count">Page {{ incidents.number }} / {{ incidents.paginator.num_pages }}</div>
+</div>
+
+<div class="it-table-wrap">
+  {% if incidents %}
+  <table class="it-table">
+    <thead>
+      <tr>
+        <th>Ticket</th>
+        <th>Site</th>
+        <th>Domaine</th>
+        <th>Statut</th>
+        <th>Alarme</th>
+        <th>Durée</th>
+        <th>Région</th>
+        <th>Nature</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for inc in incidents %}
+      <tr>
+        <td class="td-ticket">{{ inc.numero_ticket|default:"—" }}</td>
+        <td>
+          <div class="td-site">{{ inc.site_name|default:"—" }}</div>
+          {% if inc.site_id %}<div class="td-region">{{ inc.site_id }}</div>{% endif %}
+        </td>
+        <td>
+          <span class="badge-domain badge-{{ inc.domain }}">{{ inc.get_domain_display }}</span>
+        </td>
+        <td>
+          {% if inc.cancel_time %}
+          <span class="badge-resolu">✓ Résolu</span>
+          {% else %}
+          <span class="badge-ouvert">● Ouvert</span>
+          {% endif %}
+        </td>
+        <td class="td-date">{{ inc.alarm_time|date:"d/m/Y H:i"|default:"—" }}</td>
+        <td class="td-dur">
+          {% if inc.duration_sec %}
+            {% if inc.duration_sec >= 3600 %}
+              {{ inc.duration_sec|floatformat:0|divisibleby:3600 }}h
+              {% with h=inc.duration_sec|floatformat:0 %}{% endwith %}
+            {% else %}
+              {{ inc.duration_sec|floatformat:0 }}s
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="td-region">{{ inc.region|default:"—" }}</td>
+        <td class="td-nature">{{ inc.nature|truncatechars:60|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if incidents.has_other_pages %}
+  <div class="it-pagination">
+    {% if incidents.has_previous %}
+    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.previous_page_number }}" class="pg-btn">‹ Préc.</a>
+    {% endif %}
+
+    {% for num in incidents.paginator.page_range %}
+      {% if num == incidents.number %}
+      <span class="pg-btn active">{{ num }}</span>
+      {% elif num >= incidents.number|add:"-3" and num <= incidents.number|add:"3" %}
+      <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ num }}" class="pg-btn">{{ num }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if incidents.has_next %}
+    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.next_page_number }}" class="pg-btn">Suiv. ›</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="it-empty">
+    <div class="it-empty-icon">📭</div>
+    <div class="it-empty-txt">Aucun incident trouvé pour ces filtres.</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const form   = document.getElementById('courbe-form');
+  const btn    = document.getElementById('courbe-btn');
+  const result = document.getElementById('courbe-result');
+  const img    = document.getElementById('courbe-chart-img');
+  const label  = document.getElementById('courbe-site-label');
+  const dlBtn  = document.getElementById('courbe-dl-btn');
+
+  if (!form) return;
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    btn.disabled    = true;
+    btn.textContent = '⏳ Traitement en cours…';
+    result.style.display = 'none';
+
+    const formData = new FormData(form);
+    const csrf     = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    fetch('/incident-tracking/process/', {
+      method:  'POST',
+      body:    formData,
+      headers: { 'X-CSRFToken': csrf },
+    })
+    .then(function (r) {
+      if (!r.ok) throw new Error('Réponse serveur : ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      btn.disabled    = false;
+      btn.textContent = '📈 Générer le graphe';
+
+      if (data.success) {
+        img.src           = data.image;
+        label.textContent = 'Site : ' + data.site;
+        dlBtn.href        = '/incident-tracking/process/download/' + data.token + '/';
+        result.style.display = 'block';
+        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        alert('Erreur : ' + data.error);
+      }
+    })
+    .catch(function (err) {
+      btn.disabled    = false;
+      btn.textContent = '📈 Générer le graphe';
+      alert('Erreur réseau : ' + err);
+    });
+  });
+
+  dlBtn.addEventListener('mouseover', function () { this.style.background = '#f0fdf4'; });
+  dlBtn.addEventListener('mouseout',  function () { this.style.background = '#fff'; });
+})();
+</script>
+{% endblock %}

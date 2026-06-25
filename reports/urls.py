@@ -1,6 +1,6 @@
 from django.urls import path
 from django.contrib.auth.decorators import login_required
-from . import views
+from . import views  # noqa
 
 urlpatterns = [
     path('',                                      login_required(views.home),           name='home'),
@@ -15,7 +15,9 @@ urlpatterns = [
     path('statistiques/',                         login_required(views.statistiques),    name='statistiques'),
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
-    path('sites-instables/',                      login_required(views.sites_instables), name='sites_instables'),
+    path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),
+    path('incident-tracking/process/',                      login_required(views.isocep_process),  name='isocep_process'),
+    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download), name='isocep_download'),
 
     # ── Reporting ──────────────────────────────────────────────────────────────
     path('reporting/',                            login_required(views.reporting),       name='reporting'),
