@@ -172,6 +172,124 @@ class ExcelDataProcessor:
 
         return df_res
     
+    @staticmethod
+    def _duration_to_minutes(val):
+        """Convertit une durée (timedelta, time, secondes ou HH:MM:SS) en minutes float."""
+        import datetime
+        if val is None or val == "N/A":
+            return None
+        if isinstance(val, float) and val != val:   # NaN
+            return None
+        if isinstance(val, datetime.timedelta):
+            return val.total_seconds() / 60.0
+        if isinstance(val, datetime.time):
+            return val.hour * 60 + val.minute + val.second / 60.0
+        if isinstance(val, (int, float)):
+            # La fonction format_duration existante travaille en secondes
+            return float(val) / 60.0
+        if isinstance(val, str):
+            val = val.strip()
+            if not val or val == "N/A":
+                return None
+            parts = val.split(':')
+            if len(parts) == 3:
+                try:
+                    return int(parts[0]) * 60 + int(parts[1]) + float(parts[2]) / 60.0
+                except (ValueError, TypeError):
+                    pass
+            if len(parts) == 2:
+                try:
+                    return int(parts[0]) * 60 + int(parts[1])
+                except (ValueError, TypeError):
+                    pass
+        return None
+
+    def _write_duration_stats(self, ws, df_final, duration_col, data_end_row):
+        """Écrit un tableau récapitulatif (sites durée > 10 min) sous le tableau principal."""
+        THRESHOLD_MIN = 10
+        thin = Border(
+            left=Side(border_style="thin"),  right=Side(border_style="thin"),
+            top=Side(border_style="thin"),   bottom=Side(border_style="thin"),
+        )
+
+        # ── Collecte et filtrage ────────────────────────────────────────────
+        seen_tickets = set()
+        stat_rows = []
+        for _, row in df_final.iterrows():
+            dur_min = self._duration_to_minutes(row.get(duration_col))
+            if dur_min is None or dur_min <= THRESHOLD_MIN:
+                continue
+            ticket = str(row.get("Numero du ticket", "N/A"))
+            if ticket != "N/A":
+                if ticket in seen_tickets:
+                    continue
+                seen_tickets.add(ticket)
+            stat_rows.append({
+                "site":     str(row.get("Etiquettes de ligne", "N/A")),
+                "minutes":  dur_min,
+                "ticket":   ticket,
+                "status":   str(row.get("Status", "N/A")),
+                "escalade": str(row.get("Escalade", "N/A")),
+            })
+
+        if not stat_rows:
+            return
+
+        stat_rows.sort(key=lambda x: x["minutes"], reverse=True)
+        r = data_end_row + 2   # 2 lignes vides de séparation
+
+        # ── Titre ──────────────────────────────────────────────────────────
+        ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=7)
+        tc = ws.cell(row=r, column=3,
+                     value=f"📊  SITES AVEC DURÉE > {THRESHOLD_MIN} MIN  —  "
+                           f"{len(stat_rows)} incident{'s' if len(stat_rows) > 1 else ''}")
+        tc.fill      = PatternFill(start_color="C0392B", end_color="C0392B", fill_type="solid")
+        tc.font      = Font(bold=True, color="FFFFFF", size=11)
+        tc.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[r].height = 26
+        r += 1
+
+        # ── En-têtes ────────────────────────────────────────────────────────
+        for i, h in enumerate(["Site", "Durée", "Ticket", "Statut", "Escalade"]):
+            c = ws.cell(row=r, column=3 + i, value=h)
+            c.fill      = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+            c.font      = Font(bold=True, color="FFFFFF")
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border    = thin
+        ws.row_dimensions[r].height = 18
+        r += 1
+
+        # ── Lignes de données ───────────────────────────────────────────────
+        for idx, s in enumerate(stat_rows):
+            total_s = int(s["minutes"] * 60)
+            h_p = total_s // 3600
+            m_p = (total_s % 3600) // 60
+            s_p = total_s % 60
+            dur_str = (f"{h_p}h {m_p:02d}m {s_p:02d}s" if h_p > 0
+                       else f"{m_p}m {s_p:02d}s")
+
+            is_ferme = s["status"].upper() == "FERME"
+            row_bg   = "E8F5E9" if is_ferme else ("FFF3E0" if idx % 2 == 0 else "FFFFFF")
+            # Couleur durée selon sévérité
+            dur_bg   = ("FFCDD2" if s["minutes"] >= 60
+                        else "FFE0B2" if s["minutes"] >= 30
+                        else "FFF9C4")
+
+            values = [s["site"], dur_str, s["ticket"], s["status"], s["escalade"]]
+            for i, val in enumerate(values):
+                c = ws.cell(row=r, column=3 + i, value=val)
+                c.border    = thin
+                c.alignment = Alignment(
+                    horizontal="left" if i == 0 else "center",
+                    vertical="center",
+                )
+                if i == 1:
+                    c.fill = PatternFill(start_color=dur_bg, end_color=dur_bg, fill_type="solid")
+                    c.font = Font(bold=True)
+                else:
+                    c.fill = PatternFill(start_color=row_bg, end_color=row_bg, fill_type="solid")
+            r += 1
+
     def generate_excel_report(self, df_final, output_path):
         # Créer un nouveau fichier Excel
         wb = Workbook()

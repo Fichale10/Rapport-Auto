@@ -231,6 +231,53 @@
     .it-table thead th:nth-child(n+5) { display: none; }
     .it-table tbody td:nth-child(n+5) { display: none; }
   }
+
+  /* ── Stats sites > 10 min ── */
+  .stat-section-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+  }
+  .stat-section-title {
+    font-size: 14px; font-weight: 800; color: #003087;
+    display: flex; align-items: center; gap: 10px;
+    padding-left: 12px; border-left: 3px solid #FFC72C;
+  }
+  .stat-section-title::after { content:''; flex:1; height:1px; background:#e8edf5; }
+  .stat-count-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+    font-size: 12px; font-weight: 700; padding: 5px 14px; border-radius: 20px;
+  }
+  .stat-table-wrap {
+    overflow-x: auto; border-radius: 14px;
+    box-shadow: 0 2px 16px rgba(0,48,135,.07); border: 1px solid #e8edf5;
+  }
+  .stat-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+  .stat-table thead th {
+    background: #1e3a5f; color: #fff; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .5px;
+    padding: 12px 14px; text-align: left; white-space: nowrap;
+  }
+  .stat-table thead th.num { text-align: center; }
+  .stat-table tbody td { padding: 12px 14px; border-bottom: 1px solid #f0f4ff; color: #222; vertical-align: middle; }
+  .stat-table tbody td.num { text-align: center; }
+  .stat-table tbody tr:last-child td { border-bottom: none; }
+  .stat-table tbody tr:hover td { background: #f8faff; }
+  .stat-site { font-weight: 700; color: #1e3a5f; font-size: 13px; }
+  .stat-region { font-size: 11px; color: #9aa3ba; margin-top: 2px; }
+  .dur-pill {
+    display: inline-block; font-weight: 700; font-size: 12px;
+    padding: 4px 11px; border-radius: 8px;
+  }
+  .dur-low  { background: #fff9c4; color: #856404; }
+  .dur-med  { background: #ffe0b2; color: #e65100; }
+  .dur-high { background: #ffcdd2; color: #c62828; }
+  .stat-empty { text-align: center; padding: 60px 24px; color: #bbb; }
+  .stat-empty-ico { font-size: 52px; margin-bottom: 14px; }
+  @media(max-width:700px){
+    .stat-table thead th:nth-child(n+4) { display:none; }
+    .stat-table tbody td:nth-child(n+4) { display:none; }
+  }
 </style>
 {% endblock %}
 
@@ -264,6 +311,10 @@
     <div class="it-kpi">
       <div class="it-kpi-val">{{ total_filtre }}</div>
       <div class="it-kpi-lbl">Filtrés</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val" style="color:#f59e0b;">{{ nb_sites_gt10 }}</div>
+      <div class="it-kpi-lbl">Sites > 10 min</div>
     </div>
   </div>
 </div>
@@ -424,88 +475,68 @@
   </div>
 </form>
 
-<!-- ══ Tableau ══ -->
-<div class="it-results-header">
-  <div class="it-results-count"><strong>{{ total_filtre }}</strong> incident{% if total_filtre != 1 %}s{% endif %} trouvé{% if total_filtre != 1 %}s{% endif %}</div>
-  <div class="it-results-count">Page {{ incidents.number }} / {{ incidents.paginator.num_pages }}</div>
-</div>
-
-<div class="it-table-wrap">
-  {% if incidents %}
-  <table class="it-table">
-    <thead>
-      <tr>
-        <th>Ticket</th>
-        <th>Site</th>
-        <th>Domaine</th>
-        <th>Statut</th>
-        <th>Alarme</th>
-        <th>Durée</th>
-        <th>Région</th>
-        <th>Nature</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for inc in incidents %}
-      <tr>
-        <td class="td-ticket">{{ inc.numero_ticket|default:"—" }}</td>
-        <td>
-          <div class="td-site">{{ inc.site_name|default:"—" }}</div>
-          {% if inc.site_id %}<div class="td-region">{{ inc.site_id }}</div>{% endif %}
-        </td>
-        <td>
-          <span class="badge-domain badge-{{ inc.domain }}">{{ inc.get_domain_display }}</span>
-        </td>
-        <td>
-          {% if inc.cancel_time %}
-          <span class="badge-resolu">✓ Résolu</span>
-          {% else %}
-          <span class="badge-ouvert">● Ouvert</span>
-          {% endif %}
-        </td>
-        <td class="td-date">{{ inc.alarm_time|date:"d/m/Y H:i"|default:"—" }}</td>
-        <td class="td-dur">
-          {% if inc.duration_sec %}
-            {% if inc.duration_sec >= 3600 %}
-              {{ inc.duration_sec|floatformat:0|divisibleby:3600 }}h
-              {% with h=inc.duration_sec|floatformat:0 %}{% endwith %}
-            {% else %}
-              {{ inc.duration_sec|floatformat:0 }}s
-            {% endif %}
-          {% else %}—{% endif %}
-        </td>
-        <td class="td-region">{{ inc.region|default:"—" }}</td>
-        <td class="td-nature">{{ inc.nature|truncatechars:60|default:"—" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <!-- Pagination -->
-  {% if incidents.has_other_pages %}
-  <div class="it-pagination">
-    {% if incidents.has_previous %}
-    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.previous_page_number }}" class="pg-btn">‹ Préc.</a>
-    {% endif %}
-
-    {% for num in incidents.paginator.page_range %}
-      {% if num == incidents.number %}
-      <span class="pg-btn active">{{ num }}</span>
-      {% elif num >= incidents.number|add:"-3" and num <= incidents.number|add:"3" %}
-      <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ num }}" class="pg-btn">{{ num }}</a>
-      {% endif %}
-    {% endfor %}
-
-    {% if incidents.has_next %}
-    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.next_page_number }}" class="pg-btn">Suiv. ›</a>
+<!-- ══ Stats : Sites avec durée > 10 min ══ -->
+<div>
+  <div class="stat-section-hdr">
+    <div class="stat-section-title">
+      ⏱ Sites avec durée d'incident &gt; 10 min
+    </div>
+    {% if nb_sites_gt10 %}
+    <span class="stat-count-badge">⚠ {{ nb_sites_gt10 }} site{% if nb_sites_gt10 > 1 %}s{% endif %} concerné{% if nb_sites_gt10 > 1 %}s{% endif %}</span>
     {% endif %}
   </div>
-  {% endif %}
+
+  {% if stats_sites %}
+  <div class="stat-table-wrap">
+    <table class="stat-table">
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Région</th>
+          <th>Domaine</th>
+          <th class="num">Incidents</th>
+          <th class="num">Durée totale</th>
+          <th class="num">Durée moy.</th>
+          <th class="num">État</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in stats_sites %}
+        <tr>
+          <td>
+            <div class="stat-site">{{ s.site_name }}</div>
+          </td>
+          <td><span class="stat-region">{{ s.region }}</span></td>
+          <td><span class="badge-domain badge-{{ s.domain }}">{{ s.domain_label }}</span></td>
+          <td class="num"><strong>{{ s.nb_inc }}</strong></td>
+          <td class="num">
+            <span class="dur-pill {% if s.total_sec >= 3600 %}dur-high{% elif s.total_sec >= 1800 %}dur-med{% else %}dur-low{% endif %}">
+              {{ s.total_dur }}
+            </span>
+          </td>
+          <td class="num" style="color:#666; font-size:12px;">{{ s.avg_dur }}</td>
+          <td class="num">
+            {% if s.nb_ouverts > 0 %}
+            <span class="badge-ouvert">● {{ s.nb_ouverts }} ouvert{% if s.nb_ouverts > 1 %}s{% endif %}</span>
+            {% else %}
+            <span class="badge-resolu">✓ Résolu</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% else %}
-  <div class="it-empty">
-    <div class="it-empty-icon">📭</div>
-    <div class="it-empty-txt">Aucun incident trouvé pour ces filtres.</div>
+  <div class="stat-empty">
+    <div class="stat-empty-ico">✅</div>
+    <div style="font-size:16px; font-weight:700; color:#333; margin-bottom:8px;">
+      Aucun site avec durée &gt; 10 min
+    </div>
+    <div style="font-size:13px; color:#999;">
+      Tous les incidents dans cette période ont une durée ≤ 10 min
+    </div>
   </div>
   {% endif %}
 </div>

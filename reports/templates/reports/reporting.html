@@ -144,6 +144,29 @@
     box-shadow: 0 4px 16px rgba(0,48,135,.35);
     transform: translateY(-1px);
   }
+
+  /* ── Indicateur de rotation ── */
+  .shuffle-hint {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 18px; font-size: 11px; color: #9aa3ba; font-weight: 600;
+    letter-spacing: .4px; opacity: .75; transition: opacity .3s;
+    user-select: none;
+  }
+  .platform-grid:hover ~ .shuffle-hint { opacity: .25; }
+  .shuffle-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #FFC72C;
+    animation: shDot 1.6s ease-in-out infinite;
+  }
+  @keyframes shDot {
+    0%,100% { opacity:.35; transform:scale(1); }
+    50%      { opacity:1;   transform:scale(1.35); }
+  }
+  .shuffle-pause-ico { font-size: 13px; opacity: 0; transition: opacity .2s; }
+  .platform-grid:hover ~ .shuffle-hint .shuffle-pause-ico { opacity: 1; }
+  .platform-grid:hover ~ .shuffle-hint .shuffle-dot       { animation-play-state: paused; opacity: .35; }
+
+  /* Empêche le hover-lift pendant l'animation */
+  .platform-grid.is-animating .plat-card { pointer-events: none; }
 </style>
 {% endblock %}
 
@@ -178,7 +201,7 @@
 </div>
 
 <!-- Grille des plateformes -->
-<div class="platform-grid">
+<div class="platform-grid" id="platformGrid">
   {% for p in platforms %}
   <a href="{% url 'reporting_platform' p.key %}" class="plat-card">
 
@@ -239,4 +262,82 @@
   {% endfor %}
 </div>
 
+<!-- Indicateur rotation -->
+<div class="shuffle-hint" id="shuffleHint">
+  <span class="shuffle-dot"></span>
+  Rotation automatique
+  <span class="shuffle-pause-ico">⏸ Pause au survol</span>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var grid = document.getElementById('platformGrid');
+  if (!grid || grid.children.length < 2) return;
+
+  var paused    = false;
+  var animating = false;
+  var DURATION  = 820;   // ms de l'animation FLIP
+  var INTERVAL  = 4000;  // ms entre chaque permutation
+
+  /* ── Rotation circulaire avec animation FLIP ── */
+  function rotateCards() {
+    if (paused || animating) return;
+    animating = true;
+    grid.classList.add('is-animating');
+
+    var cards = Array.from(grid.children);
+
+    /* FIRST : positions actuelles */
+    var first = new Map(cards.map(function (c) {
+      var r = c.getBoundingClientRect();
+      return [c, { left: r.left, top: r.top }];
+    }));
+
+    /* Permutation : la dernière carte passe en première position */
+    grid.insertBefore(cards[cards.length - 1], cards[0]);
+
+    /* LAST : nouvelles positions après le changement DOM */
+    var last = new Map(cards.map(function (c) {
+      var r = c.getBoundingClientRect();
+      return [c, { left: r.left, top: r.top }];
+    }));
+
+    /* INVERT : on replace chaque carte visuellement à son ancienne position */
+    cards.forEach(function (card) {
+      var f = first.get(card), l = last.get(card);
+      card.style.transition = 'none';
+      card.style.transform  = 'translate(' + (f.left - l.left) + 'px,' + (f.top - l.top) + 'px)';
+    });
+
+    /* Flush layout pour que le navigateur prenne en compte l'inversion */
+    grid.offsetHeight;
+
+    /* PLAY : animation vers la position finale (transform → 0) */
+    cards.forEach(function (card) {
+      card.style.transition = 'transform ' + DURATION + 'ms cubic-bezier(0.34,1.08,0.64,1)';
+      card.style.transform  = '';
+    });
+
+    /* Nettoyage après animation */
+    setTimeout(function () {
+      cards.forEach(function (card) {
+        card.style.transition = '';
+        card.style.transform  = '';
+      });
+      grid.classList.remove('is-animating');
+      animating = false;
+    }, DURATION + 30);
+  }
+
+  /* Pause au survol de la grille */
+  grid.addEventListener('mouseenter', function () { paused = true; });
+  grid.addEventListener('mouseleave', function () { paused = false; });
+
+  /* Lancement */
+  setInterval(rotateCards, INTERVAL);
+})();
+</script>
 {% endblock %}
