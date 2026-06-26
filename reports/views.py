@@ -2404,7 +2404,7 @@ def statistiques(request):
 
 def incident_tracking(request):
     from .models import Incident
-    from django.db.models import Count, Sum, Q
+    from django.db.models import Count, Sum, Avg, Q
     from django.core.paginator import Paginator
 
     # Filtres
@@ -2454,18 +2454,87 @@ def incident_tracking(request):
     page      = request.GET.get('page', 1)
     incidents = paginator.get_page(page)
 
+    # ── Stats sites avec durée > 10 min ──────────────────────────────────────
+    THRESHOLD_SEC = 600
+    DOMAIN_LABELS = dict(Incident.DOMAIN_CHOICES)
+
+    def _fmt_sec(s):
+        if not s:
+            return "—"
+        s = int(s); h = s // 3600; m = (s % 3600) // 60; sc = s % 60
+        return f"{h}h {m:02d}m" if h > 0 else f"{m}m {sc:02d}s"
+
+    stats_raw = (
+        qs.filter(duration_sec__gt=THRESHOLD_SEC)
+        .values('site_name', 'region', 'domain')
+        .annotate(
+            nb_inc=Count('id'),
+            total_sec=Sum('duration_sec'),
+            avg_sec=Avg('duration_sec'),
+            nb_ouverts=Count('id', filter=Q(cancel_time__isnull=True)),
+        )
+        .order_by('-total_sec')
+    )
+
+    # Calcul DR2 par site (nécessite les champs alarm_time / cancel_time)
+    from collections import defaultdict
+    inc_gt10 = list(
+        qs.filter(duration_sec__gt=THRESHOLD_SEC)
+        .values('site_name', 'region', 'domain', 'alarm_time', 'cancel_time')
+    )
+    dr2_counts = defaultdict(int)
+    for inc in inc_gt10:
+        alarm = inc['alarm_time']
+        if not alarm:
+            continue
+        if alarm.tzinfo is not None:
+            alarm = alarm.replace(tzinfo=None)
+        partial = alarm.minute * 60 + alarm.second
+        secs_to_next = (3600 - partial) if partial > 0 else 3600
+        dr2_offset = secs_to_next + 10800
+        end = inc['cancel_time']
+        if end is None:
+            from django.utils import timezone as _tz
+            end = _tz.now()
+        if end.tzinfo is not None:
+            end = end.replace(tzinfo=None)
+        if (end - alarm).total_seconds() >= dr2_offset:
+            dr2_counts[(inc['site_name'], inc['region'], inc['domain'])] += 1
+
+    stats_sites = []
+    for s in stats_raw:
+        key = (s['site_name'], s['region'], s['domain'])
+        stats_sites.append({
+            'site_name':   s['site_name'] or '—',
+            'region':      s['region'] or '—',
+            'domain':      s['domain'],
+            'domain_label': DOMAIN_LABELS.get(s['domain'], '—'),
+            'nb_inc':      s['nb_inc'],
+            'nb_ouverts':  s['nb_ouverts'],
+            'total_dur':   _fmt_sec(s['total_sec']),
+            'avg_dur':     _fmt_sec(s['avg_sec']),
+            'total_sec':   s['total_sec'] or 0,
+            'nb_dr2':      dr2_counts[key],
+        })
+
+    nb_sites_gt10 = len(stats_sites)
+    nb_dr2_total  = sum(dr2_counts.values())
+
     return render(request, 'reports/incident_tracking.html', {
-        'incidents':   incidents,
-        'total_all':   total_all,
-        'total_open':  total_open,
-        'total_clos':  total_clos,
-        'total_filtre': qs.count(),
+        'incidents':      incidents,
+        'total_all':      total_all,
+        'total_open':     total_open,
+        'total_clos':     total_clos,
+        'total_filtre':   qs.count(),
         'domain_choices': Incident.DOMAIN_CHOICES,
-        'mois_list':   mois_list,
-        'f_domain':    domain,
-        'f_mois':      mois,
-        'f_statut':    statut,
-        'f_q':         q,
+        'mois_list':      mois_list,
+        'f_domain':       domain,
+        'f_mois':         mois,
+        'f_statut':       statut,
+        'f_q':            q,
+        'stats_sites':    stats_sites,
+        'nb_sites_gt10':  nb_sites_gt10,
+        'nb_dr2_total':   nb_dr2_total,
     })
 
 
@@ -3000,84 +3069,155 @@ DR2_ESCALADE_ORDER = [
 ]
 
 
-def _parse_dr2_dates(request):
-    """Parse debut/fin depuis GET params, avec défaut = mois dernier."""
-    today = date.today()
-    last_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-    debut_str = request.GET.get('debut', '')
-    fin_str   = request.GET.get('fin', '')
-    try:
-        debut = date.fromisoformat(debut_str) if debut_str else last_month_first
-    except ValueError:
-        debut = last_month_first
-    try:
-        fin = date.fromisoformat(fin_str) if fin_str else today
-    except ValueError:
-        fin = today
-    return debut, fin
+def _parse_dr2_excel(fileobj):
+    """Parse un fichier DR2 Excel. Retourne une liste de dicts JSON-sérialisables."""
+    import openpyxl
+    from datetime import datetime as _dt, date as _date
+
+    wb = openpyxl.load_workbook(fileobj, data_only=True)
+    ws = wb.active
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return []
+
+    def norm(h):
+        return str(h or '').strip().upper().replace('É', 'E').replace('È', 'E').replace('Ê', 'E').replace('\xa0', ' ')
+
+    headers = [norm(h) for h in all_rows[0]]
+
+    def find_col(*names):
+        for name in names:
+            for i, h in enumerate(headers):
+                if name.upper() in h:
+                    return i
+        return None
+
+    ci = {
+        'date':      find_col('DATE'),
+        'ticket':    find_col('NUMERO TICKET', 'TICKET'),
+        'site_name': find_col('SITE NAME'),
+        'site_id':   find_col('SITE ID'),
+        'categorie': find_col('CATEGORIE', 'CAT'),
+        'cause':     find_col('CAUSE'),
+        'cancel':    find_col('CANCEL TIME'),
+        'dr2':       find_col('DR2'),
+        'region':    find_col('REGION'),
+        'zone':      find_col('ZONE'),
+    }
+
+    result = []
+    for row in all_rows[1:]:
+        if not any(v for v in row if v is not None):
+            continue
+
+        def cell(key):
+            i = ci.get(key)
+            return row[i] if i is not None and i < len(row) else None
+
+        dr2_val = str(cell('dr2') or '').strip().upper()
+        if dr2_val not in ('OUI', 'YES', '1', 'TRUE', 'X'):
+            continue
+
+        # DATE
+        d = cell('date')
+        if isinstance(d, _dt):
+            d = d.date()
+        elif isinstance(d, _date):
+            pass
+        elif isinstance(d, str):
+            for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y'):
+                try:
+                    d = _dt.strptime(d.strip(), fmt).date(); break
+                except ValueError:
+                    pass
+            else:
+                d = None
+        else:
+            d = None
+
+        cancel_raw = cell('cancel')
+        is_resolved = (cancel_raw is not None and
+                       str(cancel_raw).strip().upper() not in ('N/A', 'EN COURS', '', 'NONE', 'NULL'))
+
+        result.append({
+            'date':        d.isoformat() if d else None,
+            'ticket':      str(cell('ticket')    or ''),
+            'site_name':   str(cell('site_name') or ''),
+            'site_id':     str(cell('site_id')   or ''),
+            'categorie':   str(cell('categorie') or '').strip() or '—',
+            'cause':       str(cell('cause')     or ''),
+            'is_resolved': is_resolved,
+            'region':      str(cell('region')    or '').strip().upper() or '—',
+            'zone':        str(cell('zone')      or ''),
+        })
+    return result
 
 
-def _build_dr2_data(debut, fin):
-    """Construit le dataset DR2 pour une période. Partagé entre view et export."""
-    from .models import Incident
-    from django.utils import timezone
-    import datetime
+def _build_dr2_from_rows(raw_rows, debut=None, fin=None):
+    """Construit le dataset DR2 à partir des lignes parsées."""
+    from datetime import date as _date, timedelta
 
-    today = date.today()
-    period_days = (fin - debut).days + 1
+    today = _date.today()
 
-    debut_dt = timezone.make_aware(datetime.datetime.combine(debut, datetime.time.min))
-    fin_dt   = timezone.make_aware(datetime.datetime.combine(fin,   datetime.time.max))
+    rows = []
+    for r in raw_rows:
+        try:
+            d = _date.fromisoformat(r['date']) if r.get('date') else None
+        except (ValueError, TypeError):
+            d = None
+        rows.append({**r, 'date': d})
 
-    qs = Incident.objects.filter(domain='dr2', alarm_time__gte=debut_dt, alarm_time__lte=fin_dt)
-    total_dr2 = qs.count()
-    moyenne   = round(total_dr2 / period_days, 2) if period_days else 0
+    if debut or fin:
+        rows = [r for r in rows if r['date'] and
+                (not debut or r['date'] >= debut) and
+                (not fin   or r['date'] <= fin)]
 
-    yesterday = today - timedelta(days=1)
-    y_s = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.min))
-    y_e = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.max))
-    nbre_j1 = Incident.objects.filter(domain='dr2', alarm_time__gte=y_s, alarm_time__lte=y_e).count()
+    valid_dates = [r['date'] for r in rows if r['date']]
+    debut = debut or (min(valid_dates) if valid_dates else today)
+    fin   = fin   or (max(valid_dates) if valid_dates else today)
+    period_days = max((fin - debut).days + 1, 1)
+    total_dr2   = len(rows)
+    moyenne     = round(total_dr2 / period_days, 2)
+    yesterday   = today - timedelta(days=1)
+    nbre_j1     = sum(1 for r in rows if r['date'] == yesterday)
 
-    db_escs = list(qs.exclude(escalade='').values_list('escalade', flat=True).distinct())
-    escalade_vals = [e for e in DR2_ESCALADE_ORDER if e in db_escs]
-    for e in db_escs:
+    all_cats = [r['categorie'] for r in rows if r['categorie'] and r['categorie'] != '—']
+    unique_cats = list(dict.fromkeys(all_cats))
+    escalade_vals = [e for e in DR2_ESCALADE_ORDER if e in unique_cats]
+    for e in unique_cats:
         if e not in escalade_vals:
             escalade_vals.append(e)
 
+    total_metier = sum(1 for r in rows if r['is_resolved'])
+
     region_rows = []
-    for region in DR2_REGION_TARGETS:
-        rqs      = qs.filter(region__iexact=region)
-        dr2      = rqs.count()
-        tget     = DR2_REGION_TARGETS[region]
-        pct_reg  = round(dr2 / total_dr2 * 100) if total_dr2 else 0
-        pct_tget = round(dr2 / tget * 100)       if tget else 0
-        metier   = rqs.exclude(cancel_time__isnull=True).count()
+    for region, tget in DR2_REGION_TARGETS.items():
+        rrows    = [r for r in rows if r['region'] == region]
+        dr2_cnt  = len(rrows)
+        pct_reg  = round(dr2_cnt / total_dr2 * 100) if total_dr2 else 0
+        pct_tget = round(dr2_cnt / tget * 100)       if tget     else 0
         color    = 'red' if pct_tget >= 100 else ('yellow' if pct_tget >= 70 else 'green')
         region_rows.append({
             'region':    region,
             'tget':      tget,
-            'dr2':       dr2,
-            'metier':    metier,
+            'dr2':       dr2_cnt,
             'pct_reg':   pct_reg,
             'pct_tget':  pct_tget,
-            'escalades': {e: rqs.filter(escalade=e).count() for e in escalade_vals},
+            'escalades': {e: sum(1 for r in rrows if r['categorie'] == e) for e in escalade_vals},
             'color':     color,
         })
 
-    metier_qs   = qs.exclude(cancel_time__isnull=True)
-    metier_tots = {e: metier_qs.filter(escalade=e).count() for e in escalade_vals}
-    total_metier = sum(metier_tots.values())
-
     esc_stats = []
     for e in escalade_vals:
-        tot    = qs.filter(escalade=e).count()
-        metier = metier_tots.get(e, 0)
+        e_rows = [r for r in rows if r['categorie'] == e]
+        tot    = len(e_rows)
+        metier = sum(1 for r in e_rows if r['is_resolved'])
         esc_stats.append({
             'escalade': e,
             'total':    tot,
             'metier':   metier,
             'pct_tgt':  round(metier / tot * 100) if tot else None,
-            'pct_tt':   round(metier / total_dr2 * 100) if total_dr2 else 0,
+            'pct_tt':   round(metier / total_metier * 100) if total_metier else 0,
         })
 
     return {
@@ -3096,13 +3236,55 @@ def _build_dr2_data(debut, fin):
 
 
 def dr2_daily_report(request):
-    debut, fin = _parse_dr2_dates(request)
-    ctx = _build_dr2_data(debut, fin)
+    """DR2 Report — généré depuis un fichier Excel uploadé."""
+    ctx = {'no_file': True, 'upload_error': None}
+
+    if request.method == 'POST' and request.FILES.get('dr2_file'):
+        try:
+            rows = _parse_dr2_excel(request.FILES['dr2_file'])
+            if not rows:
+                raise ValueError("Aucune ligne avec DR2 = OUI trouvée dans le fichier.")
+            debut_str = request.POST.get('debut', '').strip()
+            fin_str   = request.POST.get('fin', '').strip()
+            try:
+                debut = date.fromisoformat(debut_str) if debut_str else None
+            except ValueError:
+                debut = None
+            try:
+                fin = date.fromisoformat(fin_str) if fin_str else None
+            except ValueError:
+                fin = None
+            request.session['dr2_rows']     = rows
+            request.session['dr2_debut']    = debut_str
+            request.session['dr2_fin']      = fin_str
+            request.session['dr2_filename'] = request.FILES['dr2_file'].name
+            ctx = _build_dr2_from_rows(rows, debut, fin)
+            ctx['no_file']  = False
+            ctx['filename'] = request.FILES['dr2_file'].name
+        except Exception as exc:
+            ctx['upload_error'] = str(exc)
+
+    elif request.method == 'GET' and 'dr2_rows' in request.session:
+        rows = request.session['dr2_rows']
+        debut_str = request.GET.get('debut', request.session.get('dr2_debut', ''))
+        fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   ''))
+        try:
+            debut = date.fromisoformat(debut_str) if debut_str else None
+        except ValueError:
+            debut = None
+        try:
+            fin = date.fromisoformat(fin_str) if fin_str else None
+        except ValueError:
+            fin = None
+        ctx = _build_dr2_from_rows(rows, debut, fin)
+        ctx['no_file']  = False
+        ctx['filename'] = request.session.get('dr2_filename', '')
+
     return render(request, 'reports/dr2_daily.html', ctx)
 
 
 def dr2_daily_export(request):
-    """Génère l'export Excel du DR2 Daily Report."""
+    """Génère l'export Excel du DR2 Report depuis les données en session."""
     from openpyxl import Workbook
     from openpyxl.styles import (
         PatternFill, Font, Alignment, Border, Side, numbers
@@ -3110,12 +3292,22 @@ def dr2_daily_export(request):
     from openpyxl.utils import get_column_letter
     from django.http import HttpResponse
 
-    debut, fin = _parse_dr2_dates(request)
-    d = _build_dr2_data(debut, fin)
+    rows = request.session.get('dr2_rows', [])
+    debut_str = request.GET.get('debut', request.session.get('dr2_debut', ''))
+    fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   ''))
+    try:
+        debut = date.fromisoformat(debut_str) if debut_str else None
+    except ValueError:
+        debut = None
+    try:
+        fin = date.fromisoformat(fin_str) if fin_str else None
+    except ValueError:
+        fin = None
+    d = _build_dr2_from_rows(rows, debut, fin)
 
     wb = Workbook()
     ws = wb.active
-    ws.title = 'DR2 Daily Report'
+    ws.title = 'DR2 Report'
 
     # ── Couleurs ──────────────────────────────────────────────────────────────
     C_BLUE_DARK  = 'FF003087'
@@ -4603,5 +4795,126 @@ def chatbot_api(request):
         reply = data['choices'][0]['message']['content']
     except (ValueError, KeyError, IndexError):
         return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CGI RAPPORT — Synthèse Mensuelle Plateformes (Fixe, Transport, IGW, Core)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def cgi_rapport_view(request):
+    """Page principale : upload fichier Excel → parsing → affichage stats par onglet."""
+    from .cgi_parser import parse_all
+
+    ctx = {'no_file': True, 'mois_label': ''}
+
+    if request.method == 'POST' and request.FILES.get('cgi_file'):
+        f = request.FILES['cgi_file']
+        mois_label = request.POST.get('mois_label', '').strip()
+        try:
+            data = parse_all(f)
+            # Stocker en session (sérialisable : on stocke rows comme dicts simples)
+            session_data = {}
+            for plat, val in data.items():
+                session_data[plat] = {
+                    'stats': _cgi_stats_to_json(val['stats'], plat),
+                    'rows':  _cgi_rows_to_json(val['rows'], plat),
+                }
+            request.session['cgi_data'] = session_data
+            request.session['cgi_filename'] = f.name
+            request.session['cgi_mois_label'] = mois_label
+            ctx = _build_cgi_ctx(data, mois_label, f.name)
+        except Exception as exc:
+            ctx['upload_error'] = f"Erreur de lecture du fichier : {exc}"
+            ctx['no_file'] = True
+
+    elif request.method == 'GET' and request.session.get('cgi_data'):
+        data = _cgi_data_from_session(request.session['cgi_data'])
+        mois_label = request.session.get('cgi_mois_label', '')
+        filename   = request.session.get('cgi_filename', '')
+        ctx = _build_cgi_ctx(data, mois_label, filename)
+
+    return render(request, 'reports/cgi_rapport.html', ctx)
+
+
+def cgi_rapport_export(request):
+    """Export PPTX depuis les données en session."""
+    from .pptx_report import generate_cgi_from_excel
+    from django.http import HttpResponse
+
+    if request.method != 'POST':
+        from django.shortcuts import redirect
+        return redirect('cgi_rapport')
+
+    session_data = request.session.get('cgi_data', {})
+    mois_label   = request.POST.get('mois_label', '').strip() or \
+                   request.session.get('cgi_mois_label', '')
+
+    if not session_data:
+        from django.shortcuts import redirect
+        return redirect('cgi_rapport')
+
+    data = _cgi_data_from_session(session_data)
+    buf  = generate_cgi_from_excel(data, mois_label)
+
+    slug = mois_label.replace(' ', '_') or 'rapport'
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="CGI_Rapport_{slug}.pptx"'
+    return resp
+
+
+# ── Helpers session ──────────────────────────────────────────────────────────
+
+def _cgi_stats_to_json(stats, plat):
+    """Convertit les tuples de stats en listes JSON-sérialisables."""
+    result = dict(stats)
+    for key in ('by_plateforme', 'by_escalade', 'by_region', 'by_lien'):
+        if key in result and isinstance(result[key], list):
+            result[key] = [[name, agg] for name, agg in result[key]]
+    return result
+
+
+def _cgi_rows_to_json(rows, plat):
+    """Convertit les datetime en strings pour la session."""
+    from datetime import datetime
+    out = []
+    for r in rows:
+        row = dict(r)
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
+        out.append(row)
+    return out
+
+
+def _cgi_data_from_session(session_data):
+    """Restaure les données depuis la session (stats avec tuples, rows)."""
+    data = {}
+    for plat, val in session_data.items():
+        stats = dict(val['stats'])
+        for key in ('by_plateforme', 'by_escalade', 'by_region', 'by_lien'):
+            if key in stats and isinstance(stats[key], list):
+                stats[key] = [(item[0], item[1]) for item in stats[key]]
+        data[plat] = {'rows': val['rows'], 'stats': stats}
+    return data
+
+
+def _build_cgi_ctx(data, mois_label, filename):
+    """Construit le contexte template depuis les données parsées."""
+    ctx = {
+        'no_file':    False,
+        'mois_label': mois_label,
+        'filename':   filename,
+        'active_tab': None,
+    }
+    tabs_order = ['fixe', 'transport', 'igw', 'core']
+    for plat in tabs_order:
+        if plat in data:
+            ctx[plat] = data[plat]
+            if ctx['active_tab'] is None:
+                ctx['active_tab'] = plat
+    return ctx
 
     return JsonResponse({'reply': reply})

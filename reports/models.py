@@ -102,14 +102,12 @@ class Site(models.Model):
 
 class Incident(models.Model):
     DOMAIN_MOBILE    = 'mobile'
-    DOMAIN_DR2       = 'dr2'
     DOMAIN_FIXE      = 'fixe'
     DOMAIN_TRANSPORT = 'transport'
     DOMAIN_IGW       = 'igw'
     DOMAIN_CORE      = 'core'
     DOMAIN_CHOICES = [
         (DOMAIN_MOBILE,    'Réseau Mobile'),
-        (DOMAIN_DR2,       'DR2'),
         (DOMAIN_FIXE,      'Réseau Fixe'),
         (DOMAIN_TRANSPORT, 'Transport'),
         (DOMAIN_IGW,       'IGW'),
@@ -155,3 +153,22 @@ class Incident(models.Model):
 
     def __str__(self):
         return f"[{self.domain}] {self.numero_ticket or self.nature[:40]} ({self.alarm_time})"
+
+    @property
+    def is_dr2(self):
+        """True si l'incident a duré ≥ 3h après la prochaine heure pleine suivant l'alarme."""
+        if not self.alarm_time:
+            return False
+        from datetime import timedelta
+        from django.utils import timezone as tz
+        alarm = self.alarm_time
+        if alarm.tzinfo is not None:
+            alarm = alarm.replace(tzinfo=None)
+        # Temps restant jusqu'à la prochaine heure pleine (toujours au moins 1h après)
+        partial = alarm.minute * 60 + alarm.second
+        secs_to_next_hour = (3600 - partial) if partial > 0 else 3600
+        dr2_offset = secs_to_next_hour + 3 * 3600
+        end = self.cancel_time if self.cancel_time else tz.now()
+        if end.tzinfo is not None:
+            end = end.replace(tzinfo=None)
+        return (end - alarm).total_seconds() >= dr2_offset

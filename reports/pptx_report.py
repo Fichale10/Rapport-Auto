@@ -739,3 +739,194 @@ def generate_report(mois_mobile=None, mois_dr2=None, mois_fixe=None,
     prs.save(buf)
     buf.seek(0)
     return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÉNÉRATION DEPUIS FICHIER EXCEL CGI (Fixe, Transport, IGW, Core)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _adapt_fixe_excel(parsed):
+    from collections import defaultdict
+    rows  = parsed['rows']
+    stats = parsed['stats']
+    total_dur = sum(r['duration_sec'] for r in rows if r['duration_sec'])
+
+    nat = defaultdict(int)
+    for r in rows:
+        nat[r['nature'] or 'Autre'] += 1
+    by_nature = [{'nature': k, 'nb': v}
+                 for k, v in sorted(nat.items(), key=lambda x: -x[1])[:10]]
+
+    by_region = []
+    for name, agg in stats['by_plateforme']:
+        nb  = agg['nb']
+        dur = agg['dur']
+        by_region.append({
+            'region': name, 'nb': nb,
+            'mttr':   _fmt(dur / nb if nb else 0),
+            'outage': _fmt(dur),
+        })
+
+    incidents = []
+    for r in sorted(rows, key=lambda x: -(x['duration_sec'] or 0))[:20]:
+        incidents.append({
+            'nature':       r['nature'],
+            'region':       r['plateforme'],
+            'escalade':     r['escalade'],
+            'duration_sec': r['duration_sec'],
+            'dur_fmt':      r['duration_fmt'],
+            'cause':        r['root_cause'],
+            'site_name':    r['site_name'],
+            'status':       r['status'],
+        })
+
+    return {
+        'total': stats['total'],
+        'total_dur': _fmt(total_dur),
+        'by_nature': by_nature,
+        'by_region': by_region,
+        'by_escalade': [],
+        'incidents': incidents,
+    }
+
+
+def _adapt_transport_excel(parsed):
+    rows  = parsed['rows']
+    stats = parsed['stats']
+    total_dur = sum(r['duration_sec'] for r in rows if r['duration_sec'])
+
+    by_escalade = []
+    for name, agg in stats['by_escalade']:
+        nb  = agg['nb']
+        dur = agg['dur']
+        by_escalade.append({
+            'escalade': name, 'nb': nb,
+            'mttr':   _fmt(dur / nb if nb else 0),
+            'outage': _fmt(dur),
+        })
+
+    by_region = []
+    for name, agg in stats['by_region']:
+        nb  = agg['nb']
+        dur = agg['dur']
+        by_region.append({
+            'region': name, 'nb': nb,
+            'mttr':   _fmt(dur / nb if nb else 0),
+            'outage': _fmt(dur),
+        })
+
+    incidents = []
+    for r in sorted(rows, key=lambda x: -(x['duration_sec'] or 0))[:20]:
+        incidents.append({
+            'nature':       r['nature'],
+            'region':       r['region'],
+            'escalade':     r['escalade'],
+            'duration_sec': r['duration_sec'],
+            'dur_fmt':      r['duration_fmt'],
+            'cause':        r['cause'],
+            'site_name':    r['site_name'],
+            'status':       r['status'],
+        })
+
+    return {
+        'total': stats['total'],
+        'total_dur': _fmt(total_dur),
+        'by_escalade': by_escalade,
+        'by_region': by_region,
+        'incidents': incidents,
+    }
+
+
+def _adapt_igw_excel(parsed):
+    rows  = parsed['rows']
+    stats = parsed['stats']
+    total_dur = sum(r['duration_sec'] for r in rows if r['duration_sec'])
+
+    incidents = []
+    for r in sorted(rows, key=lambda x: -(x['duration_sec'] or 0))[:15]:
+        incidents.append({
+            'site_name':    r['lien'] or r['lien_internet'] or '—',
+            'nature':       r['nature'],
+            'escalade':     r['escalade'],
+            'duration_sec': r['duration_sec'],
+            'dur_fmt':      r['duration_fmt'],
+            'cause':        r['cause'],
+        })
+
+    return {
+        'total': stats['total'],
+        'total_dur': _fmt(total_dur),
+        'incidents': incidents,
+    }
+
+
+def _adapt_core_excel(parsed):
+    rows  = parsed['rows']
+    stats = parsed['stats']
+
+    incidents = []
+    for r in sorted(rows, key=lambda x: -(x['duration_sec'] or 0))[:15]:
+        incidents.append({
+            'nature':       r['nature'],
+            'cause':        r['root_cause'],
+            'escalade':     r['escalade'],
+            'duration_sec': r['duration_sec'],
+            'dur_fmt':      r['duration_fmt'],
+            'site_name':    r['espc'],
+            'region':       '',
+        })
+
+    return {
+        'total': stats['total'],
+        'incidents': incidents,
+    }
+
+
+def generate_cgi_from_excel(data, mois_label=''):
+    """
+    Génère le rapport PPTX multi-plateforme depuis cgi_parser.parse_all().
+    data: dict {'fixe': {'rows':..,'stats':..}, 'transport': .., 'igw': .., 'core': ..}
+    Retourne un BytesIO prêt à envoyer en réponse HTTP.
+    """
+    from datetime import date as _d
+    if not mois_label:
+        mois_label = _mois_label_fr(_d.today())
+    generated_on = _d.today().strftime('%d/%m/%Y')
+
+    prs = Presentation()
+    prs.slide_width  = SW
+    prs.slide_height = SH
+
+    _cover(prs, mois_label, generated_on)
+
+    section_num = 1
+
+    if 'fixe' in data:
+        _section(prs, section_num, 'RÉSEAU FIXE', '☎️')
+        section_num += 1
+        _slide_fixe(prs, _adapt_fixe_excel(data['fixe']), mois_label)
+
+    if 'transport' in data:
+        _section(prs, section_num, 'TRANSPORT', '🔗')
+        section_num += 1
+        t = _adapt_transport_excel(data['transport'])
+        _slide_transport(prs, t, mois_label)
+        if t['incidents']:
+            _slide_transport_detail(prs, t, mois_label)
+
+    if 'igw' in data:
+        _section(prs, section_num, 'IGW', '🔌')
+        section_num += 1
+        _slide_igw(prs, _adapt_igw_excel(data['igw']), mois_label)
+
+    if 'core' in data:
+        _section(prs, section_num, 'CORE', '🌐')
+        section_num += 1
+        _slide_core(prs, _adapt_core_excel(data['core']), mois_label)
+
+    _closing(prs)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf

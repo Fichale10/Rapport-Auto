@@ -278,6 +278,7 @@
     .stat-table thead th:nth-child(n+4) { display:none; }
     .stat-table tbody td:nth-child(n+4) { display:none; }
   }
+  .badge-dr2 { background:#eef0ff; color:#4338ca; border:1px solid #c7d2fe; }
 </style>
 {% endblock %}
 
@@ -314,7 +315,11 @@
     </div>
     <div class="it-kpi">
       <div class="it-kpi-val" style="color:#f59e0b;">{{ nb_sites_gt10 }}</div>
-      <div class="it-kpi-lbl">Sites > 10 min</div>
+      <div class="it-kpi-lbl">Sites &gt; 10 min</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val" style="color:#f87171;">{{ nb_dr2_total }}</div>
+      <div class="it-kpi-lbl">Incidents DR2</div>
     </div>
   </div>
 </div>
@@ -497,6 +502,7 @@
           <th class="num">Incidents</th>
           <th class="num">Durée totale</th>
           <th class="num">Durée moy.</th>
+          <th class="num">DR2</th>
           <th class="num">État</th>
         </tr>
       </thead>
@@ -515,6 +521,15 @@
             </span>
           </td>
           <td class="num" style="color:#666; font-size:12px;">{{ s.avg_dur }}</td>
+          <td class="num">
+            {% if s.nb_dr2 > 0 %}
+            <span style="display:inline-flex;align-items:center;gap:5px;background:#fff0f0;color:#b91c1c;border:1px solid #fca5a5;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">
+              🔴 {{ s.nb_dr2 }}
+            </span>
+            {% else %}
+            <span style="color:#9ca3af;font-size:12px;">—</span>
+            {% endif %}
+          </td>
           <td class="num">
             {% if s.nb_ouverts > 0 %}
             <span class="badge-ouvert">● {{ s.nb_ouverts }} ouvert{% if s.nb_ouverts > 1 %}s{% endif %}</span>
