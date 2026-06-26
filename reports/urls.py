@@ -16,8 +16,9 @@ urlpatterns = [
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
     path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),
-    path('incident-tracking/process/',                      login_required(views.isocep_process),  name='isocep_process'),
-    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download), name='isocep_download'),
+    path('incident-tracking/process/',                      login_required(views.isocep_process),        name='isocep_process'),
+    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download),       name='isocep_download'),
+    path('incident-tracking/extract-sites/',                login_required(views.isocep_extract_sites),  name='isocep_extract_sites'),
 
     # ── Reporting ──────────────────────────────────────────────────────────────
     path('reporting/',                            login_required(views.reporting),       name='reporting'),
@@ -27,6 +28,8 @@ urlpatterns = [
     path('reporting/dr2-daily/export/',           login_required(views.dr2_daily_export),  name='dr2_daily_export'),
     path('reporting/cgi-rapport/',               login_required(views.cgi_rapport_view),   name='cgi_rapport'),
     path('reporting/cgi-rapport/export/',        login_required(views.cgi_rapport_export), name='cgi_rapport_export'),
+    path('reporting/mobile-cgi/',                login_required(views.mobile_cgi_view),    name='mobile_cgi'),
+    path('reporting/mobile-cgi/export/',         login_required(views.mobile_cgi_export),  name='mobile_cgi_export'),
     path('reporting/generate-pptx/',              login_required(views.generate_pptx_report), name='generate_pptx'),
     path('reporting/bases-incidents/',            login_required(views.bases_incidents_view),   name='bases_incidents'),
     path('reporting/bases-incidents/export/',     login_required(views.bases_incidents_export), name='bases_incidents_export'),

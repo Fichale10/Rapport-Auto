@@ -2542,6 +2542,35 @@ def incident_tracking(request):
     })
 
 
+def isocep_extract_sites(request):
+    """AJAX : lit le fichier disponibilité et retourne la liste des sites des 3 onglets."""
+    from django.http import JsonResponse
+    if request.method != 'POST' or not request.FILES.get('avail_file'):
+        return JsonResponse({'error': 'Fichier manquant'}, status=400)
+
+    import tempfile, os, pandas as pd
+
+    f = request.FILES['avail_file']
+    suffix = os.path.splitext(f.name)[1]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    for chunk in f.chunks():
+        tmp.write(chunk)
+    tmp.close()
+
+    sites = set()
+    try:
+        for sheet, col in [('2G', 'BCF name'), ('3G', 'WBTS name'), ('4G', 'MRBTS name')]:
+            try:
+                df = pd.read_excel(tmp.name, sheet_name=sheet, engine='openpyxl', usecols=[col])
+                sites.update(df[col].dropna().astype(str).str.strip().unique())
+            except Exception:
+                pass
+    finally:
+        os.unlink(tmp.name)
+
+    return JsonResponse({'sites': sorted(sites)})
+
+
 def isocep_process(request):
     """Traitement iSOCEP : KPI vs Incident ou Courbe de disponibilité."""
     if request.method != 'POST':
@@ -4802,6 +4831,123 @@ def chatbot_api(request):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# MOBILE CGI — Synthèse Mensuelle Réseau Mobile depuis fichier Excel
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def mobile_cgi_view(request):
+    from .cgi_parser import parse_mobile, stats_mobile, _norm, _find_header_row, _sheet_rows
+    import openpyxl
+
+    ctx = {'no_file': True, 'mois_label': ''}
+
+    if request.method == 'POST' and request.FILES.get('mobile_file'):
+        f = request.FILES['mobile_file']
+        mois_label = request.POST.get('mois_label', '').strip()
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+            # Trouver la feuille mobile — cherche par nom, sinon prend la première
+            sheets_norm = {_norm(s).replace(' ', ''): s for s in wb.sheetnames}
+            ws = None
+            mobile_keywords = ('MOBILE', 'RESEAU', 'INCIDENT', 'DR2')
+            for key, name in sheets_norm.items():
+                if any(kw in key for kw in mobile_keywords):
+                    ws = wb[name]
+                    break
+            if ws is None:
+                # Fichier mono-feuille dédié mobile : prend la première
+                ws = wb[wb.sheetnames[0]]
+
+            rows = parse_mobile(ws)
+            st   = stats_mobile(rows)
+
+            # Sérialiser pour la session
+            request.session['mob_rows']       = _mob_rows_to_json(rows)
+            request.session['mob_mois_label'] = mois_label
+            request.session['mob_filename']   = f.name
+
+            ctx = _build_mob_ctx(st, rows, mois_label, f.name)
+        except Exception as exc:
+            ctx['upload_error'] = f"Erreur : {exc}"
+            ctx['no_file'] = True
+
+    elif request.method == 'GET' and request.session.get('mob_rows'):
+        rows = _mob_rows_from_json(request.session['mob_rows'])
+        st   = stats_mobile(rows)
+        ctx  = _build_mob_ctx(st, rows,
+                               request.session.get('mob_mois_label', ''),
+                               request.session.get('mob_filename', ''))
+
+    return render(request, 'reports/mobile_cgi.html', ctx)
+
+
+def mobile_cgi_export(request):
+    from django.http import HttpResponse
+    from .pptx_report import generate_mobile_from_excel
+    from .cgi_parser import stats_mobile
+
+    if request.method != 'POST':
+        from django.shortcuts import redirect
+        return redirect('mobile_cgi')
+
+    rows_json  = request.session.get('mob_rows', [])
+    mois_label = request.POST.get('mois_label', '').strip() or \
+                 request.session.get('mob_mois_label', '')
+
+    if not rows_json:
+        from django.shortcuts import redirect
+        return redirect('mobile_cgi')
+
+    rows = _mob_rows_from_json(rows_json)
+    st   = stats_mobile(rows)
+    buf  = generate_mobile_from_excel(st, mois_label)
+
+    slug = mois_label.replace(' ', '_') or 'rapport'
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="Mobile_Rapport_{slug}.pptx"'
+    return resp
+
+
+def _mob_rows_to_json(rows):
+    from datetime import datetime
+    out = []
+    for r in rows:
+        row = dict(r)
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
+        out.append(row)
+    return out
+
+
+def _mob_rows_from_json(rows_json):
+    from datetime import datetime
+    out = []
+    for r in rows_json:
+        row = dict(r)
+        for k in ('alarm', 'cancel'):
+            if isinstance(row.get(k), str):
+                try:
+                    row[k] = datetime.fromisoformat(row[k])
+                except Exception:
+                    row[k] = None
+        out.append(row)
+    return out
+
+
+def _build_mob_ctx(stats, rows, mois_label, filename):
+    return {
+        'no_file':    False,
+        'stats':      stats,
+        'rows':       rows,
+        'mois_label': mois_label,
+        'filename':   filename,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CGI RAPPORT — Synthèse Mensuelle Plateformes (Fixe, Transport, IGW, Core)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -4872,11 +5018,24 @@ def cgi_rapport_export(request):
 # ── Helpers session ──────────────────────────────────────────────────────────
 
 def _cgi_stats_to_json(stats, plat):
-    """Convertit les tuples de stats en listes JSON-sérialisables."""
+    """Convertit les tuples de stats et les datetime en valeurs JSON-sérialisables."""
+    from datetime import datetime
     result = dict(stats)
+    # Tuples → listes
     for key in ('by_plateforme', 'by_escalade', 'by_region', 'by_lien'):
         if key in result and isinstance(result[key], list):
             result[key] = [[name, agg] for name, agg in result[key]]
+    # Listes de lignes contenant des datetime (top3, rows)
+    for key in ('top3', 'rows'):
+        if key in result and isinstance(result[key], list):
+            serialized = []
+            for row in result[key]:
+                r = dict(row)
+                for k, v in r.items():
+                    if isinstance(v, datetime):
+                        r[k] = v.isoformat()
+                serialized.append(r)
+            result[key] = serialized
     return result
 
 

@@ -930,3 +930,218 @@ def generate_cgi_from_excel(data, mois_label=''):
     prs.save(buf)
     buf.seek(0)
     return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOBILE CGI — Rapport Mensuel Réseau Mobile depuis Excel
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _mob_slide_kpi(prs, stats, mois_label):
+    """Slide KPIs globaux (total, DR1, DR2, MTTR, fermés, ouverts)."""
+    sl = _blank(prs)
+    _header(sl, 'SYNTHÈSE GLOBALE — RÉSEAU MOBILE', 'Indicateurs du mois', mois_label)
+    kpis = [
+        ('Total Incidents', stats['total'], '', C_BLUE2),
+        ('Fermés',          stats['closed'],  '', RGBColor(0x05, 0x96, 0x69)),
+        ('Ouverts',         stats['open'],    '', RGBColor(0xD9, 0x77, 0x06)),
+        ('MTTR Global',     stats['mttr_fmt'], '', C_BLUE3),
+        ('Sites DR1',       stats['nb_dr1'],   '', RGBColor(0xD9, 0x77, 0x06)),
+        ('Violations DR2',  stats['nb_dr2'],   '', RGBColor(0xDC, 0x26, 0x26)),
+    ]
+    _kpi_bar(sl, kpis)
+
+
+def _mob_slide_dr1(prs, stats, mois_label):
+    """Slide Top sites DR1 (sites récurrents)."""
+    sl = _blank(prs)
+    _header(sl, 'SITES DR1 — INDISPONIBILITÉS RÉCURRENTES',
+            f'Sites avec ≥ 2 incidents — TDR1 = {stats["nb_dr1"]} sites', mois_label)
+
+    rows_data = stats['top_sites_dr1'][:20]
+    table_rows = [
+        [r['site_name'], r['region'], str(r['count']), r['cause'][:50] if r['cause'] else '—']
+        for r in rows_data
+    ]
+    if not table_rows:
+        _txt(sl, 'Aucun site DR1 ce mois', MARGIN, CONTENT_TOP + Inches(1), SW - 2*MARGIN,
+             Inches(0.5), size=16, color=C_MGRAY, align=PP_ALIGN.CENTER)
+        return
+
+    _table(sl, ['Site Name', 'Région', 'Occurrences', 'Cause principale'],
+           table_rows, col_widths=[4, 2, 1.5, 5],
+           top=CONTENT_TOP, height=CONTENT_H,
+           font_size=9, hdr_size=9)
+
+
+def _mob_slide_dr2_metier(prs, stats, mois_label):
+    """Slide Efficacité DR2 par Métier (escalade)."""
+    sl = _blank(prs)
+    _header(sl, 'EFFICACITÉ DR2 PAR MÉTIER',
+            f'Violations DR2 = {stats["nb_dr2"]} incidents', mois_label)
+
+    rows_data = stats['by_escalade']
+    table_rows = []
+    cell_fmts = {}
+    for i, e in enumerate(rows_data):
+        eff = e['eff_pct']
+        if eff >= 95:
+            eff_bg, eff_fg = C_GREEN_BG, C_GREEN_FG
+        elif eff >= 85:
+            eff_bg, eff_fg = C_YELL_BG, C_YELL_FG
+        else:
+            eff_bg, eff_fg = C_RED_BG, C_RED_FG
+        table_rows.append([
+            e['escalade'], str(e['nb']), e['mttr_fmt'],
+            str(e['nb_dr2']) if e['nb_dr2'] else '0',
+            f"{eff}%",
+        ])
+        cell_fmts[(i, 4)] = (eff_bg, eff_fg)
+
+    _table(sl, ['Métier (Escalade)', 'Nb Incidents', 'MTTR', 'DR2', '% Efficacité'],
+           table_rows, col_widths=[5, 2, 2, 1.5, 2],
+           top=CONTENT_TOP, height=CONTENT_H,
+           cell_fmts=cell_fmts, font_size=9, hdr_size=9)
+
+
+def _mob_slide_dr2_region(prs, stats, mois_label):
+    """Slide Incidents & DR2 par Région."""
+    sl = _blank(prs)
+    _header(sl, 'INCIDENTS & DR2 PAR RÉGION', 'Couverture par région géographique', mois_label)
+
+    rows_data = stats['by_region']
+    table_rows = []
+    cell_fmts = {}
+    for i, r in enumerate(rows_data):
+        eff = r['eff_pct']
+        if eff >= 95:
+            eff_bg, eff_fg = C_GREEN_BG, C_GREEN_FG
+        elif eff >= 85:
+            eff_bg, eff_fg = C_YELL_BG, C_YELL_FG
+        else:
+            eff_bg, eff_fg = C_RED_BG, C_RED_FG
+        table_rows.append([
+            r['region'], str(r['nb_sites']), str(r['nb']),
+            r['mttr_fmt'], str(r['nb_dr2']) if r['nb_dr2'] else '0',
+            f"{eff}%",
+        ])
+        cell_fmts[(i, 5)] = (eff_bg, eff_fg)
+
+    _table(sl, ['Région', 'Nb Sites', 'Nb Incidents', 'MTTR', 'DR2', '% Efficacité'],
+           table_rows, col_widths=[3, 2, 2, 2, 1.5, 2],
+           top=CONTENT_TOP, height=CONTENT_H,
+           cell_fmts=cell_fmts, font_size=9, hdr_size=9)
+
+
+def _mob_slide_base(prs, stats, mois_label):
+    """Slide Efficacité DR2 par Base."""
+    sl = _blank(prs)
+    _header(sl, 'EFFICACITÉ DR2 PAR BASE', 'Détail par base opérationnelle', mois_label)
+
+    rows_data = stats['by_base'][:25]
+    table_rows = []
+    cell_fmts = {}
+    for i, b in enumerate(rows_data):
+        eff = b['eff_pct']
+        if eff >= 95:
+            eff_bg, eff_fg = C_GREEN_BG, C_GREEN_FG
+        elif eff >= 85:
+            eff_bg, eff_fg = C_YELL_BG, C_YELL_FG
+        else:
+            eff_bg, eff_fg = C_RED_BG, C_RED_FG
+        table_rows.append([
+            b['base'], b['region'], str(b['nb']),
+            b['mttr_fmt'], str(b['nb_dr2']) if b['nb_dr2'] else '0',
+            f"{eff}%",
+        ])
+        cell_fmts[(i, 5)] = (eff_bg, eff_fg)
+
+    _table(sl, ['Base', 'Région', 'Incidents', 'MTTR', 'DR2', '% Efficacité'],
+           table_rows, col_widths=[3, 2.5, 1.5, 2, 1.5, 2],
+           top=CONTENT_TOP, height=CONTENT_H,
+           cell_fmts=cell_fmts, font_size=9, hdr_size=9)
+
+
+def _mob_slide_causes(prs, stats, mois_label):
+    """Slide Causes principales + Points bloquants."""
+    sl = _blank(prs)
+    _header(sl, 'CAUSES PRINCIPALES & POINTS BLOQUANTS', '', mois_label)
+
+    cause_rows = [[c['cause'][:55], str(c['nb'])] for c in stats['by_cause'][:12]]
+    _table(sl, ['Cause / Root Cause', 'Nb'],
+           cause_rows, col_widths=[8, 1.5],
+           left=MARGIN, width=Inches(6.2),
+           top=CONTENT_TOP, height=CONTENT_H,
+           font_size=9, hdr_size=9)
+
+    pb_rows = [[p['cause'][:55], str(p['count'])] for p in stats['points_bloquants'][:12]]
+    if pb_rows:
+        _table(sl, ['Point Bloquant', 'Nb'],
+               pb_rows, col_widths=[8, 1.5],
+               left=MARGIN + Inches(6.5), width=Inches(6.2),
+               top=CONTENT_TOP, height=CONTENT_H,
+               font_size=9, hdr_size=9)
+    else:
+        _txt(sl, 'Aucun point bloquant', MARGIN + Inches(6.5), CONTENT_TOP + Inches(1),
+             Inches(6.2), Inches(0.5), size=12, color=C_MGRAY, align=PP_ALIGN.CENTER)
+
+    _rect(sl, MARGIN + Inches(6.3), CONTENT_TOP, Inches(0.03), CONTENT_H, C_MGRAY)
+
+
+def _mob_slide_dr2_detail(prs, stats, mois_label):
+    """Slide Détail des incidents DR2 (top par durée)."""
+    sl = _blank(prs)
+    _header(sl, 'DÉTAIL DES INCIDENTS DR2',
+            f'Les {min(20, len(stats["dr2_rows"]))} incidents DR2 les plus longs', mois_label)
+
+    top_dr2 = sorted(stats['dr2_rows'], key=lambda r: -(r['duration_sec'] or 0))[:20]
+    if not top_dr2:
+        _txt(sl, 'Aucun incident DR2 ce mois', MARGIN, CONTENT_TOP + Inches(1),
+             SW - 2*MARGIN, Inches(0.5), size=16, color=C_MGRAY, align=PP_ALIGN.CENTER)
+        return
+
+    table_rows = [
+        [
+            r.get('site_name', '—')[:30],
+            r.get('region', '—'),
+            r.get('escalade', '—')[:25],
+            r.get('duration_fmt', '—'),
+            (r.get('root_cause') or r.get('cause') or '—')[:40],
+        ]
+        for r in top_dr2
+    ]
+    _table(sl, ['Site', 'Région', 'Métier', 'Durée', 'Cause'],
+           table_rows, col_widths=[3.5, 2, 2.5, 1.5, 4],
+           top=CONTENT_TOP, height=CONTENT_H,
+           font_size=9, hdr_size=9)
+
+
+def generate_mobile_from_excel(stats, mois_label=''):
+    """Génère le rapport PPTX Mobile depuis stats_mobile().
+    stats : dict retourné par cgi_parser.stats_mobile()
+    Retourne un BytesIO prêt à envoyer en réponse HTTP.
+    """
+    from datetime import date as _d
+    if not mois_label:
+        mois_label = _mois_label_fr(_d.today())
+    generated_on = _d.today().strftime('%d/%m/%Y')
+
+    prs = Presentation()
+    prs.slide_width  = SW
+    prs.slide_height = SH
+
+    _cover(prs, mois_label, generated_on)
+    _section(prs, 1, 'RÉSEAU MOBILE', '📡')
+    _def_slide(prs, mois_label)
+    _mob_slide_kpi(prs, stats, mois_label)
+    _mob_slide_dr1(prs, stats, mois_label)
+    _mob_slide_dr2_metier(prs, stats, mois_label)
+    _mob_slide_dr2_region(prs, stats, mois_label)
+    _mob_slide_base(prs, stats, mois_label)
+    _mob_slide_causes(prs, stats, mois_label)
+    _mob_slide_dr2_detail(prs, stats, mois_label)
+    _closing(prs)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf

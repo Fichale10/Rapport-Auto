@@ -225,7 +225,36 @@
     background: linear-gradient(135deg,#166534,#22c55e); color: #fff;
     box-shadow: 0 3px 12px rgba(22,101,52,.3);
   }
-  .btn-isocep.courbe:hover { box-shadow: 0 6px 20px rgba(22,101,52,.4); transform: translateY(-1px); }
+  .btn-isocep.courbe:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(22,101,52,.4); transform: translateY(-1px); }
+  .btn-isocep:disabled { opacity: .45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+  /* ── Searchable site dropdown ── */
+  .site-search-wrap { position: relative; }
+  .site-search-input { padding-right: 36px !important; }
+  .site-search-wrap::after {
+    content: '▾'; position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%); color: #8896b3; pointer-events: none; font-size: 14px;
+  }
+  .site-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1.5px solid #d0d8e8; border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,48,135,.14); z-index: 200;
+    max-height: 220px; overflow-y: auto;
+  }
+  .site-dropdown-item {
+    padding: 9px 14px; font-size: 13px; color: #333; cursor: pointer;
+    border-bottom: 1px solid #f0f4ff; transition: background .1s;
+  }
+  .site-dropdown-item:last-child { border-bottom: none; }
+  .site-dropdown-item:hover, .site-dropdown-item.active { background: #e8f0ff; color: #003087; font-weight: 600; }
+  .site-dropdown-empty { padding: 12px 14px; font-size: 12px; color: #b0b8cc; font-style: italic; }
+  .site-loading { padding: 12px 14px; font-size: 12px; color: #8896b3; display: flex; align-items: center; gap: 8px; }
+  .spinner-sm {
+    width: 14px; height: 14px; border: 2px solid #d0d8e8;
+    border-top-color: #003087; border-radius: 50%;
+    animation: spin .6s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   @media(max-width:900px){
     .it-table thead th:nth-child(n+5) { display: none; }
@@ -389,21 +418,26 @@
         <form id="courbe-form" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="mode" value="courbe">
+          <input type="hidden" name="site_name" id="courbe-site-hidden">
 
           <div class="isocep-field">
             <label class="isocep-label">Fichier Disponibilité *</label>
-            <input type="file" name="avail_file" class="isocep-file" accept=".xlsx,.xls" required>
-            <div class="isocep-hint">3 onglets requis : 2G, 3G, 4G</div>
+            <input type="file" name="avail_file" id="courbe-avail-file" class="isocep-file" accept=".xlsx,.xls" required>
+            <div class="isocep-hint" id="courbe-file-hint">3 onglets requis : 2G, 3G, 4G</div>
           </div>
 
-          <div class="isocep-field">
-            <label class="isocep-label">Nom du site *</label>
-            <input type="text" name="site_name" class="isocep-input"
-                   placeholder="Ex : ADJOGUIDI, DAPAONG…" required>
-            <div class="isocep-hint">Insensible à la casse — doit correspondre à un site dans le fichier</div>
+          <!-- Sélection de site (affiché après chargement du fichier) -->
+          <div class="isocep-field" id="courbe-site-field" style="display:none;">
+            <label class="isocep-label">Site *</label>
+            <div class="site-search-wrap">
+              <input type="text" id="courbe-site-search" class="isocep-input site-search-input"
+                     placeholder="Rechercher un site…" autocomplete="off">
+              <div id="courbe-site-dropdown" class="site-dropdown" style="display:none;"></div>
+            </div>
+            <div class="isocep-hint" id="courbe-site-count"></div>
           </div>
 
-          <button type="submit" id="courbe-btn" class="btn-isocep courbe">📈 Générer le graphe</button>
+          <button type="submit" id="courbe-btn" class="btn-isocep courbe" disabled>📈 Générer le graphe</button>
         </form>
       </div>
     </div>
@@ -554,55 +588,177 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 (function () {
-  const form   = document.getElementById('courbe-form');
-  const btn    = document.getElementById('courbe-btn');
-  const result = document.getElementById('courbe-result');
-  const img    = document.getElementById('courbe-chart-img');
-  const label  = document.getElementById('courbe-site-label');
-  const dlBtn  = document.getElementById('courbe-dl-btn');
+  const form        = document.getElementById('courbe-form');
+  const btn         = document.getElementById('courbe-btn');
+  const result      = document.getElementById('courbe-result');
+  const img         = document.getElementById('courbe-chart-img');
+  const siteLabel   = document.getElementById('courbe-site-label');
+  const dlBtn       = document.getElementById('courbe-dl-btn');
+  const fileInput   = document.getElementById('courbe-avail-file');
+  const siteField   = document.getElementById('courbe-site-field');
+  const siteSearch  = document.getElementById('courbe-site-search');
+  const siteDropdown= document.getElementById('courbe-site-dropdown');
+  const siteHidden  = document.getElementById('courbe-site-hidden');
+  const siteCount   = document.getElementById('courbe-site-count');
+  const fileHint    = document.getElementById('courbe-file-hint');
 
   if (!form) return;
 
+  let allSites = [];
+  let activeIdx = -1;
+
+  // Colonnes site par onglet
+  const SHEET_COLS = { '2G': 'BCF name', '3G': 'WBTS name', '4G': 'MRBTS name' };
+
+  // ── 1. Parsing côté client avec SheetJS ──
+  fileInput.addEventListener('change', function () {
+    if (!this.files.length) return;
+
+    siteField.style.display = 'none';
+    siteHidden.value = '';
+    siteSearch.value = '';
+    btn.disabled = true;
+    allSites = [];
+    fileHint.innerHTML = '<span style="color:#8896b3;">⏳ Lecture du fichier…</span>';
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', sheetRows: 0 });
+        const sites = new Set();
+
+        Object.entries(SHEET_COLS).forEach(function ([sheetName, col]) {
+          const ws = wb.Sheets[sheetName];
+          if (!ws) return;
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+          rows.forEach(function (row) {
+            const val = (row[col] || '').toString().trim();
+            if (val) sites.add(val);
+          });
+        });
+
+        allSites = Array.from(sites).sort();
+        fileHint.textContent = '3 onglets requis : 2G, 3G, 4G';
+        siteCount.textContent = allSites.length + ' site' + (allSites.length > 1 ? 's' : '') + ' disponibles';
+        siteField.style.display = 'block';
+      } catch (err) {
+        fileHint.innerHTML = '<span style="color:#e53e3e;">Impossible de lire les sites — vérifiez le fichier.</span>';
+      }
+    };
+    reader.readAsArrayBuffer(this.files[0]);
+  });
+
+  // ── 2. Recherche dans le dropdown ──
+  function renderDropdown(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? allSites.filter(s => s.toLowerCase().includes(q))
+      : allSites;
+
+    siteDropdown.innerHTML = '';
+    activeIdx = -1;
+
+    if (!filtered.length) {
+      siteDropdown.innerHTML = '<div class="site-dropdown-empty">Aucun site trouvé</div>';
+    } else {
+      filtered.slice(0, 60).forEach(function (s, i) {
+        const item = document.createElement('div');
+        item.className = 'site-dropdown-item';
+        // Highlight match
+        if (q) {
+          const idx = s.toLowerCase().indexOf(q);
+          item.innerHTML = s.slice(0, idx) +
+            '<strong>' + s.slice(idx, idx + q.length) + '</strong>' +
+            s.slice(idx + q.length);
+        } else {
+          item.textContent = s;
+        }
+        item.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          selectSite(s);
+        });
+        siteDropdown.appendChild(item);
+      });
+    }
+    siteDropdown.style.display = 'block';
+  }
+
+  function selectSite(name) {
+    siteSearch.value  = name;
+    siteHidden.value  = name;
+    siteDropdown.style.display = 'none';
+    btn.disabled = false;
+  }
+
+  siteSearch.addEventListener('focus', function () {
+    renderDropdown(this.value);
+  });
+
+  siteSearch.addEventListener('input', function () {
+    siteHidden.value = '';
+    btn.disabled = true;
+    renderDropdown(this.value);
+  });
+
+  // Navigation clavier
+  siteSearch.addEventListener('keydown', function (e) {
+    const items = siteDropdown.querySelectorAll('.site-dropdown-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && items[activeIdx]) {
+        selectSite(items[activeIdx].textContent.replace(/\s+/g,' ').trim());
+      }
+    } else if (e.key === 'Escape') {
+      siteDropdown.style.display = 'none';
+    }
+  });
+
+  // Fermer si clic dehors
+  document.addEventListener('click', function (e) {
+    if (!form.contains(e.target)) siteDropdown.style.display = 'none';
+  });
+
+  // ── 3. Soumission du formulaire ──
   form.addEventListener('submit', function (e) {
     e.preventDefault();
+    if (!siteHidden.value) { siteSearch.focus(); return; }
 
     btn.disabled    = true;
     btn.textContent = '⏳ Traitement en cours…';
     result.style.display = 'none';
 
     const formData = new FormData(form);
-    const csrf     = form.querySelector('[name=csrfmiddlewaretoken]').value;
-
-    fetch('/incident-tracking/process/', {
-      method:  'POST',
-      body:    formData,
-      headers: { 'X-CSRFToken': csrf },
-    })
-    .then(function (r) {
-      if (!r.ok) throw new Error('Réponse serveur : ' + r.status);
-      return r.json();
-    })
-    .then(function (data) {
-      btn.disabled    = false;
-      btn.textContent = '📈 Générer le graphe';
-
-      if (data.success) {
-        img.src           = data.image;
-        label.textContent = 'Site : ' + data.site;
-        dlBtn.href        = '/incident-tracking/process/download/' + data.token + '/';
-        result.style.display = 'block';
-        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        alert('Erreur : ' + data.error);
-      }
-    })
-    .catch(function (err) {
-      btn.disabled    = false;
-      btn.textContent = '📈 Générer le graphe';
-      alert('Erreur réseau : ' + err);
-    });
+    fetch('/incident-tracking/process/', { method: 'POST', body: formData })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(data => {
+        btn.disabled    = false;
+        btn.textContent = '📈 Générer le graphe';
+        if (data.success) {
+          img.src              = data.image;
+          siteLabel.textContent = 'Site : ' + data.site;
+          dlBtn.href           = '/incident-tracking/process/download/' + data.token + '/';
+          result.style.display = 'block';
+          result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          alert('Erreur : ' + data.error);
+        }
+      })
+      .catch(err => {
+        btn.disabled    = false;
+        btn.textContent = '📈 Générer le graphe';
+        alert('Erreur réseau : ' + err);
+      });
   });
 
   dlBtn.addEventListener('mouseover', function () { this.style.background = '#f0fdf4'; });

@@ -289,6 +289,176 @@ def stats_core(rows):
     }
 
 
+# ── Réseau Mobile ────────────────────────────────────────────────────────────
+
+def parse_mobile(ws):
+    hr = _find_header_row(ws)
+    rows = []
+    for d in _sheet_rows(ws, hr):
+        dur = _parse_duration(d.get('DURATION', d.get('DUR\xc9E', d.get('DUREE'))))
+        if dur is None:
+            # Try timedelta
+            raw = d.get('DURATION', d.get('DUR\xc9E', d.get('DUREE')))
+            if hasattr(raw, 'total_seconds'):
+                dur = raw.total_seconds()
+        alarm = _parse_dt(d.get('ALARM TIME'))
+        cancel = _parse_dt(d.get('CANCEL TIME'))
+        rows.append({
+            'ticket':      str(d.get('NUMERO DU TICKET', d.get('NUMERO DU TICKET', '')) or '').strip(),
+            'nature':      str(d.get("NATURE DE L'INCIDENT", d.get("NATURE DE L’INCIDENT", '')) or '')[:80],
+            'alarm':       alarm,
+            'site_name':   str(d.get('SITE NAME', '') or '').strip(),
+            'site_id':     str(d.get('SITE ID', '') or '').strip(),
+            'region':      str(d.get('R\xc9GION', d.get('REGION', '')) or '').strip(),
+            'base':        str(d.get('BASE', '') or '').strip(),
+            'plateforme':  str(d.get('PLATEFORME', '') or '').strip(),
+            'technologies':str(d.get('TECHNOLOGIES', '') or '').strip(),
+            'cause':       str(d.get('CAUSE', '') or '').strip()[:60],
+            'root_cause':  str(d.get('ROOT CAUSE', '') or '').strip()[:60],
+            'escalade':    str(d.get('ESCALADE', '') or '').strip(),
+            'point_bloquant': str(d.get('POINT BLOQUANT', '') or '').strip(),
+            'cancel':      cancel,
+            'duration_sec': dur,
+            'duration_fmt': _fmt_dur(dur),
+            'status':      str(d.get('STATUS', '') or '').strip().upper(),
+            'is_closed':   _is_closed(d.get('STATUS')),
+        })
+    return rows
+
+
+def _is_dr2(alarm, cancel, duration_sec):
+    """Calcul DR2 ARCEP : site HS >= 3h après la prochaine heure pleine suivant l'alarme."""
+    if not alarm or not duration_sec:
+        return False
+    partial = alarm.minute * 60 + alarm.second
+    secs_to_next = (3600 - partial) if partial > 0 else 3600
+    return duration_sec >= secs_to_next + 10800
+
+
+def stats_mobile(rows):
+    total = len(rows)
+    closed = sum(1 for r in rows if r['is_closed'])
+    total_dur = sum(r['duration_sec'] for r in rows if r['duration_sec'])
+    mttr = total_dur / closed if closed else 0
+
+    # DR2 par incident
+    dr2_rows = [r for r in rows if _is_dr2(r['alarm'], r['cancel'], r['duration_sec'])]
+    nb_dr2 = len(dr2_rows)
+
+    # DR1 : sites avec >= 2 incidents
+    from collections import Counter
+    site_counts = Counter(r['site_name'] for r in rows if r['site_name'])
+    dr1_sites = {s: c for s, c in site_counts.items() if c >= 2}
+    nb_dr1 = len(dr1_sites)
+
+    # Top sites récurrents (DR1)
+    top_sites_dr1 = []
+    site_causes = defaultdict(list)
+    site_regions = {}
+    for r in rows:
+        if r['site_name'] in dr1_sites:
+            site_causes[r['site_name']].append(r['cause'] or r['root_cause'] or '')
+            site_regions[r['site_name']] = r['region']
+    for site, count in sorted(dr1_sites.items(), key=lambda x: -x[1])[:15]:
+        causes = Counter(site_causes[site])
+        top_cause = causes.most_common(1)[0][0] if causes else '—'
+        top_sites_dr1.append({
+            'site_name': site, 'count': count,
+            'region': site_regions.get(site, '—'), 'cause': top_cause,
+        })
+
+    # Par escalade (Métier)
+    esc_agg = defaultdict(lambda: {'nb': 0, 'dur': 0, 'dr2': 0})
+    for r in rows:
+        k = r['escalade'] or 'Non défini'
+        esc_agg[k]['nb'] += 1
+        esc_agg[k]['dur'] += r['duration_sec'] or 0
+        if _is_dr2(r['alarm'], r['cancel'], r['duration_sec']):
+            esc_agg[k]['dr2'] += 1
+    by_escalade = []
+    for name, agg in sorted(esc_agg.items(), key=lambda x: -x[1]['nb']):
+        nb = agg['nb']
+        by_escalade.append({
+            'escalade': name, 'nb': nb,
+            'mttr_fmt': _fmt_dur(agg['dur'] / nb if nb else 0),
+            'nb_dr2': agg['dr2'],
+            'eff_pct': round((1 - agg['dr2'] / nb) * 100) if nb else 100,
+        })
+
+    # Par région
+    reg_agg = defaultdict(lambda: {'nb': 0, 'dur': 0, 'dr2': 0, 'sites': set()})
+    for r in rows:
+        k = r['region'] or 'Non défini'
+        reg_agg[k]['nb'] += 1
+        reg_agg[k]['dur'] += r['duration_sec'] or 0
+        if r['site_name']:
+            reg_agg[k]['sites'].add(r['site_name'])
+        if _is_dr2(r['alarm'], r['cancel'], r['duration_sec']):
+            reg_agg[k]['dr2'] += 1
+    by_region = []
+    for name, agg in sorted(reg_agg.items(), key=lambda x: -x[1]['nb']):
+        nb = agg['nb']
+        by_region.append({
+            'region': name, 'nb': nb, 'nb_sites': len(agg['sites']),
+            'mttr_fmt': _fmt_dur(agg['dur'] / nb if nb else 0),
+            'nb_dr2': agg['dr2'],
+            'eff_pct': round((1 - agg['dr2'] / nb) * 100) if nb else 100,
+        })
+
+    # Par base
+    base_agg = defaultdict(lambda: {'nb': 0, 'dur': 0, 'dr2': 0, 'sites': set(), 'region': ''})
+    for r in rows:
+        k = r['base'] or r['region'] or 'Autre'
+        base_agg[k]['nb'] += 1
+        base_agg[k]['dur'] += r['duration_sec'] or 0
+        if r['site_name']:
+            base_agg[k]['sites'].add(r['site_name'])
+        if not base_agg[k]['region']:
+            base_agg[k]['region'] = r['region'] or ''
+        if _is_dr2(r['alarm'], r['cancel'], r['duration_sec']):
+            base_agg[k]['dr2'] += 1
+    by_base = []
+    for name, agg in sorted(base_agg.items(), key=lambda x: -x[1]['nb']):
+        nb = agg['nb']
+        by_base.append({
+            'base': name, 'nb': nb, 'nb_sites': len(agg['sites']),
+            'region': agg['region'],
+            'mttr_fmt': _fmt_dur(agg['dur'] / nb if nb else 0),
+            'nb_dr2': agg['dr2'],
+            'eff_pct': round((1 - agg['dr2'] / nb) * 100) if nb else 100,
+        })
+
+    # Points bloquants
+    pb_counts = Counter()
+    for r in rows:
+        pb = r['point_bloquant']
+        if pb and pb.upper() not in ('N/A', '', 'NONE', 'NULL'):
+            pb_counts[pb[:50]] += 1
+    points_bloquants = [{'cause': c, 'count': n} for c, n in pb_counts.most_common(10)]
+
+    # Causes principales
+    cause_counts = Counter()
+    for r in rows:
+        c = r['root_cause'] or r['cause']
+        if c and c.upper() not in ('N/A', ''):
+            cause_counts[c[:50]] += 1
+    by_cause = [{'cause': c, 'nb': n} for c, n in cause_counts.most_common(10)]
+
+    return {
+        'total': total, 'closed': closed, 'open': total - closed,
+        'mttr_fmt': _fmt_dur(mttr),
+        'total_dur': _fmt_dur(total_dur),
+        'nb_dr2': nb_dr2, 'nb_dr1': nb_dr1,
+        'top_sites_dr1': top_sites_dr1,
+        'by_escalade': by_escalade,
+        'by_region': by_region,
+        'by_base': by_base,
+        'points_bloquants': points_bloquants,
+        'by_cause': by_cause,
+        'dr2_rows': dr2_rows,
+    }
+
+
 # ── Point d'entrée principal ─────────────────────────────────────────────────
 
 def parse_all(fileobj):
@@ -306,6 +476,11 @@ def parse_all(fileobj):
         return None
 
     result = {}
+
+    ws = get_ws('RESEAUMOBILE', 'MOBILE')
+    if ws:
+        rows = parse_mobile(ws)
+        result['mobile'] = {'rows': rows, 'stats': stats_mobile(rows)}
 
     ws = get_ws('RESEAUFIXE', 'FIXE')
     if ws:
