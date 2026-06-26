@@ -441,18 +441,28 @@
 <!-- ══ Filtres ══ -->
 <form method="get" class="it-filters">
   <div class="it-filter-group">
-    <span class="it-filter-label">Domaine</span>
-    <select name="domain" class="it-filter-select">
-      <option value="">Tous</option>
-      {% for val, lbl in domain_choices %}
-      <option value="{{ val }}" {% if f_domain == val %}selected{% endif %}>{{ lbl }}</option>
+    <span class="it-filter-label">Escalade</span>
+    <select name="escalade" class="it-filter-select" onchange="this.form.submit()">
+      <option value="">Toutes</option>
+      {% for e in escalade_list %}
+      <option value="{{ e }}" {% if f_escalade == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="it-filter-group">
+    <span class="it-filter-label">Région</span>
+    <select name="region" class="it-filter-select" onchange="this.form.submit()">
+      <option value="">Toutes</option>
+      {% for r in region_list %}
+      <option value="{{ r }}" {% if f_region == r %}selected{% endif %}>{{ r }}</option>
       {% endfor %}
     </select>
   </div>
 
   <div class="it-filter-group">
     <span class="it-filter-label">Mois</span>
-    <select name="mois" class="it-filter-select">
+    <select name="mois" class="it-filter-select" onchange="this.form.submit()">
       <option value="">Tous</option>
       {% for m in mois_list %}
       <option value="{{ m|date:'Y-m' }}" {% if f_mois == m|date:'Y-m' %}selected{% endif %}>{{ m|date:"M Y" }}</option>
@@ -460,23 +470,8 @@
     </select>
   </div>
 
-  <div class="it-filter-group">
-    <span class="it-filter-label">Statut</span>
-    <select name="statut" class="it-filter-select">
-      <option value="">Tous</option>
-      <option value="ouvert"  {% if f_statut == 'ouvert'  %}selected{% endif %}>Ouverts</option>
-      <option value="resolu"  {% if f_statut == 'resolu'  %}selected{% endif %}>Résolus</option>
-    </select>
-  </div>
-
-  <div class="it-filter-group">
-    <span class="it-filter-label">Recherche</span>
-    <input type="text" name="q" value="{{ f_q }}" placeholder="Ticket, site, nature…" class="it-filter-input">
-  </div>
-
   <div class="it-filter-actions">
     <a href="{% url 'incident_tracking' %}" class="btn-reset">Réinitialiser</a>
-    <button type="submit" class="btn-filter">🔍 Filtrer</button>
   </div>
 </form>
 
@@ -498,7 +493,7 @@
         <tr>
           <th>Site</th>
           <th>Région</th>
-          <th>Domaine</th>
+          <th>Escalade</th>
           <th class="num">Incidents</th>
           <th class="num">Durée totale</th>
           <th class="num">Durée moy.</th>
@@ -513,7 +508,7 @@
             <div class="stat-site">{{ s.site_name }}</div>
           </td>
           <td><span class="stat-region">{{ s.region }}</span></td>
-          <td><span class="badge-domain badge-{{ s.domain }}">{{ s.domain_label }}</span></td>
+          <td><span class="badge-domain">{{ s.escalade }}</span></td>
           <td class="num"><strong>{{ s.nb_inc }}</strong></td>
           <td class="num">
             <span class="dur-pill {% if s.total_sec >= 3600 %}dur-high{% elif s.total_sec >= 1800 %}dur-med{% else %}dur-low{% endif %}">

@@ -2408,15 +2408,16 @@ def incident_tracking(request):
     from django.core.paginator import Paginator
 
     # Filtres
-    domain  = request.GET.get('domain', '')
-    mois    = request.GET.get('mois', '')
-    statut  = request.GET.get('statut', '')   # 'ouvert' | 'resolu' | ''
-    q       = request.GET.get('q', '').strip()
+    escalade = request.GET.get('escalade', '')
+    region   = request.GET.get('region', '')
+    mois     = request.GET.get('mois', '')
 
-    qs = Incident.objects.all()
+    qs = Incident.objects.filter(domain='mobile')
 
-    if domain:
-        qs = qs.filter(domain=domain)
+    if escalade:
+        qs = qs.filter(escalade=escalade)
+    if region:
+        qs = qs.filter(region=region)
     if mois:
         try:
             from datetime import datetime as _dt
@@ -2424,30 +2425,35 @@ def incident_tracking(request):
             qs = qs.filter(mois_rapport__year=d.year, mois_rapport__month=d.month)
         except ValueError:
             pass
-    if statut == 'ouvert':
-        qs = qs.filter(cancel_time__isnull=True)
-    elif statut == 'resolu':
-        qs = qs.filter(cancel_time__isnull=False)
-    if q:
-        qs = qs.filter(
-            Q(numero_ticket__icontains=q) |
-            Q(site_name__icontains=q) |
-            Q(nature__icontains=q) |
-            Q(region__icontains=q)
-        )
 
     # KPIs globaux (sans filtre)
     total_all   = Incident.objects.count()
     total_open  = Incident.objects.filter(cancel_time__isnull=True).count()
     total_clos  = Incident.objects.filter(cancel_time__isnull=False).count()
 
-    # Mois disponibles pour le filtre
+    # Listes pour les filtres
     mois_list = (
         Incident.objects
         .exclude(mois_rapport__isnull=True)
         .values_list('mois_rapport', flat=True)
         .order_by('-mois_rapport')
         .distinct()[:24]
+    )
+    region_list = (
+        Incident.objects
+        .filter(domain='mobile')
+        .exclude(region='')
+        .values_list('region', flat=True)
+        .order_by('region')
+        .distinct()
+    )
+    escalade_list = (
+        Incident.objects
+        .filter(domain='mobile')
+        .exclude(escalade='')
+        .values_list('escalade', flat=True)
+        .order_by('escalade')
+        .distinct()
     )
 
     paginator = Paginator(qs.order_by('-alarm_time'), 50)
@@ -2456,7 +2462,6 @@ def incident_tracking(request):
 
     # ── Stats sites avec durée > 10 min ──────────────────────────────────────
     THRESHOLD_SEC = 600
-    DOMAIN_LABELS = dict(Incident.DOMAIN_CHOICES)
 
     def _fmt_sec(s):
         if not s:
@@ -2466,7 +2471,7 @@ def incident_tracking(request):
 
     stats_raw = (
         qs.filter(duration_sec__gt=THRESHOLD_SEC)
-        .values('site_name', 'region', 'domain')
+        .values('site_name', 'region', 'escalade')
         .annotate(
             nb_inc=Count('id'),
             total_sec=Sum('duration_sec'),
@@ -2476,11 +2481,11 @@ def incident_tracking(request):
         .order_by('-total_sec')
     )
 
-    # Calcul DR2 par site (nécessite les champs alarm_time / cancel_time)
+    # Calcul DR2 par site
     from collections import defaultdict
     inc_gt10 = list(
         qs.filter(duration_sec__gt=THRESHOLD_SEC)
-        .values('site_name', 'region', 'domain', 'alarm_time', 'cancel_time')
+        .values('site_name', 'region', 'escalade', 'alarm_time', 'cancel_time')
     )
     dr2_counts = defaultdict(int)
     for inc in inc_gt10:
@@ -2499,22 +2504,21 @@ def incident_tracking(request):
         if end.tzinfo is not None:
             end = end.replace(tzinfo=None)
         if (end - alarm).total_seconds() >= dr2_offset:
-            dr2_counts[(inc['site_name'], inc['region'], inc['domain'])] += 1
+            dr2_counts[(inc['site_name'], inc['region'], inc['escalade'])] += 1
 
     stats_sites = []
     for s in stats_raw:
-        key = (s['site_name'], s['region'], s['domain'])
+        key = (s['site_name'], s['region'], s['escalade'])
         stats_sites.append({
-            'site_name':   s['site_name'] or '—',
-            'region':      s['region'] or '—',
-            'domain':      s['domain'],
-            'domain_label': DOMAIN_LABELS.get(s['domain'], '—'),
-            'nb_inc':      s['nb_inc'],
-            'nb_ouverts':  s['nb_ouverts'],
-            'total_dur':   _fmt_sec(s['total_sec']),
-            'avg_dur':     _fmt_sec(s['avg_sec']),
-            'total_sec':   s['total_sec'] or 0,
-            'nb_dr2':      dr2_counts[key],
+            'site_name':  s['site_name'] or '—',
+            'region':     s['region'] or '—',
+            'escalade':   s['escalade'] or '—',
+            'nb_inc':     s['nb_inc'],
+            'nb_ouverts': s['nb_ouverts'],
+            'total_dur':  _fmt_sec(s['total_sec']),
+            'avg_dur':    _fmt_sec(s['avg_sec']),
+            'total_sec':  s['total_sec'] or 0,
+            'nb_dr2':     dr2_counts[key],
         })
 
     nb_sites_gt10 = len(stats_sites)
@@ -2526,12 +2530,12 @@ def incident_tracking(request):
         'total_open':     total_open,
         'total_clos':     total_clos,
         'total_filtre':   qs.count(),
-        'domain_choices': Incident.DOMAIN_CHOICES,
         'mois_list':      mois_list,
-        'f_domain':       domain,
+        'region_list':    region_list,
+        'escalade_list':  escalade_list,
+        'f_escalade':     escalade,
+        'f_region':       region,
         'f_mois':         mois,
-        'f_statut':       statut,
-        'f_q':            q,
         'stats_sites':    stats_sites,
         'nb_sites_gt10':  nb_sites_gt10,
         'nb_dr2_total':   nb_dr2_total,
