@@ -2573,17 +2573,25 @@ def isocep_extract_sites(request):
 
 def isocep_process(request):
     """Traitement iSOCEP : KPI vs Incident ou Courbe de disponibilité."""
+    import logging
+    _log = logging.getLogger(__name__)
+
     if request.method != 'POST':
         return redirect('incident_tracking')
 
-    import tempfile, os, uuid, io, base64
-    import pandas as pd
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
     from django.http import HttpResponse, JsonResponse
-    from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+
+    try:
+        import tempfile, os, uuid, io, base64
+        import pandas as pd
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+    except Exception as _imp_err:
+        _log.exception("isocep_process : erreur d'import")
+        return JsonResponse({'success': False, 'error': f"Erreur d'initialisation : {_imp_err}"}, status=500)
 
     mode = request.POST.get('mode', 'kpi')
 
