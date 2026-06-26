@@ -4024,6 +4024,8 @@ def audit_view(request):
 
         return redirect('audit')
 
+    return render(request, 'reports/audit.html')
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Génération du rapport PowerPoint
