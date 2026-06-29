@@ -4839,6 +4839,8 @@ def chatbot_api(request):
     except (ValueError, KeyError, IndexError):
         return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
 
+    return JsonResponse({'reply': reply})
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MOBILE CGI — Synthèse Mensuelle Réseau Mobile depuis fichier Excel
