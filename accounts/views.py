@@ -128,29 +128,54 @@ def profil_view(request):
 
 @login_required
 def gestion_users(request):
-    if not request.user.is_superuser:
-        return redirect('/')
+    from accounts.models import UserProfile
+    try:
+        if not request.user.profile.can_manage_users:
+            return redirect('/')
+    except Exception:
+        if not request.user.is_superuser:
+            return redirect('/')
 
     if request.method == 'POST':
         user_id = request.POST.get('user_id')
         action  = request.POST.get('action')
+        role    = request.POST.get('role', UserProfile.ROLE_LECTEUR)
         try:
             u = User.objects.get(pk=user_id)
             if action == 'approuver':
                 u.is_active = True
                 u.save()
-                messages.success(request, f'Compte de {u.username} approuvé.')
+                profile, _ = UserProfile.objects.get_or_create(user=u)
+                if role in dict(UserProfile.ROLE_CHOICES):
+                    profile.role = role
+                    profile.save()
+                messages.success(request, f'Compte de {u.username} approuvé avec le rôle {profile.get_role_display()}.')
+            elif action == 'changer_role':
+                if role in dict(UserProfile.ROLE_CHOICES):
+                    profile, _ = UserProfile.objects.get_or_create(user=u)
+                    profile.role = role
+                    profile.save()
+                    messages.success(request, f'Rôle de {u.username} changé en {profile.get_role_display()}.')
             elif action == 'rejeter':
                 u.delete()
-                messages.success(request, f'Compte de {u.username} supprimé.')
+                messages.success(request, f'Compte supprimé.')
         except User.DoesNotExist:
             pass
         return redirect('accounts:gestion_users')
 
     en_attente = User.objects.filter(is_active=False).order_by('-date_joined')
     actifs     = User.objects.filter(is_active=True, is_superuser=False).order_by('-date_joined')
+    role_choices = UserProfile.ROLE_CHOICES
+
+    # S'assure que chaque utilisateur actif a un profil
+    for u in actifs:
+        UserProfile.objects.get_or_create(
+            user=u,
+            defaults={'role': UserProfile.ROLE_ADMIN if u.is_superuser else UserProfile.ROLE_LECTEUR}
+        )
 
     return render(request, 'accounts/gestion_users.html', {
-        'en_attente': en_attente,
-        'actifs':     actifs,
+        'en_attente':    en_attente,
+        'actifs':        actifs,
+        'role_choices':  role_choices,
     })

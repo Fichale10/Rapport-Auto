@@ -16,6 +16,7 @@ from django.contrib import messages
 
 from .models import UploadedReport
 from .forms import UploadForm
+from accounts.decorators import gestionnaire_required, admin_required
 
 from treatement import process_file
 
@@ -496,6 +497,7 @@ def home(request):
     })
 
 
+@gestionnaire_required
 def upload(request):
     from datetime import timedelta
     if request.method == 'POST':
@@ -721,6 +723,7 @@ def results(request, pk):
     return render(request, 'reports/results.html', {'report': report, 'period_label': _period_label(report)})
 
 
+@gestionnaire_required
 def download_file(request, pk, file_type):
     report = get_object_or_404(UploadedReport, pk=pk, processed=True)
     if report.user != request.user and not request.user.is_superuser:
@@ -1013,6 +1016,7 @@ def _make_donut_svg(data, total_h):
     )
 
 
+@gestionnaire_required
 def export_pdf(request, pk):
     import datetime
     from django.http import HttpResponse
@@ -1375,6 +1379,7 @@ def comparer(request):
     })
 
 
+@gestionnaire_required
 def export_statistiques(request):
     import openpyxl
     import openpyxl.chart.label
@@ -2804,6 +2809,7 @@ def _fmt_sec(secs):
     return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
+@gestionnaire_required
 def reporting_import(request):
     """Upload du fichier multi-feuilles BASES DES INCIDENTS et import dans Incident."""
     from .models import Incident
@@ -2957,6 +2963,7 @@ def reporting_platform(request, platform):
     })
 
 
+@gestionnaire_required
 def reporting_platform_import(request, platform):
     """Import de données lié à une plateforme spécifique."""
     from .reporting_config import PLATFORMS
@@ -3089,6 +3096,7 @@ def reporting_platform_import(request, platform):
     return redirect('reporting_platform', platform=platform)
 
 
+@gestionnaire_required
 def generate_pptx_platform(request, platform):
     """Génère le rapport PowerPoint pour une plateforme (redirige vers generate_pptx_report)."""
     from django.urls import reverse
@@ -3324,6 +3332,7 @@ def dr2_daily_report(request):
     return render(request, 'reports/dr2_daily.html', ctx)
 
 
+@gestionnaire_required
 def dr2_daily_export(request):
     """Génère l'export Excel du DR2 Report depuis les données en session."""
     from openpyxl import Workbook
@@ -3692,6 +3701,7 @@ def site_search_api(request):
     return JsonResponse(hits, safe=False)
 
 
+@gestionnaire_required
 def sites_export_excel(request):
     """Export de tous les sites en fichier Excel (admin uniquement)."""
     if not request.user.is_staff:
@@ -3781,6 +3791,7 @@ def sites_export_excel(request):
     return response
 
 
+@gestionnaire_required
 def sites_import_excel(request):
     """Import des sites depuis un fichier Excel (admin uniquement)."""
     if not request.user.is_staff:
@@ -3935,6 +3946,7 @@ def sites_import_excel(request):
 
 # ── Import API manuel ─────────────────────────────────────────────────────────
 
+@gestionnaire_required
 def api_import_view(request):
     """Récupère les données API, sauvegarde en Excel et redirige vers process_report."""
     import datetime as _dt
@@ -4031,6 +4043,7 @@ def audit_view(request):
 # Génération du rapport PowerPoint
 # ─────────────────────────────────────────────────────────────────────────────
 
+@gestionnaire_required
 def generate_pptx_report(request):
     """Génère et télécharge le rapport PowerPoint Comité GDI."""
     from datetime import date
@@ -4110,6 +4123,7 @@ def bases_incidents_view(request):
     })
 
 
+@gestionnaire_required
 def bases_incidents_export(request):
     """Génère et télécharge le fichier Bases des Incidents."""
     from datetime import date
@@ -4241,6 +4255,7 @@ def platform_bases_incidents(request, platform):
     })
 
 
+@gestionnaire_required
 def platform_bases_incidents_export(request, platform):
     """Génère et télécharge les Bases des Incidents pour une plateforme."""
     from datetime import date as date_
@@ -4892,6 +4907,7 @@ def mobile_cgi_view(request):
     return render(request, 'reports/mobile_cgi.html', ctx)
 
 
+@gestionnaire_required
 def mobile_cgi_export(request):
     from django.http import HttpResponse
     from .pptx_report import generate_mobile_from_excel
@@ -4998,6 +5014,7 @@ def cgi_rapport_view(request):
     return render(request, 'reports/cgi_rapport.html', ctx)
 
 
+@gestionnaire_required
 def cgi_rapport_export(request):
     """Export PPTX depuis les données en session."""
     from .pptx_report import generate_cgi_from_excel
