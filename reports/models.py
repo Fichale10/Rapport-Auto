@@ -47,8 +47,10 @@ class UploadedReport(models.Model):
     #   ...
     # }
     # Valeurs en secondes d'outage cumulé par jour.
-    outage_journalier_json = models.JSONField(default=dict, blank=True)
-    region_sites_json      = models.JSONField(default=dict, blank=True)
+    outage_journalier_json     = models.JSONField(default=dict, blank=True)
+    region_sites_json          = models.JSONField(default=dict, blank=True)
+    fixe_stats_json            = models.JSONField(default=dict, blank=True)
+    transmission_stats_json    = models.JSONField(default=dict, blank=True)
 
     SOURCE_EXCEL = 'excel'
     SOURCE_API   = 'api'

@@ -1,5 +1,6 @@
 import calendar
 import json
+import logging
 import time  # noqa
 import os
 import math
@@ -2093,6 +2094,388 @@ def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
     return semaine_labels, dispo_table, outage_table
 
 
+def _compute_fixe_stats_lazy(report):
+    """Calcule fixe_stats_json depuis le fichier brut si non encore calculé, puis le met en cache."""
+    if report.fixe_stats_json:
+        return report.fixe_stats_json
+
+    try:
+        import pandas as _pd
+
+        if not report.file:
+            return {}
+
+        df = _pd.read_excel(report.file.path)
+
+        def _fmt(secs):
+            s = int(secs or 0)
+            return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+        # Calcul durée bornée à la période du rapport
+        debut_str = str(report.date_rapport or '')[:10]
+        fin_str   = str(report.date_fin or report.date_rapport or '')[:10]
+        debut_ts  = _pd.Timestamp(f"{debut_str} 00:00:00") if debut_str else None
+        fin_ts    = _pd.Timestamp(f"{fin_str} 23:59:59")   if fin_str   else None
+
+        df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        if fin_ts:
+            df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+        if debut_ts:
+            df['_at'] = df['_at'].clip(lower=debut_ts)
+        df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+        # Détection colonnes (insensible à la casse)
+        cols_lower = {c.strip().lower(): c for c in df.columns}
+        esc_col    = cols_lower.get('escalade')
+        reg_col    = cols_lower.get('région') or cols_lower.get('region')
+        status_col = cols_lower.get('status')
+        cause_col  = cols_lower.get('cause')
+        nat_col    = next(
+            (cols_lower[k] for k in cols_lower
+             if k in ("incident nature", "nature de l'incident",
+                       "nature de l’incident", "incident_nature")),
+            None
+        )
+
+        def _group_stats(col):
+            out = []
+            for val, grp in df.groupby(col):
+                val = str(val).strip()
+                if not val or val.lower() == 'nan':
+                    continue
+                n   = len(grp)
+                td  = float(grp['_dur'].sum())
+                mttr = td / n if n else 0
+                out.append({'name': val, 'count': n, 'total_dur_sec': td,
+                             'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            return sorted(out, key=lambda x: x['count'], reverse=True)
+
+        metier_stats = _group_stats(esc_col) if esc_col else []
+        region_stats = _group_stats(reg_col) if reg_col else []
+
+        open_causes = []
+        if cause_col:
+            df_open = df
+            if status_col:
+                mask    = df[status_col].astype(str).str.upper().isin(['OUVERT', 'OPEN'])
+                df_open = df[mask] if mask.any() else df
+            for cause, cnt in df_open[cause_col].dropna().astype(str).value_counts().items():
+                cause = str(cause).strip()
+                if cause and cause.lower() != 'nan':
+                    open_causes.append({'name': cause, 'count': int(cnt)})
+
+        incident_types = []
+        if nat_col:
+            for itype, cnt in df[nat_col].dropna().astype(str).value_counts().head(20).items():
+                itype = str(itype).strip()
+                if itype and itype.lower() != 'nan':
+                    incident_types.append({'name': itype, 'count': int(cnt)})
+
+        stats = {
+            'metier': metier_stats, 'region': region_stats,
+            'open_causes': open_causes, 'incident_types': incident_types,
+        }
+
+        # Mise en cache pour les prochaines requêtes
+        report.fixe_stats_json = stats
+        report.save(update_fields=['fixe_stats_json'])
+        return stats
+
+    except Exception:
+        return {}
+
+
+def _build_fixe_context(reports, platform):
+    """Agrège les fixe_stats_json de plusieurs rapports en données prêtes pour le template."""
+    if platform != 'fixe':
+        return {'fixe_stats': None}
+
+    from collections import defaultdict
+
+    metier_agg  = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0, 'mttr_sec': 0.0})
+    region_agg  = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0, 'mttr_sec': 0.0})
+    causes_agg  = defaultdict(int)
+    types_agg   = defaultdict(int)
+
+    for r in reports:
+        # Utilise fixe_stats_json pré-calculé OU le calcule à la volée depuis le fichier
+        fs = _compute_fixe_stats_lazy(r)
+        for m in fs.get('metier', []):
+            metier_agg[m['name']]['count']         += m['count']
+            metier_agg[m['name']]['total_dur_sec'] += m.get('total_dur_sec', 0)
+        for rg in fs.get('region', []):
+            region_agg[rg['name']]['count']         += rg['count']
+            region_agg[rg['name']]['total_dur_sec'] += rg.get('total_dur_sec', 0)
+        for c in fs.get('open_causes', []):
+            causes_agg[c['name']] += c['count']
+        for t in fs.get('incident_types', []):
+            types_agg[t['name']] += t['count']
+
+    def _fmt(secs):
+        s = int(secs or 0)
+        return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+    def _build_chart(agg, key='count'):
+        items = sorted(agg.items(), key=lambda x: x[1][key] if isinstance(x[1], dict) else x[1], reverse=True)
+        max_v = items[0][1][key] if items and isinstance(items[0][1], dict) else (items[0][1] if items else 1)
+        max_v = max_v or 1
+        result = []
+        for name, v in items:
+            if isinstance(v, dict):
+                n  = v['count']
+                td = v['total_dur_sec']
+                mttr = td / n if n else 0
+                result.append({
+                    'name': name, 'count': n,
+                    'mttr': _fmt(mttr), 'mttr_sec': mttr,
+                    'pct_count': round(n / max_v * 100),
+                    'pct_mttr':  0,
+                })
+            else:
+                result.append({'name': name, 'count': v, 'pct_count': round(v / max_v * 100)})
+        # pct_mttr normalisé séparément (axe secondaire)
+        max_mttr = max((x.get('mttr_sec', 0) for x in result), default=1) or 1
+        for x in result:
+            x['pct_mttr'] = round(x.get('mttr_sec', 0) / max_mttr * 100)
+        return result
+
+    metier_chart = _build_chart(metier_agg)
+    region_chart = _build_chart(region_agg)
+
+    # Causes ouvertes
+    max_cause = max(causes_agg.values(), default=1) or 1
+    causes_chart = [
+        {'name': k, 'count': v, 'pct': round(v / max_cause * 100)}
+        for k, v in sorted(causes_agg.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    # Types d'incidents
+    total_types = sum(types_agg.values()) or 1
+    types_chart = sorted(
+        [{'name': k, 'count': v, 'pct': round(v / total_types * 100)} for k, v in types_agg.items()],
+        key=lambda x: x['count'], reverse=True
+    )[:20]
+
+    total_incidents_fixe = sum(r.total_incidents or 0 for r in reports)
+    total_unresolved_fixe = sum(r.unresolved_count or 0 for r in reports)
+    total_duration_h_fixe = round(sum(r.total_duration_sec or 0 for r in reports) / 3600, 1)
+
+    fixe_stats = {
+        'metier_chart':       metier_chart,
+        'region_chart':       region_chart,
+        'causes_chart':       causes_chart,
+        'types_chart':        types_chart,
+        'total_types':        sum(types_agg.values()),
+        'metier_chart_js':    mark_safe(json.dumps(metier_chart)),
+        'region_chart_js':    mark_safe(json.dumps(region_chart)),
+        'total_incidents':    total_incidents_fixe,
+        'total_unresolved':   total_unresolved_fixe,
+        'total_resolved':     total_incidents_fixe - total_unresolved_fixe,
+        'total_duration_h':   total_duration_h_fixe,
+    }
+    return {'fixe_stats': fixe_stats}
+
+
+def _compute_transmission_stats_lazy(report):
+    """Calcule transmission_stats_json depuis le fichier brut si non encore calculé, puis le met en cache."""
+    if report.transmission_stats_json:
+        return report.transmission_stats_json
+
+    try:
+        import pandas as _pd
+
+        if not report.file:
+            return {}
+
+        df = _pd.read_excel(report.file.path)
+
+        def _fmt(secs):
+            s = int(secs or 0)
+            return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+        debut_str = str(report.date_rapport or '')[:10]
+        fin_str   = str(report.date_fin or report.date_rapport or '')[:10]
+        debut_ts  = _pd.Timestamp(f"{debut_str} 00:00:00") if debut_str else None
+        fin_ts    = _pd.Timestamp(f"{fin_str} 23:59:59")   if fin_str   else None
+        period_secs = (fin_ts - debut_ts).total_seconds() if (debut_ts and fin_ts) else 0
+
+        df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        if fin_ts:
+            df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+        if debut_ts:
+            df['_at'] = df['_at'].clip(lower=debut_ts)
+        df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+        cols_lower = {c.strip().lower(): c for c in df.columns}
+        esc_col = cols_lower.get('escalade')
+        reg_col = cols_lower.get('région') or cols_lower.get('region')
+
+        # Categories (Backhaul / BackBone)
+        cat_col = None
+        for col in df.columns:
+            vals_lower = df[col].dropna().astype(str).str.strip().str.lower()
+            if vals_lower.isin(['backhaul', 'backbone', 'back haul', 'back bone']).any():
+                cat_col = col
+                break
+        if not cat_col and esc_col:
+            esc_vals = df[esc_col].dropna().astype(str).str.lower()
+            if esc_vals.str.contains('backhaul|backbone', na=False).any():
+                cat_col = esc_col
+
+        def _normalize_cat(v):
+            v_lower = str(v).strip().lower()
+            if 'backhaul' in v_lower: return 'Backhaul'
+            if 'backbone' in v_lower: return 'BackBone'
+            return str(v).strip()
+
+        categories = []
+        if cat_col:
+            df['_cat'] = df[cat_col].apply(_normalize_cat)
+            for cat, grp in df.groupby('_cat'):
+                n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+                categories.append({'name': cat, 'count': n, 'total_dur_sec': td,
+                                    'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            categories.sort(key=lambda x: x['count'], reverse=True)
+        elif esc_col:
+            for val, grp in df.groupby(esc_col):
+                val = str(val).strip()
+                if not val or val.lower() == 'nan': continue
+                n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+                categories.append({'name': val, 'count': n, 'total_dur_sec': td,
+                                    'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            categories.sort(key=lambda x: x['count'], reverse=True)
+
+        # Region × Métier
+        region_metier = {}
+        if reg_col and esc_col:
+            for region, rgrp in df.groupby(reg_col):
+                region = str(region).strip()
+                if not region or region.lower() == 'nan': continue
+                metier_list = []
+                for metier, mgrp in rgrp.groupby(esc_col):
+                    metier = str(metier).strip()
+                    if not metier or metier.lower() == 'nan': continue
+                    n = len(mgrp); td = float(mgrp['_dur'].sum()); mttr = td / n if n else 0
+                    metier_list.append({'name': metier, 'count': n, 'total_dur_sec': td,
+                                        'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+                metier_list.sort(key=lambda x: x['count'], reverse=True)
+                region_metier[region] = metier_list
+
+        # Partenaires / Clients IPT & IPLC
+        partenaires = []
+        part_col = None
+        for keyword in ('partenaire', 'client', 'liens', 'lien', 'service client'):
+            if keyword in cols_lower:
+                part_col = cols_lower[keyword]
+                break
+        if part_col:
+            for name, grp in df.groupby(part_col):
+                name = str(name).strip()
+                if not name or name.lower() == 'nan': continue
+                n = len(grp); td = float(grp['_dur'].sum())
+                taux = max(0.0, 100.0 - (td / period_secs * 100)) if period_secs > 0 else 100.0
+                partenaires.append({'name': name, 'nbre_inc': n, 'total_dur_sec': td,
+                                    'duree': _fmt(td), 'taux_dispo': round(taux, 2)})
+            partenaires.sort(key=lambda x: x['taux_dispo'])
+
+        stats = {
+            'total': len(df), 'categories': categories,
+            'region_metier': region_metier, 'partenaires': partenaires,
+        }
+        report.transmission_stats_json = stats
+        report.save(update_fields=['transmission_stats_json'])
+        return stats
+
+    except Exception:
+        return {}
+
+
+def _build_transmission_context(reports, platform):
+    """Agrège les transmission_stats_json de plusieurs rapports en données prêtes pour le template."""
+    if platform != 'transmission':
+        return {'transmission_stats': None}
+
+    from collections import defaultdict
+
+    cat_agg    = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0})
+    rm_agg     = defaultdict(lambda: defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0}))
+    part_agg   = defaultdict(lambda: {'nbre_inc': 0, 'total_dur_sec': 0.0})
+    period_secs_total = 0.0
+
+    for r in reports:
+        ts = _compute_transmission_stats_lazy(r)
+        for cat in ts.get('categories', []):
+            cat_agg[cat['name']]['count']         += cat['count']
+            cat_agg[cat['name']]['total_dur_sec'] += cat.get('total_dur_sec', 0)
+        for region, metiers in ts.get('region_metier', {}).items():
+            for m in metiers:
+                rm_agg[region][m['name']]['count']         += m['count']
+                rm_agg[region][m['name']]['total_dur_sec'] += m.get('total_dur_sec', 0)
+        for p in ts.get('partenaires', []):
+            part_agg[p['name']]['nbre_inc']        += p['nbre_inc']
+            part_agg[p['name']]['total_dur_sec']   += p.get('total_dur_sec', 0)
+        # Période pour calcul disponibilité
+        d1 = r.date_rapport
+        d2 = r.date_fin or r.date_rapport
+        if d1 and d2:
+            from datetime import date as _date
+            delta = (d2 - d1).days + 1
+            period_secs_total += delta * 86400
+
+    def _fmt(secs):
+        s = int(secs or 0)
+        return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+    # Catégories agrégées
+    categories = []
+    for name, v in sorted(cat_agg.items(), key=lambda x: x[1]['count'], reverse=True):
+        n = v['count']; td = v['total_dur_sec']; mttr = td / n if n else 0
+        categories.append({'name': name, 'count': n, 'total_dur_sec': td,
+                           'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+
+    # Région × Métier ordonnée
+    REGION_ORDER = ['LOME', 'MARITIME', 'PLATEAUX', 'CENTRALE', 'KARA', 'SAVANES']
+    region_metier_list = []
+    done = set()
+    for region in REGION_ORDER + sorted(rm_agg.keys()):
+        if region in done or region not in rm_agg:
+            continue
+        done.add(region)
+        metiers = []
+        for metier, v in sorted(rm_agg[region].items(), key=lambda x: x[1]['count'], reverse=True):
+            n = v['count']; td = v['total_dur_sec']; mttr = td / n if n else 0
+            color = '#e53e3e' if mttr > 36000 else ('#f97316' if mttr > 18000 else ('#FFC72C' if n > 5 else 'inherit'))
+            metiers.append({'name': metier, 'count': n, 'mttr': _fmt(mttr), 'mttr_sec': mttr, 'color': color})
+        region_metier_list.append({'region': region, 'metiers': metiers})
+
+    # Partenaires avec disponibilité
+    partenaires = []
+    for name, v in sorted(part_agg.items(), key=lambda x: x[1]['total_dur_sec'], reverse=True):
+        td = v['total_dur_sec']; n = v['nbre_inc']
+        taux = max(0.0, 100.0 - (td / period_secs_total * 100)) if period_secs_total > 0 else 100.0
+        partenaires.append({'name': name, 'nbre_inc': n, 'total_dur_sec': td,
+                           'duree': _fmt(td), 'taux_dispo': round(taux, 2)})
+
+    total_incidents_t  = sum(r.total_incidents  or 0 for r in reports)
+    total_unresolved_t = sum(r.unresolved_count or 0 for r in reports)
+    total_duration_h_t = round(sum(r.total_duration_sec or 0 for r in reports) / 3600, 1)
+
+    transmission_stats = {
+        'total':            total_incidents_t,
+        'categories':       categories,
+        'categories_js':    mark_safe(json.dumps(categories)),
+        'region_metier_list': region_metier_list,
+        'partenaires':      partenaires,
+        'total_incidents':  total_incidents_t,
+        'total_unresolved': total_unresolved_t,
+        'total_resolved':   total_incidents_t - total_unresolved_t,
+        'total_duration_h': total_duration_h_t,
+    }
+    return {'transmission_stats': transmission_stats}
+
+
 def statistiques(request):
     from collections import defaultdict
     from datetime import timedelta
@@ -2106,22 +2489,51 @@ def statistiques(request):
         'core':         '⚙️ CORE ET IGW',
         'transmission': '📶 TRANSMISSION',
     }
-    # Plateformes sans données : retour rapide avec carte "bientôt"
-    if platform not in ('mobile', 'all'):
-        return render(request, 'reports/statistiques.html', {
-            'platform':       platform,
-            'platform_label': PLATFORM_LABELS.get(platform, platform.upper()),
-            'platform_labels': PLATFORM_LABELS,
-        })
-
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
         base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
 
+    # Filtrage par plateforme via le préfixe du nom de fichier API
+    from django.db.models import Q as _Q
+    _PREFIX = {
+        'mobile':       'API_MOBILE_',
+        'fixe':         'API_FIXE_',
+        'transmission': 'API_TRANSMISSION_',
+        'core':         'API_CORE_',
+    }
+    if platform in _PREFIX:
+        _p = _PREFIX[platform]
+        if platform == 'mobile':
+            # rapports API mobile + imports manuels (pas de préfixe API_)
+            base_qs = base_qs.filter(_Q(original_filename__startswith=_p) | ~_Q(original_filename__startswith='API_'))
+        else:
+            base_qs = base_qs.filter(original_filename__startswith=_p)
+
     report_pk     = request.GET.get('report')
     single_report = None
     period_filter = request.GET.get('period', 'latest')
+
+    _import_logger = logging.getLogger('reports.api_import')
+
+    def _auto_fetch_platform(network, date_from_str, date_to_str):
+        """Tente un import API et retourne le rapport créé, ou None en cas d'erreur."""
+        from .api_import import run_import as _run_import
+        try:
+            _res = _run_import(date_from_str, date_to_str,
+                               triggered_by=request.user, overwrite=True, network=network)
+            if _res.get('errors'):
+                _import_logger.error("Auto-fetch %s errors: %s", network, _res['errors'])
+                return None
+            _fname = f"API_{network.upper()}_{date_from_str}_{date_to_str}.xlsx"
+            return UploadedReport.objects.filter(
+                original_filename=_fname, processed=True
+            ).order_by('-uploaded_at').first()
+        except Exception as _exc:
+            _import_logger.exception("Auto-fetch %s failed: %s", network, _exc)
+            return None
+
+    _NON_MOBILE_PLATFORMS = ('fixe', 'transmission', 'core')
 
     if report_pk:
         single_report = get_object_or_404(base_qs, pk=report_pk)
@@ -2130,6 +2542,16 @@ def statistiques(request):
     elif period_filter == 'latest' or period_filter not in (
             'day','3days','week','2weeks','month','quarter','half','year','all','custom'):
         single_report = base_qs.first()
+        # Pour les plateformes non-mobile : si aucune donnée locale,
+        # auto-fetch les 30 derniers jours depuis l'API
+        if single_report is None and platform in _NON_MOBILE_PLATFORMS:
+            _today     = date.today()
+            _from_str  = (_today - timedelta(days=30)).isoformat()
+            _to_str    = _today.isoformat()
+            _net_map   = {'fixe': 'fixe', 'transmission': 'transmission', 'core': 'core'}
+            _rep = _auto_fetch_platform(_net_map[platform], _from_str, _to_str)
+            if _rep:
+                single_report = _rep
         reports       = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
@@ -2151,8 +2573,8 @@ def statistiques(request):
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
         elif period_filter == 'custom':
-            date_from = request.GET.get('date_from')
-            date_to   = request.GET.get('date_to')
+            date_from = request.GET.get('date_from', '')
+            date_to   = request.GET.get('date_to', '')
             if date_from and date_to:
                 try:
                     from django.utils import timezone as _tz
@@ -2161,6 +2583,19 @@ def statistiques(request):
                     reports = base_qs.filter(uploaded_at__gte=dt_from, uploaded_at__lte=dt_to)
                 except (ValueError, TypeError):
                     reports = base_qs
+
+                # Aucune donnée locale → fetch automatique depuis l'API netXcare
+                if not reports.exists():
+                    _net_map2 = {
+                        'mobile': 'mobile', 'fixe': 'fixe',
+                        'transmission': 'transmission', 'core': 'core',
+                    }
+                    _network = _net_map2.get(platform, 'mobile')
+                    _df_date = date_from[:10]
+                    _dt_date = date_to[:10]
+                    _rep = _auto_fetch_platform(_network, _df_date, _dt_date)
+                    if _rep:
+                        reports = UploadedReport.objects.filter(pk=_rep.pk)
             else:
                 reports = base_qs
         else:
@@ -2368,8 +2803,8 @@ def statistiques(request):
     # ── Date range pour les inputs dynamiques ────────────────────────────────
     first_up = base_qs.order_by('uploaded_at').values_list('uploaded_at', flat=True).first()
     last_up  = base_qs.order_by('-uploaded_at').values_list('uploaded_at', flat=True).first()
-    date_min_str = first_up.strftime('%Y-%m-%dT%H:%M') if first_up else ''
-    date_max_str = last_up.strftime('%Y-%m-%dT%H:%M')  if last_up  else ''
+    date_min_str = first_up.strftime('%Y-%m-%dT00:00') if first_up else ''
+    date_max_str = last_up.strftime('%Y-%m-%dT23:59')  if last_up  else ''
     date_from_val = request.GET.get('date_from') or date_min_str
     date_to_val   = request.GET.get('date_to')   or date_max_str
 
@@ -2404,6 +2839,143 @@ def statistiques(request):
         'platform':             platform,
         'platform_label':       PLATFORM_LABELS.get(platform, '📡 RÉSEAU MOBILE'),
         'platform_labels':      PLATFORM_LABELS,
+        **_build_fixe_context(reports, platform),
+        **_build_transmission_context(reports, platform),
+    })
+
+
+def _build_live_stats(report, plat_label, date_from, date_to):
+    """Calcule les stats d'affichage depuis un UploadedReport (pour statistiques_live)."""
+    from collections import defaultdict
+
+    def _hms(s):
+        try:
+            parts = str(s).split(':')
+            if len(parts) == 3:
+                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+        except Exception:
+            pass
+        return 0
+
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    total       = report.total_incidents or 0
+    unresolved  = report.unresolved_count or 0
+    duration_h  = round((report.total_duration_sec or 0) / 3600, 1)
+
+    # ── Escalade (depuis synthesis_json) ─────────────────────────────────────
+    esc_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0})
+    for row in (report.synthesis_json or []):
+        esc = (row.get('Escalade') or '').strip()
+        if not esc or esc.upper() == 'TOTAL':
+            continue
+        esc_data[esc]['count']      += int(row.get('Inc count') or 0)
+        esc_data[esc]['outage_sec'] += _hms(row.get('OUTAGE', '0:00:00'))
+    esc_sorted   = sorted(esc_data.items(), key=lambda x: x[1]['count'], reverse=True)
+    max_esc      = esc_sorted[0][1]['count'] if esc_sorted else 1
+    esc_chart    = [
+        {'name': k, 'count': v['count'], 'outage_h': round(v['outage_sec'] / 3600, 1),
+         'pct': round(v['count'] / max_esc * 100)}
+        for k, v in esc_sorted if v['count'] > 0
+    ]
+
+    # ── Top sites ─────────────────────────────────────────────────────────────
+    raw_sites  = report.top_sites_json or []
+    max_site   = raw_sites[0]['count'] if raw_sites else 1
+    sites_chart = [
+        {'name': s['name'], 'count': s['count'], 'pct': round(s['count'] / max_site * 100)}
+        for s in raw_sites
+    ]
+
+    # ── Top causes par durée ──────────────────────────────────────────────────
+    raw_causes   = sorted(report.top_causes_json or [], key=lambda x: x['duration_sec'], reverse=True)[:10]
+    max_cause    = raw_causes[0]['duration_sec'] if raw_causes else 1
+    causes_chart = [
+        {'name': c['name'], 'duree_h': round(c['duration_sec'] / 3600, 1),
+         'pct': round(c['duration_sec'] / max_cause * 100)}
+        for c in raw_causes
+    ]
+
+    # ── Régions ───────────────────────────────────────────────────────────────
+    region_chart = sorted(
+        [{'region': r, 'nb_sites': len(s)} for r, s in (report.region_sites_json or {}).items()],
+        key=lambda x: x['nb_sites'], reverse=True
+    )
+    max_region   = region_chart[0]['nb_sites'] if region_chart else 1
+    for r in region_chart:
+        r['pct'] = round(r['nb_sites'] / max_region * 100)
+
+    return {
+        'plat_label':   plat_label,
+        'date_from':    date_from,
+        'date_to':      date_to,
+        'total':        total,
+        'unresolved':   unresolved,
+        'resolved':     total - unresolved,
+        'duration_h':   duration_h,
+        'esc_chart':    esc_chart,
+        'sites_chart':  sites_chart,
+        'causes_chart': causes_chart,
+        'region_chart': region_chart,
+        'report_id':    str(report.pk),
+    }
+
+
+def statistiques_live(request):
+    """Statistiques à la demande : fetch depuis l'API netXcare pour la période choisie."""
+    PLATFORM_NETWORKS = {
+        'mobile':       ('mobile',       '📡 Réseau Mobile'),
+        'fixe':         ('fixe',         '☎ Réseau Fixe'),
+        'transmission': ('transmission', '🔗 Transport'),
+        'core':         ('core',         '🌐 Core & IGW'),
+    }
+
+    result    = None
+    error     = None
+    platform  = 'mobile'
+    date_from = ''
+    date_to   = ''
+
+    if request.method == 'POST':
+        from .api_import import run_import
+        date_from = request.POST.get('date_from', '').strip()
+        date_to   = request.POST.get('date_to',   '').strip()
+        platform  = request.POST.get('platform', 'mobile').strip()
+
+        if not date_from or not date_to:
+            error = "Veuillez renseigner les deux dates."
+        elif date_to < date_from:
+            error = "La date de fin doit être après la date de début."
+        else:
+            network, plat_label = PLATFORM_NETWORKS.get(platform, ('mobile', '📡 Réseau Mobile'))
+            try:
+                import_result = run_import(
+                    date_from, date_to,
+                    triggered_by=request.user,
+                    overwrite=True,
+                    network=network,
+                )
+                if import_result.get('errors'):
+                    error = import_result['errors'][0]
+                else:
+                    net_label = network.upper()
+                    filename  = f"API_{net_label}_{date_from}_{date_to}.xlsx"
+                    report = UploadedReport.objects.filter(
+                        original_filename=filename, processed=True
+                    ).order_by('-uploaded_at').first()
+                    if report:
+                        result = _build_live_stats(report, plat_label, date_from, date_to)
+                    else:
+                        error = "Aucune donnée retournée par l'API pour cette période."
+            except Exception as exc:
+                error = str(exc)
+
+    return render(request, 'reports/statistiques_live.html', {
+        'result':        result,
+        'error':         error,
+        'platform':      platform,
+        'date_from':     date_from,
+        'date_to':       date_to,
+        'platform_list': PLATFORM_NETWORKS,
     })
 
 
