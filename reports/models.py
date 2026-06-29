@@ -92,6 +92,8 @@ class Site(models.Model):
     contacts_surveillants = models.CharField(max_length=100, blank=True, default='')
     typologie_avant     = models.CharField(max_length=50,  blank=True, default='')
     typologie_apres     = models.CharField(max_length=50,  blank=True, default='')
+    site_parent_1       = models.CharField(max_length=100, blank=True, default='')
+    site_parent_2       = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         ordering = ['site_name']
