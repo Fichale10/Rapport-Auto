@@ -310,15 +310,17 @@
         <div class="user-wrap" id="userWrap">
           <div class="user-badge" id="userBtn">
             <div class="user-avatar">{{ user.username|first|upper }}</div>
-            {{ user.username }}
-            {% if user.is_superuser %}<span style="font-size:10px;opacity:.7;">(Admin)</span>{% endif %}
+            <div style="display:flex;flex-direction:column;line-height:1.2;">
+              <span>{{ user.username }}</span>
+              {% if user_role_name %}<span style="font-size:10px;opacity:.65;font-weight:500;">{{ user_role_name }}</span>{% endif %}
+            </div>
             <span style="font-size:10px;opacity:.5;margin-left:2px;">▾</span>
           </div>
           <div class="user-dropdown" id="userDropdown">
             <a href="{% url 'accounts:profil' %}" class="user-drop-item">
               <span class="user-drop-icon">👤</span> Profil
             </a>
-            {% if request.user.is_superuser %}
+            {% if can_manage %}
             <a href="{% url 'accounts:gestion_users' %}" class="user-drop-item user-drop-admin">
               <span class="user-drop-icon">👥</span> Gestion utilisateurs
             </a>
