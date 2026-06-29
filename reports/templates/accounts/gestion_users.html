@@ -10,25 +10,34 @@
   .badge-warning  { background:#fff8e1; color:#7a5a00; }
   .badge-success  { background:#e8f5e9; color:#2e7d32; }
   table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:2px solid #f0f4ff; }
-  td { padding:12px; border-bottom:1px solid #f8faff; font-size:14px; color:#333; vertical-align:middle; }
+  th { text-align:left; font-size:12px; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:2px solid #f0f4ff; white-space:nowrap; }
+  td { padding:11px 12px; border-bottom:1px solid #f8faff; font-size:13px; color:#333; vertical-align:middle; }
   tr:last-child td { border-bottom:none; }
-  .btn-approve    { background:#003087; color:#fff; border:none; padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s; }
-  .btn-approve:hover { background:#0047cc; }
-  .btn-reject     { background:#fff; color:#e53e3e; border:1.5px solid #e53e3e; padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; margin-left:8px; transition:all .15s; }
-  .btn-reject:hover { background:#fff5f5; }
-  .btn-role       { background:#f0f4ff; color:#003087; border:1.5px solid #c8d8f8; padding:6px 14px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
-  .btn-role:hover { background:#e0eaff; }
-  .empty-msg      { text-align:center; padding:32px; color:#bbb; font-size:14px; }
-  .alert-success  { background:#e8f5e9; border-left:4px solid #4CAF50; color:#2e7d32; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:14px; }
-  .alert-error    { background:#fff0f0; border-left:4px solid #e53e3e; color:#c53030; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:14px; }
-  .role-select    { border:1.5px solid #c8d8f8; border-radius:8px; padding:5px 10px; font-size:13px; color:#003087; background:#f8faff; cursor:pointer; }
+  tr.is-me td { background:#fffbeb; }
 
-  /* Badges de rôle */
-  .role-badge           { display:inline-flex; align-items:center; gap:5px; padding:3px 12px; border-radius:20px; font-size:11px; font-weight:700; }
+  .btn { display:inline-flex; align-items:center; gap:5px; padding:6px 13px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:none; transition:all .15s; white-space:nowrap; }
+  .btn-approve  { background:#003087; color:#fff; }
+  .btn-approve:hover { background:#0047cc; }
+  .btn-reset    { background:#f0fdf4; color:#16a34a; border:1.5px solid #a7f3d0; }
+  .btn-reset:hover { background:#dcfce7; }
+  .btn-reject   { background:#fff0f0; color:#e53e3e; border:1.5px solid #fca5a5; }
+  .btn-reject:hover { background:#fee2e2; }
+  .btn-role     { background:#f0f4ff; color:#003087; border:1.5px solid #c8d8f8; }
+  .btn-role:hover { background:#e0eaff; }
+
+  .role-select  { border:1.5px solid #c8d8f8; border-radius:8px; padding:5px 8px; font-size:12px; color:#003087; background:#f8faff; cursor:pointer; }
+  .empty-msg    { text-align:center; padding:32px; color:#bbb; font-size:14px; }
+
+  .role-badge           { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:700; }
   .role-badge.admin     { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
   .role-badge.gestionnaire { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
   .role-badge.lecteur   { background:#f3f4f6; color:#4b5563; border:1px solid #d1d5db; }
+  .role-badge.superuser { background:#fce7f3; color:#9d174d; border:1px solid #fbcfe8; }
+
+  .alert { padding:12px 16px; border-radius:10px; margin-bottom:16px; font-size:14px; display:flex; align-items:flex-start; gap:10px; }
+  .alert-success { background:#e8f5e9; border-left:4px solid #4CAF50; color:#2e7d32; }
+  .alert-error   { background:#fff0f0; border-left:4px solid #e53e3e; color:#c53030; }
+  .pwd-box { font-family:monospace; font-size:15px; font-weight:800; background:#fff; border:2px solid #4CAF50; padding:4px 12px; border-radius:8px; letter-spacing:1px; color:#1b5e20; }
 </style>
 {% endblock %}
 
@@ -36,8 +45,17 @@
 
 {% if messages %}
   {% for message in messages %}
-    <div class="{% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
-      {% if message.tags == 'error' %}⚠{% else %}✓{% endif %} {{ message }}
+    <div class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
+      <span>{% if message.tags == 'error' %}⚠{% else %}✓{% endif %}</span>
+      <div>
+        {% if 'réinitialisé →' in message.message %}
+          {{ message.message|truncatewords_html:6 }}
+          <span class="pwd-box">{{ message.message|slice:"-12:" }}</span>
+          <span style="font-size:12px;color:#555;margin-left:8px;">(communiquer ce mot de passe à l'utilisateur)</span>
+        {% else %}
+          {{ message }}
+        {% endif %}
+      </div>
     </div>
   {% endfor %}
 {% endif %}
@@ -52,12 +70,7 @@
   <table>
     <thead>
       <tr>
-        <th>Identifiant</th>
-        <th>Nom complet</th>
-        <th>Email</th>
-        <th>Date d'inscription</th>
-        <th>Rôle à attribuer</th>
-        <th>Actions</th>
+        <th>Identifiant</th><th>Nom complet</th><th>Email</th><th>Inscription</th><th>Rôle</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -66,9 +79,9 @@
         <td><strong>{{ u.username }}</strong></td>
         <td>{{ u.get_full_name|default:"—" }}</td>
         <td>{{ u.email|default:"—" }}</td>
-        <td>{{ u.date_joined|date:"d/m/Y à H:i" }}</td>
+        <td>{{ u.date_joined|date:"d/m/Y H:i" }}</td>
         <td>
-          <form method="POST" style="display:inline" id="form-approve-{{ u.pk }}">
+          <form method="POST" style="display:contents">
             {% csrf_token %}
             <input type="hidden" name="user_id" value="{{ u.pk }}">
             <select name="role" class="role-select">
@@ -77,9 +90,9 @@
               {% endfor %}
             </select>
         </td>
-        <td>
-            <button type="submit" name="action" value="approuver" class="btn-approve">✓ Approuver</button>
-            <button type="submit" name="action" value="rejeter" class="btn-reject"
+        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button type="submit" name="action" value="approuver" class="btn btn-approve">✓ Approuver</button>
+            <button type="submit" name="action" value="rejeter" class="btn btn-reject"
               onclick="return confirm('Supprimer le compte de {{ u.username }} ?')">✗ Rejeter</button>
           </form>
         </td>
@@ -88,36 +101,38 @@
     </tbody>
   </table>
   {% else %}
-    <div class="empty-msg">Aucun compte en attente de validation</div>
+    <div class="empty-msg">Aucun compte en attente</div>
   {% endif %}
 </div>
 
 <!-- Comptes actifs -->
 <div class="users-card">
   <div class="section-title">
-    ✅ Comptes actifs
+    ✅ Tous les comptes actifs
     <span class="badge badge-success">{{ actifs|length }}</span>
   </div>
   {% if actifs %}
+  <div style="overflow-x:auto;">
   <table>
     <thead>
       <tr>
-        <th>Identifiant</th>
-        <th>Nom complet</th>
-        <th>Email</th>
-        <th>Rôle actuel</th>
-        <th>Changer le rôle</th>
-        <th>Actions</th>
+        <th>Identifiant</th><th>Nom complet</th><th>Email</th><th>Inscription</th><th>Rôle actuel</th><th>Changer le rôle</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for u in actifs %}
-      <tr>
-        <td><strong>{{ u.username }}</strong></td>
+      <tr {% if u.pk == request.user.pk %}class="is-me"{% endif %}>
+        <td>
+          <strong>{{ u.username }}</strong>
+          {% if u.pk == request.user.pk %}<span style="font-size:11px;color:#aaa;margin-left:4px;">(vous)</span>{% endif %}
+        </td>
         <td>{{ u.get_full_name|default:"—" }}</td>
         <td>{{ u.email|default:"—" }}</td>
+        <td>{{ u.date_joined|date:"d/m/Y H:i" }}</td>
         <td>
-          {% if u.profile.role == 'admin' %}
+          {% if u.is_superuser %}
+            <span class="role-badge superuser">⭐ Super Admin</span>
+          {% elif u.profile.role == 'admin' %}
             <span class="role-badge admin">👑 Administrateur</span>
           {% elif u.profile.role == 'gestionnaire' %}
             <span class="role-badge gestionnaire">🛠 Gestionnaire</span>
@@ -126,7 +141,8 @@
           {% endif %}
         </td>
         <td>
-          <form method="POST" style="display:inline">
+          {% if not u.is_superuser %}
+          <form method="POST" style="display:flex;gap:6px;align-items:center;">
             {% csrf_token %}
             <input type="hidden" name="user_id" value="{{ u.pk }}">
             <select name="role" class="role-select">
@@ -134,41 +150,55 @@
                 <option value="{{ val }}" {% if val == u.profile.role %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
-            <button type="submit" name="action" value="changer_role" class="btn-role" style="margin-left:6px;">Appliquer</button>
+            <button type="submit" name="action" value="changer_role" class="btn btn-role">Appliquer</button>
           </form>
+          {% else %}—{% endif %}
         </td>
         <td>
-          <form method="POST" style="display:inline">
-            {% csrf_token %}
-            <input type="hidden" name="user_id" value="{{ u.pk }}">
-            <button type="submit" name="action" value="rejeter" class="btn-reject"
-              onclick="return confirm('Supprimer le compte de {{ u.username }} ?')">Supprimer</button>
-          </form>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <form method="POST" style="display:contents">
+              {% csrf_token %}
+              <input type="hidden" name="user_id" value="{{ u.pk }}">
+              <button type="submit" name="action" value="reset_password" class="btn btn-reset"
+                onclick="return confirm('Réinitialiser le mot de passe de {{ u.username }} ? Le nouveau mot de passe s\'affichera ici.')">
+                🔑 Réinit. MDP
+              </button>
+            </form>
+            {% if u.pk != request.user.pk %}
+            <form method="POST" style="display:contents">
+              {% csrf_token %}
+              <input type="hidden" name="user_id" value="{{ u.pk }}">
+              <button type="submit" name="action" value="rejeter" class="btn btn-reject"
+                onclick="return confirm('Supprimer le compte de {{ u.username }} ?')">🗑 Supprimer</button>
+            </form>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
     <div class="empty-msg">Aucun compte actif</div>
   {% endif %}
 </div>
 
-<!-- Légende des rôles -->
+<!-- Légende -->
 <div class="users-card" style="padding:20px 24px;">
   <div class="section-title">ℹ Rôles et permissions</div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:13px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;font-size:13px;">
     <div style="padding:14px;background:#fef3c7;border-radius:12px;border:1px solid #fde68a;">
       <div style="font-weight:700;color:#92400e;margin-bottom:6px;">👑 Administrateur</div>
-      <div style="color:#78350f;line-height:1.6;">Accès complet — gestion des utilisateurs, import, export, tous les outils</div>
+      <div style="color:#78350f;line-height:1.6;">Accès complet + gestion des utilisateurs</div>
     </div>
     <div style="padding:14px;background:#dbeafe;border-radius:12px;border:1px solid #bfdbfe;">
       <div style="font-weight:700;color:#1e40af;margin-bottom:6px;">🛠 Gestionnaire</div>
-      <div style="color:#1e3a8a;line-height:1.6;">Import, export, tous les outils — pas de gestion des utilisateurs</div>
+      <div style="color:#1e3a8a;line-height:1.6;">Import, export, tous les outils — pas de gestion utilisateurs</div>
     </div>
     <div style="padding:14px;background:#f3f4f6;border-radius:12px;border:1px solid #d1d5db;">
       <div style="font-weight:700;color:#374151;margin-bottom:6px;">👁 Lecteur</div>
-      <div style="color:#4b5563;line-height:1.6;">Consultation uniquement — pas d'import, d'export ni de modification</div>
+      <div style="color:#4b5563;line-height:1.6;">Consultation uniquement — pas d'import ni d'export</div>
     </div>
   </div>
 </div>

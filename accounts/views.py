@@ -137,6 +137,7 @@ def gestion_users(request):
             return redirect('/')
 
     if request.method == 'POST':
+        import secrets, string
         user_id = request.POST.get('user_id')
         action  = request.POST.get('action')
         role    = request.POST.get('role', UserProfile.ROLE_LECTEUR)
@@ -156,18 +157,27 @@ def gestion_users(request):
                     profile.role = role
                     profile.save()
                     messages.success(request, f'Rôle de {u.username} changé en {profile.get_role_display()}.')
+            elif action == 'reset_password':
+                alphabet = string.ascii_letters + string.digits + '!@#&'
+                new_pwd  = ''.join(secrets.choice(alphabet) for _ in range(12))
+                u.set_password(new_pwd)
+                u.save()
+                messages.success(request, f'Mot de passe de {u.username} réinitialisé → {new_pwd}')
             elif action == 'rejeter':
-                u.delete()
-                messages.success(request, f'Compte supprimé.')
+                if u.pk != request.user.pk:
+                    u.delete()
+                    messages.success(request, 'Compte supprimé.')
+                else:
+                    messages.error(request, 'Impossible de supprimer votre propre compte.')
         except User.DoesNotExist:
             pass
         return redirect('accounts:gestion_users')
 
-    en_attente = User.objects.filter(is_active=False).order_by('-date_joined')
-    actifs     = User.objects.filter(is_active=True, is_superuser=False).order_by('-date_joined')
+    en_attente   = User.objects.filter(is_active=False).order_by('-date_joined')
+    actifs       = User.objects.filter(is_active=True).order_by('is_superuser', 'username')
     role_choices = UserProfile.ROLE_CHOICES
 
-    # S'assure que chaque utilisateur actif a un profil
+    # S'assure que chaque utilisateur a un profil
     for u in actifs:
         UserProfile.objects.get_or_create(
             user=u,
