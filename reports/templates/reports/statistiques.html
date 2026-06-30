@@ -619,15 +619,28 @@
     <div class="card-title">🌐 Détails Incident transport</div>
     <span class="card-badge">Total : {{ transmission_stats.total_incidents }} incidents</span>
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:center;padding:16px 0;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:8px 0;">
     {% for cat in transmission_stats.categories %}
-    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;min-width:180px;">
-      <div style="width:160px;height:160px;border-radius:50%;background:linear-gradient(135deg,#003087,#0050c8);
-                  display:flex;flex-direction:column;align-items:center;justify-content:center;
-                  box-shadow:0 8px 32px rgba(0,48,135,.4);">
-        <div style="color:#FFC72C;font-weight:800;font-size:18px;letter-spacing:.5px;">{{ cat.name }}</div>
-        <div style="color:#fff;font-size:13px;margin-top:6px;">Inc : <span style="font-weight:700;font-size:16px;">{{ cat.count }}</span></div>
-        <div style="color:#fff;font-size:13px;margin-top:2px;">MTTR : <span style="font-weight:700;color:#FFC72C;">{{ cat.mttr }}</span></div>
+    <div style="background:linear-gradient(135deg,#003087 0%,#0050c8 100%);
+                border-radius:16px;padding:24px 20px;
+                box-shadow:0 6px 24px rgba(0,48,135,.35);
+                display:flex;flex-direction:column;gap:14px;">
+      <!-- Nom catégorie -->
+      <div style="color:#FFC72C;font-weight:800;font-size:14px;letter-spacing:.6px;
+                  text-transform:uppercase;line-height:1.3;word-break:break-word;">
+        {{ cat.name }}
+      </div>
+      <!-- Séparateur -->
+      <div style="height:1px;background:rgba(255,255,255,.15);"></div>
+      <!-- Inc -->
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <span style="color:#aac8ff;font-size:12px;font-weight:600;white-space:nowrap;">Inc</span>
+        <span style="color:#fff;font-size:32px;font-weight:800;line-height:1;">{{ cat.count }}</span>
+      </div>
+      <!-- MTTR -->
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="color:#aac8ff;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;">MTTR</span>
+        <span style="color:#FFC72C;font-size:18px;font-weight:800;letter-spacing:.5px;">{{ cat.mttr }}</span>
       </div>
     </div>
     {% endfor %}
@@ -1097,6 +1110,11 @@
 })();
 </script>
 <script>
+</script>
+
+{% endif %}{# end platform != fixe and not transmission #}
+
+<script>
 // Dropdown Plateforme
 (function(){
   var wrap = document.getElementById('platDropWrap');
@@ -1115,13 +1133,11 @@
       var plat  = item.getAttribute('data-platform');
       var label = item.getAttribute('data-label');
       if (!plat) return;
-      // Mettre à jour le bouton immédiatement
       document.getElementById('platLabel').textContent = label || plat.toUpperCase();
       menu.querySelectorAll('.plat-drop-item').forEach(function(i){ i.classList.remove('active'); });
       item.classList.add('active');
       menu.classList.remove('open');
       wrap.classList.remove('open');
-      // Naviguer vers la plateforme (conserver date_from/date_to)
       var params = new URLSearchParams(window.location.search);
       params.set('platform', plat);
       params.delete('report');
@@ -1137,7 +1153,5 @@
   });
 })();
 </script>
-
-{% endif %}{# end platform != fixe and not transmission #}
 
 {% endblock %}
