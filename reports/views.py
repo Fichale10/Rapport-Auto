@@ -292,6 +292,12 @@ def home(request):
     date_from_str = request.GET.get('date_from', '')
     date_to_str   = request.GET.get('date_to', '')
     custom_start  = custom_end = None
+    # Valeurs affichées dans les inputs (toujours pré-remplies)
+    _td = date.today()
+    _home_default_from = f"{_td.year}-{_td.month:02d}-01T00:00"
+    _home_default_to   = f"{_td.isoformat()}T23:59"
+    home_date_from_display = date_from_str or _home_default_from
+    home_date_to_display   = date_to_str   or _home_default_to
 
     if date_from_str and date_to_str:
         try:
@@ -309,6 +315,26 @@ def home(request):
             uploaded_at__date__gte=custom_start,
             uploaded_at__date__lte=custom_end,
         )
+        # Aucune donnée locale → auto-fetch depuis l'API (segmenté par mois si > 31 jours)
+        if not base_qs.exists():
+            try:
+                from .api_import import run_import_months as _rim
+                import logging as _log
+                _logger_home = _log.getLogger('reports.api_import')
+                _res = _rim(
+                    custom_start.isoformat(), custom_end.isoformat(),
+                    triggered_by=request.user, overwrite=True, network='mobile',
+                )
+                if _res.get('errors'):
+                    _logger_home.error("Home auto-fetch errors: %s", _res['errors'])
+                if _res.get('created') or _res.get('skipped'):
+                    base_qs = all_reports.filter(
+                        uploaded_at__date__gte=custom_start,
+                        uploaded_at__date__lte=custom_end,
+                    )
+            except Exception as _exc:
+                import logging as _log
+                _log.getLogger('reports.api_import').exception("Home auto-fetch failed: %s", _exc)
     else:
         base_qs = all_reports
 
@@ -470,8 +496,8 @@ def home(request):
 
     return render(request, 'reports/home.html', {
         'period':           period,
-        'date_from':        date_from_str,
-        'date_to':          date_to_str,
+        'date_from':        home_date_from_display,
+        'date_to':          home_date_to_display,
         'synth_rows':       synth_rows,
         'synth_total_inc':  synth_total_inc,
         'total_reports':        total_reports,
@@ -2517,20 +2543,41 @@ def statistiques(request):
     _import_logger = logging.getLogger('reports.api_import')
 
     def _auto_fetch_platform(network, date_from_str, date_to_str):
-        """Tente un import API et retourne le rapport créé, ou None en cas d'erreur."""
-        from .api_import import run_import as _run_import
+        """
+        Importe via l'API netXcare et retourne un queryset des rapports créés.
+        Segmente automatiquement par mois calendaire si la période dépasse 31 jours.
+        Retourne None en cas d'erreur bloquante.
+        """
+        from .api_import import run_import_months as _run_import_months
+        from datetime import date as _d
         try:
-            _res = _run_import(date_from_str, date_to_str,
-                               triggered_by=request.user, overwrite=True, network=network)
+            _res = _run_import_months(
+                date_from_str, date_to_str,
+                triggered_by=request.user, overwrite=True, network=network,
+            )
             if _res.get('errors'):
                 _import_logger.error("Auto-fetch %s errors: %s", network, _res['errors'])
+                messages.error(request,
+                    f"Import {network.upper()} : {'; '.join(_res['errors'][:2])}")
+            if not _res.get('created') and not _res.get('skipped'):
+                messages.warning(request,
+                    f"Aucune donnée retournée par l'API pour {network.upper()} "
+                    f"({date_from_str} → {date_to_str}).")
                 return None
-            _fname = f"API_{network.upper()}_{date_from_str}_{date_to_str}.xlsx"
+            # Retourner tous les rapports de ce réseau créés pour la plage demandée
+            _prefix  = f"API_{network.upper()}_"
+            _d_from  = _d.fromisoformat(date_from_str)
+            _d_to    = _d.fromisoformat(date_to_str)
             return UploadedReport.objects.filter(
-                original_filename=_fname, processed=True
-            ).order_by('-uploaded_at').first()
+                original_filename__startswith=_prefix,
+                processed=True,
+                date_rapport__gte=_d_from,
+                date_rapport__lte=_d_to,
+            ).order_by('date_rapport')
         except Exception as _exc:
             _import_logger.exception("Auto-fetch %s failed: %s", network, _exc)
+            messages.error(request,
+                f"Erreur lors de l'import {network.upper()} : {type(_exc).__name__}: {_exc}")
             return None
 
     _NON_MOBILE_PLATFORMS = ('fixe', 'transmission', 'core')
@@ -2545,14 +2592,14 @@ def statistiques(request):
         # Pour les plateformes non-mobile : si aucune donnée locale,
         # auto-fetch les 30 derniers jours depuis l'API
         if single_report is None and platform in _NON_MOBILE_PLATFORMS:
-            _today     = date.today()
-            _from_str  = (_today - timedelta(days=30)).isoformat()
-            _to_str    = _today.isoformat()
-            _net_map   = {'fixe': 'fixe', 'transmission': 'transmission', 'core': 'core'}
-            _rep = _auto_fetch_platform(_net_map[platform], _from_str, _to_str)
-            if _rep:
-                single_report = _rep
-        reports       = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
+            _today    = date.today()
+            _from_str = (_today - timedelta(days=30)).isoformat()
+            _to_str   = _today.isoformat()
+            _net_map  = {'fixe': 'fixe', 'transmission': 'transmission', 'core': 'core'}
+            _qs = _auto_fetch_platform(_net_map[platform], _from_str, _to_str)
+            if _qs is not None and _qs.exists():
+                single_report = _qs.order_by('-uploaded_at').first()
+        reports = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
         today = date.today()
@@ -2585,6 +2632,7 @@ def statistiques(request):
                     reports = base_qs
 
                 # Aucune donnée locale → fetch automatique depuis l'API netXcare
+                # Segmenté par mois si la période > 31 jours
                 if not reports.exists():
                     _net_map2 = {
                         'mobile': 'mobile', 'fixe': 'fixe',
@@ -2593,9 +2641,9 @@ def statistiques(request):
                     _network = _net_map2.get(platform, 'mobile')
                     _df_date = date_from[:10]
                     _dt_date = date_to[:10]
-                    _rep = _auto_fetch_platform(_network, _df_date, _dt_date)
-                    if _rep:
-                        reports = UploadedReport.objects.filter(pk=_rep.pk)
+                    _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
+                    if _qs is not None and _qs.exists():
+                        reports = _qs
             else:
                 reports = base_qs
         else:
@@ -2805,8 +2853,12 @@ def statistiques(request):
     last_up  = base_qs.order_by('-uploaded_at').values_list('uploaded_at', flat=True).first()
     date_min_str = first_up.strftime('%Y-%m-%dT00:00') if first_up else ''
     date_max_str = last_up.strftime('%Y-%m-%dT23:59')  if last_up  else ''
-    date_from_val = request.GET.get('date_from') or date_min_str
-    date_to_val   = request.GET.get('date_to')   or date_max_str
+    # Fallback : si aucun rapport existant, proposer 1er du mois → aujourd'hui
+    _td = date.today()
+    _fallback_from = f"{_td.year}-{_td.month:02d}-01T00:00"
+    _fallback_to   = f"{_td.isoformat()}T23:59"
+    date_from_val = request.GET.get('date_from') or date_min_str or _fallback_from
+    date_to_val   = request.GET.get('date_to')   or date_max_str or _fallback_to
 
     return render(request, 'reports/statistiques.html', {
         'period_filter':        period_filter,
