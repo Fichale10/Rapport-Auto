@@ -89,9 +89,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── API Ticketing ──────────────────────────────────────────────────────────────
-TICKETING_API_URL      = os.environ.get('TICKETING_API_URL', '').rstrip('/')
-TICKETING_API_USERNAME = os.environ.get('TICKETING_API_USERNAME', '')
-TICKETING_API_PASSWORD = os.environ.get('TICKETING_API_PASSWORD', '')
+TICKETING_API_URL      = os.environ.get('TICKETING_API_URL', '').strip().rstrip('/')
+TICKETING_API_USERNAME = os.environ.get('TICKETING_API_USERNAME', '').strip()
+TICKETING_API_PASSWORD = os.environ.get('TICKETING_API_PASSWORD', '').strip()
 TICKETING_API_IMPORT_INTERVAL_HOURS = int(os.environ.get('TICKETING_API_IMPORT_INTERVAL_HOURS', '3'))
 
 # ── Chatbot ISOC_IA (Rodium AI / OpenAI-compatible) ─────────────────────────────
