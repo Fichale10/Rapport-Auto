@@ -111,7 +111,7 @@
     <div>
       <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFC72C;">Trafic International</div>
       <div style="font-size:18px;font-weight:700;color:#fff;">{{ cfg.label }}</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Cumul 7 jours — 6 sources CSV</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Période flexible (jours, semaine, mois, année) — 6 sources CSV</div>
     </div>
   </div>
   <a href="{% url 'reporting_platform' platform %}" class="tool-banner-back">&#8592; Retour</a>
@@ -121,7 +121,7 @@
   <div class="two-col">
     <div class="card">
       <div class="card-title">⬆ Générer le Rapport TRAFIC INTERNATIONAL</div>
-      <div class="card-sub">Importez les 6 fichiers CSV exportés depuis la plateforme YAS et générez le rapport consolidé CUMUL 7 JOURS.</div>
+      <div class="card-sub">Importez les 6 fichiers CSV exportés depuis la plateforme YAS et générez le rapport consolidé sur la période détectée (de quelques jours à plusieurs mois ou une année).</div>
       <div class="drop-zone" id="dropZone">
         <input type="file" id="fileInput" multiple accept=".csv" />
         <div class="drop-icon">📁</div>
@@ -157,7 +157,7 @@
         <div class="steps">
           <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-head">Importez les 6 fichiers CSV</div><div class="step-desc">Fichiers exportés depuis la plateforme YAS de supervision IGW/CORE.</div></div></div>
           <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-head">Détection automatique</div><div class="step-desc">Chaque fichier est reconnu par son nom et assigné à la bonne source.</div></div></div>
-          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-head">Nettoyage & Fusion</div><div class="step-desc">Suppression des colonnes dupliquées, fusion par horodatage sur 7 jours.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-head">Nettoyage & Fusion</div><div class="step-desc">Suppression des colonnes dupliquées, fusion par horodatage sur toute la période détectée.</div></div></div>
           <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel multi-feuilles : rapport consolidé + données par source.</div></div></div>
         </div>
         <div class="sources-title">📡 Sources de données</div>
@@ -174,10 +174,118 @@
   </div>
 </div>
 
+<div class="page-wrap" id="dispo-report" style="margin-top:8px;">
+  <div class="card">
+    <div class="card-title">📈 Rapport « Disponibilité &amp; trafic IGW » — Comité Gestion des Incidents</div>
+    <div class="card-sub">
+      Importez le fichier brut de tickets <strong>CORE_ET_IGW_*.xlsx</strong> (.xlsx).
+      L'app rattache chaque incident à son lien IGW, calcule par lien le taux de disponibilité
+      = (durée période − durée d'indispo) / durée période × 100, et reprend automatiquement le
+      <strong>TOP 3 des incidents critiques</strong> du même fichier.
+    </div>
+
+    {% if messages %}
+      {% for m in messages %}
+        <div class="alert {{ m.tags }}" style="display:block;">{{ m }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <form method="post" action="{% url 'igw_dispo_process' %}" enctype="multipart/form-data"
+          style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+      {% csrf_token %}
+      <input type="file" name="dispo_file" accept=".xlsx,.xls" required
+             style="flex:1;min-width:260px;padding:10px;border:1.5px dashed #aab4d4;border-radius:9px;background:#f7f9fd;font-size:13px;">
+      <button type="submit" class="btn-process" style="width:auto;margin-top:0;padding:12px 22px;">⚙ Générer le rapport</button>
+    </form>
+
+    {% if dispo_report %}
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:18px 0 14px;">
+        <div style="font-size:13px;color:var(--gray2);">
+          Source : <strong style="color:var(--navy);">{{ dispo_source }}</strong> ·
+          Période : <strong style="color:var(--navy);">{{ dispo_report.period_label }}</strong> ·
+          Dispo globale : <strong style="color:var(--navy);">{{ dispo_report.global_availability|floatformat:2 }} %</strong>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <a class="btn-dl" href="{% url 'igw_dispo_export' fmt='pptx' %}" style="background:var(--navy);">⬇ Export PPTX</a>
+          <a class="btn-dl" href="{% url 'igw_dispo_export' fmt='png' %}">⬇ Export PNG</a>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1.35fr;gap:20px;align-items:start;">
+        <!-- Tableau disponibilité -->
+        <div>
+          <div style="background:var(--yellow);color:var(--navy);font-weight:800;font-size:13.5px;padding:8px 12px;border-radius:7px 7px 0 0;text-align:center;">
+            Disponibilité Lien IGW {{ dispo_report.month_label }}
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead>
+              <tr style="background:var(--navy);color:#fff;">
+                <th style="padding:8px 10px;text-align:left;">Lien</th>
+                <th style="padding:8px 10px;text-align:center;">Nombre Inc</th>
+                <th style="padding:8px 10px;text-align:center;">{{ dispo_report.month_label }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lk in dispo_report.links %}
+                <tr>
+                  <td style="padding:7px 10px;color:var(--navy);font-weight:700;border-bottom:2px solid #fff;background:var(--gray1);">{{ lk.short }}</td>
+                  <td style="padding:7px 10px;text-align:center;color:var(--navy);font-weight:700;border-bottom:2px solid #fff;background:var(--gray1);">{{ lk.n_inc }}</td>
+                  {% if lk.availability >= 99.99 %}
+                    <td style="padding:7px 10px;text-align:center;font-weight:800;color:#fff;background:var(--green);border-bottom:2px solid #fff;">{{ lk.availability|floatformat:2 }} %</td>
+                  {% else %}
+                    <td style="padding:7px 10px;text-align:center;font-weight:800;color:var(--navy);background:var(--yellow);border-bottom:2px solid #fff;">{{ lk.availability|floatformat:2 }} %</td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- TOP 3 incidents critiques -->
+        <div>
+          <div style="background:var(--navy);color:#fff;font-weight:800;font-size:13.5px;padding:8px 12px;border-radius:7px 7px 0 0;text-align:center;">
+            TOP 3 Incidents critiques du mois
+          </div>
+          {% if top_incidents %}
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:var(--yellow);color:var(--navy);">
+                  <th style="padding:7px 9px;text-align:left;">Nature de l'incident</th>
+                  <th style="padding:7px 9px;text-align:left;">Impact - Service</th>
+                  <th style="padding:7px 9px;text-align:left;">Cause</th>
+                  <th style="padding:7px 9px;text-align:left;">Escalade</th>
+                  <th style="padding:7px 9px;text-align:left;">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for inc in top_incidents %}
+                  <tr>
+                    <td style="padding:8px 9px;color:#fff;font-weight:700;background:var(--navy);border-bottom:2px solid #fff;">{{ inc.nature }}</td>
+                    <td style="padding:8px 9px;color:var(--navy);background:var(--gray1);border-bottom:2px solid #fff;">{{ inc.impact }}</td>
+                    <td style="padding:8px 9px;color:var(--navy);background:var(--gray1);border-bottom:2px solid #fff;">{{ inc.cause }}</td>
+                    <td style="padding:8px 9px;color:var(--navy);background:var(--gray1);border-bottom:2px solid #fff;">{{ inc.escalade }}</td>
+                    <td style="padding:8px 9px;color:var(--navy);background:var(--gray1);border-bottom:2px solid #fff;white-space:nowrap;">{{ inc.duration }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% else %}
+            <div style="padding:18px;background:#fff5f5;border:1.5px solid #fca5a5;border-radius:0 0 7px 7px;font-size:12.5px;color:#b91c1c;">
+              ⚠ Aucun TOP 3 disponible. Importez d'abord le fichier de tickets sur la page
+              <a href="{% url 'reporting_platform' platform='core' %}">Core</a> pour alimenter le bloc « Incidents critiques ».
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
 <div class="chart-section" id="chartSection">
+
   <div class="chart-card">
     <div class="chart-header">
-      <div class="chart-title">📊 TRAFIC INTERNET TOTAL — CUMUL 7 JOURS
+      <div class="chart-title">📊 TRAFIC INTERNET TOTAL — <span id="chartPeriodLabel">PÉRIODE</span>
         <span class="incidents-badge" id="incidentsBadge" style="display:none"></span>
       </div>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
@@ -208,6 +316,19 @@ const FILE_CONFIGS = [
 const loadedFiles = {};
 let workbookBlob = null;
 const $ = id => document.getElementById(id);
+// Libellé de période dynamique selon la plage de dates détectée
+function periodLabel(df,dt){
+  if(!df||!dt) return 'CUMUL';
+  const d1=new Date(df), d2=new Date(dt);
+  if(isNaN(d1)||isNaN(d2)) return 'CUMUL';
+  const days=Math.round((d2-d1)/86400000)+1;
+  if(days<=1) return '1 JOUR';
+  if(days===7) return 'CUMUL 7 JOURS (1 SEMAINE)';
+  if(days<7||days<=31) return `CUMUL ${days} JOURS`;
+  if(days>=360){const y=Math.round(days/365);return `CUMUL ${days} JOURS (${y} AN${y>1?'S':''})`;}
+  const months=Math.round(days/30);
+  return `CUMUL ${days} JOURS (~${months} MOIS)`;
+}
 function log(msg,type=''){const area=$('logArea');area.style.display='block';const line=document.createElement('div');line.className='log-line '+type;line.textContent=new Date().toLocaleTimeString('fr')+'  '+msg;area.appendChild(line);area.scrollTop=area.scrollHeight;}
 function showAlert(msg,type){const el=$('alertBox');el.textContent=msg;el.className='alert '+type;el.style.display='block';}
 function hideAlert(){$('alertBox').style.display='none';}
@@ -225,14 +346,14 @@ function buildConsolidatedData(mergedRaw){const nominalCaps=mergedRaw.headers.sl
 function styleSheet(ws,ncols){const headerStyle={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'0D2461'}},alignment:{horizontal:'center',wrapText:true}};const range=XLSX.utils.decode_range(ws['!ref']);for(let c=range.s.c;c<=range.e.c;c++){const cell=XLSX.utils.encode_cell({r:0,c});if(ws[cell])ws[cell].s=headerStyle;}ws['!cols']=Array.from({length:ncols},(_,i)=>i===0?{wch:20}:{wch:18});}
 function buildWorkbook(){const wb=XLSX.utils.book_new();log('Fusion des sources…');const mergedRaw=mergeByTime();const merged=buildConsolidatedData(mergedRaw);const dates=merged.rows.map(r=>r[0]).filter(Boolean).sort();const dateFrom=dates[0]?dates[0].substring(0,10):'';const dateTo=dates[dates.length-1]?dates[dates.length-1].substring(0,10):'';log(`Plage : ${dateFrom} → ${dateTo} (${merged.rows.length} enreg.)`, 'ok');const wsConsolidate=XLSX.utils.aoa_to_sheet([merged.headers,...merged.rows]);styleSheet(wsConsolidate,merged.headers.length);const dispColIdx=merged.headers.length-1;const dispCell=XLSX.utils.encode_cell({r:0,c:dispColIdx});if(wsConsolidate[dispCell])wsConsolidate[dispCell].s={font:{bold:true,color:{rgb:'FFFFFF'},sz:11},fill:{fgColor:{rgb:'166534'}},alignment:{horizontal:'center',wrapText:true}};XLSX.utils.book_append_sheet(wb,wsConsolidate,'RAPPORT CONSOLIDÉ');const sourceOrder=['total_yas','equiano','paris','london1','london2','tata'];sourceOrder.forEach(key=>{const entry=loadedFiles[key];if(!entry)return;const withDur={headers:[...entry.parsed.headers,'Duration (Gb/s)'],rows:entry.parsed.rows.map(row=>{const sum=row.slice(1).reduce((acc,cell)=>{const v=parseFloat(cell);return acc+(isNaN(v)?0:v);},0);return[...row,sum.toFixed(2)];})};const ws=XLSX.utils.aoa_to_sheet([withDur.headers,...withDur.rows]);styleSheet(ws,withDur.headers.length);XLSX.utils.book_append_sheet(wb,ws,entry.cfg.sheetName);log(`Feuille "${entry.cfg.sheetName}" (${withDur.rows.length} lignes)`, 'ok');});const buf=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});return{blob,dateFrom,dateTo,mergedData:merged};}
 let trafficChartInstance=null;
-function renderChart(mergedData){const timeIdx=0;const durationIdx=mergedData.headers.indexOf('Duration (Gb/s)');const dispIdx=mergedData.headers.indexOf('TOTAL DISPONIBLE (Gb/s)');const labels=mergedData.rows.map(r=>r[timeIdx]);const traffic=mergedData.rows.map(r=>parseFloat(r[durationIdx])||0);const dispo=mergedData.rows.map(r=>parseFloat(r[dispIdx])||TOTAL_CAPACITY_GB);const incidents=[];mergedData.rows.forEach((r,i)=>{const cap=parseFloat(r[dispIdx]);if(!isNaN(cap)&&cap<TOTAL_CAPACITY_GB){const downLinks=[];r.slice(1,durationIdx).forEach((cell,ci)=>{if(parseFloat(cell)===0){const hdr=mergedData.headers[ci+1];const m=hdr.match(/\(([^)]+)\)/);downLinks.push(m?m[1]:hdr);}});incidents.push({time:r[timeIdx],dispo:cap,downLinks});}});$('chartSection').style.display='block';const allTimes=mergedData.rows.map(r=>r[timeIdx]).filter(Boolean).sort();$('chartSub').textContent=allTimes.length?`${allTimes[0].substring(0,10)} → ${allTimes[allTimes.length-1].substring(0,10)}  |  ${mergedData.rows.length} enregistrements  |  Capacité : ${TOTAL_CAPACITY_GB} Gb/s`:'';const incCount=new Set(incidents.map(i=>i.time.substring(0,10))).size;const badge=$('incidentsBadge');if(incCount>0){badge.textContent=incCount+(incCount===1?' INCIDENT':' INCIDENTS');badge.style.display='';}else badge.style.display='none';const listEl=$('incidentsList');listEl.innerHTML='';if(incidents.length>0){const seen=new Set();incidents.forEach(inc=>{const key=inc.time+'|'+inc.downLinks.join(',');if(seen.has(key))return;seen.add(key);const div=document.createElement('div');div.className='incident-item';div.innerHTML=`<div class="incident-dot">⚠</div><div><div class="incident-text">Lien(s) tombé(s) : ${inc.downLinks.join(', ')} — DISPO ${inc.dispo} Gb/s</div><div class="incident-time">${inc.time}</div></div>`;listEl.appendChild(div);});}
+function renderChart(mergedData){const timeIdx=0;const durationIdx=mergedData.headers.indexOf('Duration (Gb/s)');const dispIdx=mergedData.headers.indexOf('TOTAL DISPONIBLE (Gb/s)');const labels=mergedData.rows.map(r=>r[timeIdx]);const traffic=mergedData.rows.map(r=>parseFloat(r[durationIdx])||0);const dispo=mergedData.rows.map(r=>parseFloat(r[dispIdx])||TOTAL_CAPACITY_GB);const incidents=[];mergedData.rows.forEach((r,i)=>{const cap=parseFloat(r[dispIdx]);if(!isNaN(cap)&&cap<TOTAL_CAPACITY_GB){const downLinks=[];r.slice(1,durationIdx).forEach((cell,ci)=>{if(parseFloat(cell)===0){const hdr=mergedData.headers[ci+1];const m=hdr.match(/\(([^)]+)\)/);downLinks.push(m?m[1]:hdr);}});incidents.push({time:r[timeIdx],dispo:cap,downLinks});}});$('chartSection').style.display='block';const allTimes=mergedData.rows.map(r=>r[timeIdx]).filter(Boolean).sort();const _df=allTimes.length?allTimes[0].substring(0,10):'';const _dt=allTimes.length?allTimes[allTimes.length-1].substring(0,10):'';const _pl=$('chartPeriodLabel');if(_pl)_pl.textContent=periodLabel(_df,_dt);$('chartSub').textContent=allTimes.length?`${allTimes[0].substring(0,10)} → ${allTimes[allTimes.length-1].substring(0,10)}  |  ${mergedData.rows.length} enregistrements  |  Capacité : ${TOTAL_CAPACITY_GB} Gb/s`:'';const incCount=new Set(incidents.map(i=>i.time.substring(0,10))).size;const badge=$('incidentsBadge');if(incCount>0){badge.textContent=incCount+(incCount===1?' INCIDENT':' INCIDENTS');badge.style.display='';}else badge.style.display='none';const listEl=$('incidentsList');listEl.innerHTML='';if(incidents.length>0){const seen=new Set();incidents.forEach(inc=>{const key=inc.time+'|'+inc.downLinks.join(',');if(seen.has(key))return;seen.add(key);const div=document.createElement('div');div.className='incident-item';div.innerHTML=`<div class="incident-dot">⚠</div><div><div class="incident-text">Lien(s) tombé(s) : ${inc.downLinks.join(', ')} — DISPO ${inc.dispo} Gb/s</div><div class="incident-time">${inc.time}</div></div>`;listEl.appendChild(div);});}
 if(trafficChartInstance){trafficChartInstance.destroy();trafficChartInstance=null;}
 const blueBgPlugin={id:'blueBg',beforeDraw(chart){const{ctx,chartArea}=chart;if(!chartArea)return;ctx.save();ctx.fillStyle='#a8c8e8';ctx.fillRect(chartArea.left,chartArea.top,chartArea.width,chartArea.height);ctx.restore();},afterDraw(chart){const{ctx,chartArea}=chart;if(!chartArea)return;ctx.save();const pad=8,txt=`${TOTAL_CAPACITY_GB}G`;ctx.font='bold 13px Segoe UI,Arial,sans-serif';const tw=ctx.measureText(txt).width;const bx=chartArea.right-tw-pad*2-2,by=chartArea.top+4,bw=tw+pad*2,bh=22;ctx.fillStyle='#f5c000';ctx.beginPath();ctx.roundRect(bx,by,bw,bh,4);ctx.fill();ctx.fillStyle='#0d2461';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(txt,bx+bw/2,by+bh/2);ctx.restore();}};
 const dateGroupPlugin={id:'dateGroup',afterDraw(chart){const{ctx,data,scales:{x},chartArea}=chart;if(!x)return;const days=new Map();data.labels.forEach((lbl,i)=>{if(!lbl)return;const p=lbl.substring(0,10).split('-');const key=`${p[2]}/${p[1]}/${p[0]}`;if(!days.has(key))days.set(key,{first:i,last:i});else days.get(key).last=i;});const n=data.labels.length;const step=n>1?(x.getPixelForValue(n-1)-x.getPixelForValue(0))/(n-1):0;const halfStep=step/2;const yLabel=chartArea.bottom+44;ctx.save();days.forEach((range,dateStr)=>{const x1=x.getPixelForValue(range.first),x2=x.getPixelForValue(range.last),cx=(x1+x2)/2,sepX=x1-halfStep;if(sepX>chartArea.left+2){ctx.save();ctx.strokeStyle='rgba(0,0,0,.18)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(sepX,chartArea.bottom+2);ctx.lineTo(sepX,yLabel+9);ctx.stroke();ctx.setLineDash([]);ctx.restore();}ctx.font='bold 10.5px Segoe UI,Arial,sans-serif';ctx.fillStyle='#1a2340';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(dateStr,cx,yLabel);});ctx.restore();}};
 const ctx=document.getElementById('trafficChart').getContext('2d');
 trafficChartInstance=new Chart(ctx,{plugins:[blueBgPlugin,dateGroupPlugin],data:{labels,datasets:[{type:'bar',label:'TOTAL TRAFIC',data:traffic,backgroundColor:'rgba(30,74,138,.75)',borderColor:'rgba(30,74,138,1)',borderWidth:1,order:2,yAxisID:'y'},{type:'line',label:'TOTAL DISPONIBLE',data:dispo,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.08)',borderWidth:2.5,pointRadius:0,tension:0,fill:false,order:1,yAxisID:'y'}]},options:{responsive:true,maintainAspectRatio:false,layout:{padding:{bottom:24}},interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label} : ${ctx.parsed.y.toFixed(2)} Gb/s`}}},scales:{x:{ticks:{maxRotation:45,minRotation:45,autoSkip:false,font:{size:9.5},callback:(val,idx)=>{const lbl=labels[idx];if(!lbl)return null;const time=lbl.substring(11,16);const[hh]=time.split(':').map(Number);if(hh%2!==0)return null;return time;}},grid:{color:'rgba(0,0,0,.06)'}},y:{beginAtZero:true,max:TOTAL_CAPACITY_GB+20,ticks:{font:{size:11}},grid:{color:'rgba(0,0,0,.08)'},title:{display:true,text:'Gb/s',font:{size:12,weight:'bold'}}}}}});
 $('btnDlChart').onclick=()=>{const canvas=document.getElementById('trafficChart');const tmp=document.createElement('canvas');tmp.width=canvas.width;tmp.height=canvas.height;const tc=tmp.getContext('2d');tc.fillStyle='#ffffff';tc.fillRect(0,0,tmp.width,tmp.height);tc.drawImage(canvas,0,0);const a=document.createElement('a');a.href=tmp.toDataURL('image/png');const allTimes=mergedData.rows.map(r=>r[0]).filter(Boolean).sort();const df=allTimes[0]?allTimes[0].substring(0,10):'debut';const dt=allTimes[allTimes.length-1]?allTimes[allTimes.length-1].substring(0,10):'fin';a.download=`TRAFIC_INTERNET_${df}_AU_${dt}.png`;a.click();};}
-async function runProcess(){$('downloadArea').style.display='none';$('logArea').style.display='block';$('logArea').innerHTML='';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des fichiers CSV…');await new Promise(r=>setTimeout(r,200));setProgress(50,'Fusion et nettoyage…');await new Promise(r=>setTimeout(r,100));const{blob,dateFrom,dateTo,mergedData}=buildWorkbook();workbookBlob=blob;setProgress(85,'Rendu du graphique…');await new Promise(r=>setTimeout(r,100));renderChart(mergedData);log('Graphique rendu','ok');setProgress(90,'Génération Excel…');await new Promise(r=>setTimeout(r,100));setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';area.querySelector('.dl-title').textContent=`✅ Rapport généré — ${dateFrom} au ${dateTo}`;const filename=`TOTAL TRAFIC INTERNATIONAL - CUMUL 7 JOURS ${dateFrom} AU ${dateTo}.xlsx`;$('btnDownload').onclick=()=>{const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);};showAlert('Rapport consolidé généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
+async function runProcess(){$('downloadArea').style.display='none';$('logArea').style.display='block';$('logArea').innerHTML='';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des fichiers CSV…');await new Promise(r=>setTimeout(r,200));setProgress(50,'Fusion et nettoyage…');await new Promise(r=>setTimeout(r,100));const{blob,dateFrom,dateTo,mergedData}=buildWorkbook();workbookBlob=blob;setProgress(85,'Rendu du graphique…');await new Promise(r=>setTimeout(r,100));renderChart(mergedData);log('Graphique rendu','ok');setProgress(90,'Génération Excel…');await new Promise(r=>setTimeout(r,100));setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';area.querySelector('.dl-title').textContent=`✅ Rapport généré — ${dateFrom} au ${dateTo}`;const filename=`TOTAL TRAFIC INTERNATIONAL - ${periodLabel(dateFrom,dateTo)} ${dateFrom} AU ${dateTo}.xlsx`;$('btnDownload').onclick=()=>{const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);};showAlert('Rapport consolidé généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
 document.addEventListener('DOMContentLoaded',()=>{buildSlots();refreshUI();$('fileInput').addEventListener('change',e=>{handleFiles(e.target.files);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');handleFiles(e.dataTransfer.files);});$('btnProcess').addEventListener('click',runProcess);});
 </script>
 {% endblock %}

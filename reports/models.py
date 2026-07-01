@@ -92,6 +92,17 @@ class Site(models.Model):
     contacts_surveillants = models.CharField(max_length=100, blank=True, default='')
     typologie_avant     = models.CharField(max_length=50,  blank=True, default='')
     typologie_apres     = models.CharField(max_length=50,  blank=True, default='')
+    site_parent_1         = models.CharField(max_length=150, blank=True, default='')
+    site_parent_2         = models.CharField(max_length=150, blank=True, default='')
+    technologie_fo        = models.CharField(max_length=50,  blank=True, default='')
+    chef_base_dfo         = models.CharField(max_length=200, blank=True, default='')
+    srt                   = models.CharField(max_length=200, blank=True, default='')
+    tech_field_rx_mob     = models.CharField(max_length=200, blank=True, default='')
+    tech_field_fttx       = models.CharField(max_length=200, blank=True, default='')
+    resp_fo_backbone_ftth = models.CharField(max_length=200, blank=True, default='')
+    tech_fo_backbone_ftth = models.CharField(max_length=200, blank=True, default='')
+    chef_base_energie     = models.CharField(max_length=200, blank=True, default='')
+    tech_energie          = models.CharField(max_length=200, blank=True, default='')
 
     class Meta:
         ordering = ['site_name']

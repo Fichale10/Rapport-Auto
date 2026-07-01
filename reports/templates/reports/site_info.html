@@ -116,6 +116,26 @@
     color:#bbb; font-size:14px; font-style:italic;
     border:2px dashed #e8edf5; border-radius:10px; background:#fff;
   }
+  .site-archi-canvas {
+    flex:1 1 0; min-height:280px; border-radius:12px; overflow:auto;
+    background:radial-gradient(circle at 30% 20%,#1c3f96 0%,#102a6e 55%,#0b1f55 100%);
+    position:relative; box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  .archi-empty {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:rgba(255,255,255,.55); font-size:13px; font-style:italic; text-align:center; padding:20px;
+  }
+  .archi-legend {
+    display:flex; flex-wrap:wrap; gap:14px; margin-top:8px;
+    font-size:11px; color:#6b7a99;
+  }
+  .archi-legend span { display:inline-flex; align-items:center; gap:6px; }
+  .archi-legend i { width:12px; height:12px; border-radius:50%; display:inline-block; }
+  .archi-legend .lg-root { background:#FFC72C; }
+  .archi-legend .lg-node { background:#3f7bd6; }
+  .archi-legend .lg-leaf { background:#26a35a; }
+  .archi-legend .lg-spof { background:transparent; border:2px dashed #ff5a5a; }
+  .archi-legend .lg-dash { width:18px; height:0; border-top:2px dashed #FFC72C; border-radius:0; }
   .site-loc-box {
     background:#f8faff; border:1px solid #e8edf5; border-radius:12px;
     padding:14px 16px; display:flex; flex-direction:column; gap:8px;
@@ -341,6 +361,10 @@
         <span class="site-field-val">{{ site.typ_trans|default:"—" }}</span>
       </div>
       <div class="site-field">
+        <span class="site-field-lbl">Technologie FO</span>
+        <span class="site-field-val">{{ site.technologie_fo|default:"—" }}</span>
+      </div>
+      <div class="site-field">
         <span class="site-field-lbl">Config générale</span>
         <span class="site-field-val">{{ site.config|default:"—" }}</span>
       </div>
@@ -414,6 +438,51 @@
       </div>
     </div>
 
+    <!-- Contacts & responsables -->
+    <div class="site-section">
+      <div class="site-section-title">☎️ Contacts & responsables</div>
+      <div class="site-field">
+        <span class="site-field-lbl">Site Parent 1</span>
+        <span class="site-field-val">{{ site.site_parent_1|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Site Parent 2</span>
+        <span class="site-field-val">{{ site.site_parent_2|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Chef de Base DFO</span>
+        <span class="site-field-val mono">{{ site.chef_base_dfo|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">SRT</span>
+        <span class="site-field-val mono">{{ site.srt|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Techniciens FIELD Rx Mob</span>
+        <span class="site-field-val mono">{{ site.tech_field_rx_mob|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Techniciens FIELD FTTX</span>
+        <span class="site-field-val mono">{{ site.tech_field_fttx|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Responsable FO BACKBONE & FTTH</span>
+        <span class="site-field-val mono">{{ site.resp_fo_backbone_ftth|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Techniciens FO BACKBONE & FTTH</span>
+        <span class="site-field-val mono">{{ site.tech_fo_backbone_ftth|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Chef de Base Energie</span>
+        <span class="site-field-val mono">{{ site.chef_base_energie|default:"—" }}</span>
+      </div>
+      <div class="site-field">
+        <span class="site-field-lbl">Techniciens Energie</span>
+        <span class="site-field-val mono">{{ site.tech_energie|default:"—" }}</span>
+      </div>
+    </div>
+
   </div>
 
   <div class="site-body-right">
@@ -421,8 +490,15 @@
     <div class="site-section">
       <div class="site-section-title">📍 Localisation</div>
       <div class="site-archi-display">
-        <div class="site-archi-display-title">🏗️ Architecture du site</div>
-        <div class="site-archi-display-body">Contenu à définir</div>
+        <div class="site-archi-display-title">🏗️ Architecture du site <span style="font-weight:500;color:#8896b3">— qui porte qui</span></div>
+        <div class="site-archi-canvas" id="archiCanvas"></div>
+        <div class="archi-legend">
+          <span><i class="lg-root"></i>Racine / IGW</span>
+          <span><i class="lg-node"></i>Nœud porteur</span>
+          <span><i class="lg-leaf"></i>Site terminal</span>
+          <span><i class="lg-spof"></i>Porteur critique (SPOF)</span>
+          <span><i class="lg-dash"></i>Lien secondaire</span>
+        </div>
       </div>
     </div>
 
@@ -619,6 +695,197 @@
       if (e.target === statsOverlay) statsOverlay.classList.remove('show');
     });
   }
+})();
+</script>
+{% endif %}
+
+{% if site %}
+{{ archi_json|json_script:"archiData" }}
+<script>
+(function () {
+  var mount = document.getElementById('archiCanvas');
+  if (!mount) return;
+  var data;
+  try { data = JSON.parse(document.getElementById('archiData').textContent); }
+  catch (e) { data = null; }
+
+  if (!data || !data.nodes || !data.nodes.length) {
+    mount.innerHTML = '<div class="archi-empty">Aucune donnée d\'architecture (colonnes Site Parent 1 / 2 vides pour ce site).</div>';
+    return;
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var R = 22, X_GAP = 158, Y_GAP = 84, PAD = 44;
+
+  // ── Index ──
+  var byId = {}, childrenOf = {}, parentsOf = {}, edgeType = {};
+  data.nodes.forEach(function (n) { byId[n.id] = n; });
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    (childrenOf[e.source] = childrenOf[e.source] || []).push(e.target);
+    (parentsOf[e.target] = parentsOf[e.target] || []).push(e.source);
+    edgeType[e.source + '>' + e.target] = e.type;
+  });
+
+  // ── #1 Digraphe : niveau = plus long chemin depuis une racine ──
+  var level = {};
+  function setLevel(id, lv, stack) {
+    if (level[id] == null || lv > level[id]) level[id] = lv; else return;
+    if (stack[id]) return;
+    stack[id] = 1;
+    (childrenOf[id] || []).forEach(function (c) { setLevel(c, lv + 1, stack); });
+    stack[id] = 0;
+  }
+  data.nodes.forEach(function (n) {
+    if (!(parentsOf[n.id] && parentsOf[n.id].length)) setLevel(n.id, 0, {});
+  });
+  data.nodes.forEach(function (n) { if (level[n.id] == null) level[n.id] = 0; });
+
+  // ── Regroupe par niveau + ordonne (barycentre) ──
+  var byLevel = {};
+  data.nodes.forEach(function (n) { (byLevel[level[n.id]] = byLevel[level[n.id]] || []).push(n.id); });
+  var levels = Object.keys(byLevel).map(Number).sort(function (a, b) { return a - b; });
+  var row = {};
+  levels.forEach(function (lv) { byLevel[lv].forEach(function (id, i) { row[id] = i; }); });
+  function bary(id) {
+    var ns = (parentsOf[id] || []).concat(childrenOf[id] || []);
+    if (!ns.length) return row[id];
+    var s = 0; ns.forEach(function (x) { s += row[x]; }); return s / ns.length;
+  }
+  for (var it = 0; it < 5; it++) {
+    levels.forEach(function (lv) {
+      byLevel[lv].sort(function (a, b) { return bary(a) - bary(b) || a.localeCompare(b); });
+      byLevel[lv].forEach(function (id, i) { row[id] = i; });
+    });
+  }
+
+  var maxRows = 1;
+  levels.forEach(function (lv) { maxRows = Math.max(maxRows, byLevel[lv].length); });
+  var maxLevel = levels[levels.length - 1] || 0;
+
+  function nx(id) { return PAD + level[id] * X_GAP + R; }
+  function ny(id) {
+    var lv = level[id];
+    var off = (maxRows - byLevel[lv].length) / 2; // centre chaque colonne
+    return PAD + (row[id] + off) * Y_GAP + R;
+  }
+
+  // ── #3 Centralité : seuil SPOF ──
+  var maxLoad = 0;
+  data.nodes.forEach(function (n) { maxLoad = Math.max(maxLoad, n.load || 0); });
+  var spofThreshold = Math.max(5, Math.ceil(maxLoad * 0.5));
+
+  var contentW = PAD * 2 + maxLevel * X_GAP + 2 * R;
+  var contentH = PAD * 2 + maxRows * Y_GAP;
+  var cw = mount.clientWidth || 560, ch = mount.clientHeight || 300;
+  var W = Math.max(contentW, cw), H = Math.max(contentH, ch);
+  var offX = Math.max(0, (W - contentW) / 2), offY = Math.max(0, (H - contentH) / 2);
+
+  function el(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  var svg = el('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+  svg.style.display = 'block';
+
+  // Flèche orientée (#1 digraphe)
+  var defs = el('defs', {});
+  ['arrow', 'arrowSec'].forEach(function (idn) {
+    var m = el('marker', {
+      id: idn, viewBox: '0 0 10 10', refX: 8, refY: 5,
+      markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'
+    });
+    m.appendChild(el('path', {
+      d: 'M0,1 L9,5 L0,9 Z',
+      fill: idn === 'arrowSec' ? '#FFC72C' : 'rgba(255,255,255,.75)'
+    }));
+    defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  var g = el('g', { transform: 'translate(' + offX + ',' + offY + ')' });
+  svg.appendChild(g);
+
+  // ── Arcs orientés ──
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    var x1 = nx(e.source) + R, y1 = ny(e.source);
+    var x2 = nx(e.target) - R - 6, y2 = ny(e.target);
+    var mx = (x1 + x2) / 2;
+    var d = 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
+    var sec = e.type === 'secondary';
+    g.appendChild(el('path', {
+      d: d, fill: 'none',
+      stroke: sec ? '#FFC72C' : 'rgba(255,255,255,.55)',
+      'stroke-width': sec ? 2 : 2.5,
+      'stroke-dasharray': sec ? '6 5' : '0',
+      'stroke-linecap': 'round',
+      'marker-end': 'url(#' + (sec ? 'arrowSec' : 'arrow') + ')'
+    }));
+  });
+
+  // ── Icône pylône (treillis) ──
+  function tower(cx, cy, color) {
+    var grp = el('g', {});
+    var top = cy - 10, bot = cy + 9, th = 3.5, bh = 8;
+    function lx(t) { return { l: cx - (bh + (th - bh) * t), r: cx + (bh + (th - bh) * t), y: bot + (top - bot) * t }; }
+    grp.appendChild(el('line', { x1: cx - bh, y1: bot, x2: cx - th, y2: top, stroke: color, 'stroke-width': 1.8, 'stroke-linecap': 'round' }));
+    grp.appendChild(el('line', { x1: cx + bh, y1: bot, x2: cx + th, y2: top, stroke: color, 'stroke-width': 1.8, 'stroke-linecap': 'round' }));
+    for (var i = 0; i < 3; i++) {
+      var a = lx(i / 3), b = lx((i + 1) / 3);
+      grp.appendChild(el('line', { x1: a.l, y1: a.y, x2: a.r, y2: a.y, stroke: color, 'stroke-width': 1.1 }));
+      grp.appendChild(el('line', { x1: a.l, y1: a.y, x2: b.r, y2: b.y, stroke: color, 'stroke-width': 0.9 }));
+      grp.appendChild(el('line', { x1: a.r, y1: a.y, x2: b.l, y2: b.y, stroke: color, 'stroke-width': 0.9 }));
+    }
+    var tp = lx(1);
+    grp.appendChild(el('line', { x1: tp.l, y1: tp.y, x2: tp.r, y2: tp.y, stroke: color, 'stroke-width': 1.1 }));
+    grp.appendChild(el('path', { d: 'M' + (cx - 5) + ',' + (top - 3) + ' Q' + cx + ',' + (top - 8) + ' ' + (cx + 5) + ',' + (top - 3), stroke: color, 'stroke-width': 1.1, fill: 'none', 'stroke-linecap': 'round' }));
+    grp.appendChild(el('circle', { cx: cx, cy: top - 4, r: 1.5, fill: color }));
+    return grp;
+  }
+
+  // ── Nœuds ──
+  data.nodes.forEach(function (n) {
+    var cx = nx(n.id), cy = ny(n.id);
+    var hasKids = (childrenOf[n.id] || []).length > 0;
+    var fill = level[n.id] === 0 ? '#FFC72C' : (hasKids ? '#3f7bd6' : '#26a35a');
+    var spof = (n.load || 0) >= spofThreshold && hasKids;
+
+    var node = el('g', { style: 'cursor:pointer' });
+
+    if (spof) node.appendChild(el('circle', { cx: cx, cy: cy, r: R + 9, fill: 'none', stroke: '#ff5a5a', 'stroke-width': 2, 'stroke-dasharray': '3 3' }));
+    if (n.current) node.appendChild(el('circle', { cx: cx, cy: cy, r: R + 5, fill: 'none', stroke: '#FFC72C', 'stroke-width': 3 }));
+
+    node.appendChild(el('circle', { cx: cx, cy: cy, r: R, fill: fill, stroke: 'rgba(255,255,255,.9)', 'stroke-width': 2 }));
+    node.appendChild(tower(cx, cy, level[n.id] === 0 ? '#102a6e' : '#fff'));
+
+    var t = el('text', {
+      x: cx, y: cy + R + 15, 'text-anchor': 'middle',
+      fill: n.current ? '#FFC72C' : '#fff',
+      'font-size': '11', 'font-weight': n.current ? '800' : '700',
+      'font-family': 'DM Sans, sans-serif'
+    });
+    t.textContent = n.name.length > 16 ? n.name.slice(0, 15) + '…' : n.name;
+    node.appendChild(t);
+
+    var ttl = el('title', {});
+    ttl.textContent = n.name + (n.region ? ' — ' + n.region : '')
+      + (spof ? '  •  Porteur critique (SPOF)' : '')
+      + (n.current ? '' : '  •  Cliquer pour ouvrir la fiche');
+    node.appendChild(ttl);
+
+    if (!n.current) {
+      node.addEventListener('click', function () {
+        window.location.href = '{% url "site_info" %}?q=' + encodeURIComponent(n.name);
+      });
+    }
+
+    g.appendChild(node);
+  });
+
+  mount.appendChild(svg);
 })();
 </script>
 {% endif %}

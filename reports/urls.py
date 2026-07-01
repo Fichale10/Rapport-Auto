@@ -29,15 +29,25 @@ urlpatterns = [
     path('reporting/bases-incidents/',            login_required(views.bases_incidents_view),   name='bases_incidents'),
     path('reporting/bases-incidents/export/',     login_required(views.bases_incidents_export), name='bases_incidents_export'),
 
+    # Rapport GDI « Incidents core » (upload → aperçu → export PPTX/PNG)
+    path('reporting/core/gdi/process/',           login_required(views.core_gdi_process),  name='core_gdi_process'),
+    path('reporting/core/gdi/export/<str:fmt>/',  login_required(views.core_gdi_export),   name='core_gdi_export'),
+
     # Import global (rétro-compat)
     path('reporting/import/',                     login_required(views.reporting_import), name='reporting_import'),
 
     # ── Outils interactifs (avant le slug générique) ──────────────────────────
     path('reporting/igw/rapport-noc-core/',          login_required(views.igw_rapport_noc),          name='igw_rapport_noc'),
     path('reporting/igw/trafic-international/',      login_required(views.igw_trafic_international),  name='igw_trafic_international'),
+    path('reporting/igw/dispo/process/',            login_required(views.igw_dispo_process),         name='igw_dispo_process'),
+    path('reporting/igw/dispo/export/<str:fmt>/',   login_required(views.igw_dispo_export),          name='igw_dispo_export'),
     path('reporting/transmission/rapport-noc/',      login_required(views.transport_rapport_noc),     name='transport_rapport_noc'),
+    path('reporting/transmission/rapport-noc/process/', login_required(views.transport_noc_process),  name='transport_noc_process'),
+    path('reporting/transmission/rapport-noc/export/<str:image>/<str:fmt>/', login_required(views.transport_noc_export), name='transport_noc_export'),
     path('reporting/transmission/rapport-dco-fo/',   login_required(views.transport_rapport_fo),      name='transport_rapport_fo'),
     path('reporting/fixe/rapport-ftth/',             login_required(views.fixe_rapport_ftth),         name='fixe_rapport_ftth'),
+    path('reporting/fixe/rapport-ftth/process/',     login_required(views.fixe_ftth_process),         name='fixe_ftth_process'),
+    path('reporting/fixe/rapport-ftth/export/<str:image>/<str:fmt>/', login_required(views.fixe_ftth_export), name='fixe_ftth_export'),
 
     # ── Par plateforme (slug doit venir après les chemins fixes) ───────────────
     path('reporting/<slug:platform>/import/',               login_required(views.reporting_platform_import),       name='reporting_platform_import'),

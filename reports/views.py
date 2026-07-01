@@ -2835,6 +2835,13 @@ def reporting_platform(request, platform):
     for rep in cfg.get('tool_reports', []):
         tool_reports.append({**rep, 'url': _build_url(rep)})
 
+    # Rapport GDI « Incidents core » importé (en session) pour la plateforme core
+    gdi_report = None
+    gdi_source = None
+    if platform == 'core':
+        gdi_report = request.session.get('gdi_core_report')
+        gdi_source = request.session.get('gdi_core_source')
+
     return render(request, 'reports/reporting_platform.html', {
         'platform':      platform,
         'cfg':           cfg,
@@ -2844,6 +2851,8 @@ def reporting_platform(request, platform):
         'dernier_mois':  dernier_mois,
         'total':         agg['total'] or 0,
         'outage_h':      round((agg['outage'] or 0) / 3600, 1),
+        'gdi_report':    gdi_report,
+        'gdi_source':    gdi_source,
     })
 
 
@@ -2983,6 +2992,85 @@ def generate_pptx_platform(request, platform):
     """Génère le rapport PowerPoint pour une plateforme (redirige vers generate_pptx_report)."""
     from django.urls import reverse
     return redirect(reverse('generate_pptx') + f'?platform={platform}')
+
+
+# ── Rapport GDI Core (« Disponibilité et trafic IGW ») ─────────────────────────
+def core_gdi_process(request):
+    """Reçoit le fichier de tickets, parse le rapport « Incidents core »,
+    stocke le résultat en session puis réaffiche la page core avec l'aperçu."""
+    if request.method != 'POST':
+        return redirect('reporting_platform', platform='core')
+
+    uploaded = request.FILES.get('gdi_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('reporting_platform', platform='core')
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('reporting_platform', platform='core')
+
+    import tempfile
+    from .gdi_core import parse_gdi_core
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+    try:
+        report = parse_gdi_core(tmp_path, filename=uploaded.name)
+    except Exception as e:
+        messages.error(request, f'Lecture impossible : {e}')
+        return redirect('reporting_platform', platform='core')
+    finally:
+        os.unlink(tmp_path)
+
+    request.session['gdi_core_report'] = report
+    request.session['gdi_core_source'] = uploaded.name
+    messages.success(
+        request,
+        f'{report["total"]} incident(s) chargé(s) depuis « {uploaded.name} ».'
+    )
+    return redirect(reverse_lazy_anchor('reporting_platform', 'core', 'gdi-report'))
+
+
+def reverse_lazy_anchor(name, platform, anchor):
+    from django.urls import reverse
+    return reverse(name, kwargs={'platform': platform}) + f'#{anchor}'
+
+
+def core_gdi_export(request, fmt):
+    """Exporte le rapport « Incidents core » en PPTX ou PNG depuis la session."""
+    report = request.session.get('gdi_core_report')
+    if not report:
+        messages.error(request, 'Aucun rapport en mémoire. Importez d’abord un fichier.')
+        return redirect('reporting_platform', platform='core')
+
+    generated_on = date.today().strftime('%d/%m/%Y')
+    base = 'GDI_Core_Disponibilite_IGW'
+    # scope=all → tous les incidents (paginés) ; sinon Top 3
+    export_all = request.GET.get('scope') == 'all'
+
+    if fmt == 'pptx':
+        from .pptx_report import generate_gdi_core
+        buf = generate_gdi_core(
+            report['rows'], report.get('period_label', ''), generated_on,
+            top_n=None if export_all else 3)
+        suffix = '_Tous' if export_all else ''
+        resp = FileResponse(
+            buf, as_attachment=True, filename=f'{base}{suffix}.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        return resp
+
+    if fmt == 'png':
+        from .gdi_core import build_png
+        buf = build_png(report, generated_on)
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.png',
+            content_type='image/png')
+
+    raise Http404('Format inconnu')
 
 
 DR2_REGION_TARGETS = {
@@ -3440,11 +3528,114 @@ def site_info(request):
                 .values('site_name', 'site_id', 'region')[:20]
             )
 
+    archi_data = _build_site_architecture(site) if site else None
+
     return render(request, 'reports/site_info.html', {
         'query':   query,
         'site':    site,
         'results': results,
+        'archi_json': archi_data,
     })
+
+
+def _build_site_architecture(site):
+    """Construit le digraphe « qui porte qui » centré sur `site`.
+
+    Méthodes appliquées :
+      • #1 Digraphe orienté : sommet = site, arc orienté parent→enfant (lien radio/FO).
+      • #3 Centralité : `load` = taille du sous-arbre porté → repérage des SPOF.
+    Inclut les DEUX parents du site courant (Site Parent 1 et Site Parent 2),
+    ses ancêtres (en remontant) et ses descendants (sites portés)."""
+    from collections import deque
+    from .models import Site
+
+    def norm(s):
+        return (s or '').strip().upper()
+
+    rows = Site.objects.values_list(
+        'site_name', 'site_parent_1', 'site_parent_2', 'region'
+    )
+    info = {}        # NOM_MAJ -> {name, region}
+    parents = {}     # ENFANT_MAJ -> [(parent_maj, 'primary'|'secondary')]
+    children = {}    # PARENT_MAJ -> [(enfant_maj, type)]
+    for name, p1, p2, region in rows:
+        nu = norm(name)
+        if not nu:
+            continue
+        info[nu] = {'name': (name or '').strip(), 'region': region or ''}
+        ps = []
+        if norm(p1):
+            ps.append((norm(p1), 'primary'))
+        if norm(p2):
+            ps.append((norm(p2), 'secondary'))
+        parents[nu] = ps
+        for p, t in ps:
+            children.setdefault(p, []).append((nu, t))
+
+    cur = norm(site.site_name)
+    if cur not in info:
+        return None
+
+    selected = {cur}
+
+    # ── Ancêtres : on remonte (les deux parents) ──
+    MAX_UP, MAX_ANC = 4, 16
+    dq = deque([(cur, 0)])
+    anc = 0
+    while dq:
+        nu, d = dq.popleft()
+        if d >= MAX_UP:
+            continue
+        for p, _t in parents.get(nu, []):
+            if p in info and p not in selected and anc < MAX_ANC:
+                selected.add(p)
+                anc += 1
+                dq.append((p, d + 1))
+
+    # ── Descendants : sites portés ──
+    MAX_DOWN, MAX_DESC = 6, 60
+    dq = deque([(cur, 0)])
+    desc = 0
+    while dq:
+        nu, d = dq.popleft()
+        if d >= MAX_DOWN:
+            continue
+        for ch, _t in sorted(children.get(nu, [])):
+            if ch in info and ch not in selected and desc < MAX_DESC:
+                selected.add(ch)
+                desc += 1
+                dq.append((ch, d + 1))
+
+    # ── Centralité : charge = taille du sous-arbre porté (cap) ──
+    load_cache = {}
+
+    def load(nu):
+        if nu in load_cache:
+            return load_cache[nu]
+        load_cache[nu] = 0  # garde anti-cycle
+        tot = 0
+        for ch, _t in children.get(nu, []):
+            tot += 1 + load(ch)
+            if tot > 999:
+                break
+        load_cache[nu] = tot
+        return tot
+
+    nodes = [{
+        'id': nu,
+        'name': info[nu]['name'],
+        'region': info[nu]['region'],
+        'current': nu == cur,
+        'load': load(nu),
+    } for nu in selected]
+
+    edges = []
+    for nu in selected:
+        for p, t in parents.get(nu, []):
+            if p in selected:
+                edges.append({'source': p, 'target': nu, 'type': t})
+
+    return {'nodes': nodes, 'edges': edges, 'current': cur}
 
 
 def site_search_api(request):
@@ -3486,6 +3677,7 @@ def sites_export_excel(request):
         ('config',               'Configuration'),
         ('techno',               'Technologie'),
         ('typ_trans',            'Type Transport'),
+        ('technologie_fo',       'Technologie FO'),
         ('typ_energie',          'Type Énergie'),
         ('ge_auto',              'GE Auto'),
         ('site_lithium',         'Site Lithium'),
@@ -3503,6 +3695,16 @@ def sites_export_excel(request):
         ('contacts_surveillants','Contacts Surv.'),
         ('typologie_avant',      'Typo. Avant'),
         ('typologie_apres',      'Typo. Après'),
+        ('site_parent_1',        'Site Parent 1'),
+        ('site_parent_2',        'Site Parent 2'),
+        ('chef_base_dfo',        'Chef de Base DFO'),
+        ('srt',                  'SRT'),
+        ('tech_field_rx_mob',    'Techniciens FIELD Rx Mob'),
+        ('tech_field_fttx',      'Techniciens FIELD FTTX'),
+        ('resp_fo_backbone_ftth','Responsable FO BACKBONE & FTTH'),
+        ('tech_fo_backbone_ftth','Techniciens FO BACKBONE & FTTH'),
+        ('chef_base_energie',    'Chef de Base Energie'),
+        ('tech_energie',         'Techniciens Energie'),
     ]
 
     header_fill  = PatternFill('solid', fgColor='003087')
@@ -3534,7 +3736,8 @@ def sites_export_excel(request):
 
     # Largeurs colonnes
     col_widths = [28, 14, 16, 14, 14, 10, 12, 12, 14, 18, 14, 16, 16,
-                  10, 12, 10, 14, 18, 18, 24, 14, 12, 14, 16, 14, 20, 20, 16, 16]
+                  10, 12, 10, 14, 18, 18, 24, 14, 12, 14, 16, 14, 20, 20, 16, 16,
+                  20, 20, 22, 18, 26, 24, 30, 30, 22, 22, 16]
     for i, width in enumerate(col_widths, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = width
 
@@ -3570,12 +3773,17 @@ def sites_import_excel(request):
         ws = wb.active
 
         # Lire les en-têtes (ligne 1) pour mapper les colonnes
-        headers = [str(cell.value).strip().lower() if cell.value else '' for cell in ws[1]]
+        # (normalise : minuscules, espaces multiples / tabulations réduits)
+        headers = [' '.join(str(cell.value).split()).lower() if cell.value is not None else ''
+                   for cell in ws[1]]
 
         FIELD_MAP = {
             'nom du site':          'site_name',
+            'sites names':          'site_name',
+            'site name':            'site_name',
             'site_name':            'site_name',
             'id site':              'site_id',
+            'site id':              'site_id',
             'site_id':              'site_id',
             'région':               'region',
             'region':               'region',
@@ -3591,8 +3799,12 @@ def sites_import_excel(request):
             'technologie':          'techno',
             'techno':               'techno',
             'type transport':       'typ_trans',
+            'typ trans':            'typ_trans',
             'typ_trans':            'typ_trans',
+            'technologie fo':       'technologie_fo',
+            'technologie_fo':       'technologie_fo',
             "type énergie":         'typ_energie',
+            'typ energie':          'typ_energie',
             'typ_energie':          'typ_energie',
             'ge auto':              'ge_auto',
             'ge_auto':              'ge_auto',
@@ -3609,6 +3821,7 @@ def sites_import_excel(request):
             'config 4g':            'config_4g',
             'config_4g':            'config_4g',
             'classif. tech':        'classif_tech',
+            'classif tech':         'classif_tech',
             'classif_tech':         'classif_tech',
             'type site':            'type_site',
             'type_site':            'type_site',
@@ -3617,15 +3830,36 @@ def sites_import_excel(request):
             'typo. pylône':         'typologie_pylone',
             'typologie_pylone':     'typologie_pylone',
             'n° agent':             'numero_agent',
+            'numero agent':         'numero_agent',
             'numero_agent':         'numero_agent',
             'société gardiens':     'societe_gardiens',
             'societe_gardiens':     'societe_gardiens',
             'contacts surv.':       'contacts_surveillants',
+            'contacts des surveillants': 'contacts_surveillants',
             'contacts_surveillants':'contacts_surveillants',
             'typo. avant':          'typologie_avant',
             'typologie_avant':      'typologie_avant',
             'typo. après':          'typologie_apres',
             'typologie_apres':      'typologie_apres',
+            'site parent 1':        'site_parent_1',
+            'site_parent_1':        'site_parent_1',
+            'site parent 2':        'site_parent_2',
+            'site_parent_2':        'site_parent_2',
+            'chef de base dfo':     'chef_base_dfo',
+            'chef_base_dfo':        'chef_base_dfo',
+            'srt':                  'srt',
+            'techniciens field rx mob': 'tech_field_rx_mob',
+            'tech_field_rx_mob':    'tech_field_rx_mob',
+            'techniciens field fttx':   'tech_field_fttx',
+            'tech_field_fttx':      'tech_field_fttx',
+            'responsable fo backbone & ftth': 'resp_fo_backbone_ftth',
+            'resp_fo_backbone_ftth':'resp_fo_backbone_ftth',
+            'techniciens fo backbone & ftth': 'tech_fo_backbone_ftth',
+            'tech_fo_backbone_ftth':'tech_fo_backbone_ftth',
+            'chef de base energie': 'chef_base_energie',
+            'chef_base_energie':    'chef_base_energie',
+            'techniciens energie':  'tech_energie',
+            'tech_energie':         'tech_energie',
         }
 
         col_map = {}
@@ -4088,13 +4322,244 @@ def igw_rapport_noc(request):
 def igw_trafic_international(request):
     from .reporting_config import PLATFORMS
     cfg = PLATFORMS['igw']
-    return render(request, 'reports/igw_trafic_international.html', {'cfg': cfg, 'platform': 'igw'})
+    dispo_report = request.session.get('igw_dispo_report')
+    top_incidents = request.session.get('igw_dispo_top')
+    if top_incidents is None:
+        gdi_report = request.session.get('gdi_core_report')
+        top_incidents = (gdi_report or {}).get('rows', [])[:3] if gdi_report else []
+    return render(request, 'reports/igw_trafic_international.html', {
+        'cfg': cfg,
+        'platform': 'igw',
+        'dispo_report': dispo_report,
+        'dispo_source': request.session.get('igw_dispo_source'),
+        'top_incidents': top_incidents,
+        'gdi_source': request.session.get('gdi_core_source'),
+    })
+
+
+def _dispo_top_incidents(request):
+    """TOP 3 des incidents critiques : depuis le fichier dispo importé si disponible,
+    sinon depuis le rapport Core en session."""
+    top = request.session.get('igw_dispo_top')
+    if top:
+        return top
+    gdi = request.session.get('gdi_core_report')
+    rows = (gdi or {}).get('rows', []) if gdi else []
+    return [
+        {'nature': r.get('nature', ''), 'impact': r.get('impact', ''),
+         'cause': r.get('cause', ''), 'escalade': r.get('escalade', ''),
+         'duration': r.get('duration', '')}
+        for r in rows[:3]
+    ]
+
+
+def igw_dispo_process(request):
+    """Reçoit le fichier brut de tickets (CORE_ET_IGW_*.xlsx) — ou le fichier de
+    taux d'indisponibilité — calcule le tableau de disponibilité IGW + le TOP 3,
+    les stocke en session puis réaffiche la page Trafic."""
+    if request.method != 'POST':
+        return redirect('igw_trafic_international')
+
+    uploaded = request.FILES.get('dispo_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('igw_trafic_international')
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('igw_trafic_international')
+
+    import tempfile
+    import pandas as pd
+    from .igw_dispo import parse_igw_dispo, parse_core_to_dispo
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+    try:
+        # Auto-détection : fichier brut de tickets (en-têtes en 1re ligne) vs
+        # fichier « taux d'indisponibilité » (colonne LIENS INTERNATIONAUX).
+        try:
+            cols0 = [str(c).strip().lower() for c in pd.read_excel(tmp_path, nrows=0).columns]
+        except Exception:
+            cols0 = []
+        is_core = "nature de l'incident" in cols0 or 'alarm time' in cols0
+
+        if is_core:
+            report = parse_core_to_dispo(tmp_path, filename=uploaded.name)
+            top = report.get('top_incidents', [])
+        else:
+            report = parse_igw_dispo(tmp_path, filename=uploaded.name)
+            top = _dispo_top_incidents(request)
+    except Exception as e:
+        messages.error(request, f'Lecture impossible : {e}')
+        return redirect('igw_trafic_international')
+    finally:
+        os.unlink(tmp_path)
+
+    request.session['igw_dispo_report'] = report
+    request.session['igw_dispo_source'] = uploaded.name
+    request.session['igw_dispo_top'] = top
+    messages.success(
+        request,
+        f'{len(report["links"])} lien(s) analysé(s) — disponibilité globale '
+        f'{report["global_availability"]:.2f} % ({report["period_label"]}).'
+    )
+    from django.urls import reverse
+    return redirect(reverse('igw_trafic_international') + '#dispo-report')
+
+
+
+def igw_dispo_export(request, fmt):
+    """Exporte le rapport « Disponibilité et trafic IGW » (PPTX ou PNG)."""
+    report = request.session.get('igw_dispo_report')
+    if not report:
+        messages.error(request, 'Aucun rapport en mémoire. Importez d’abord le fichier de taux d’indisponibilité.')
+        return redirect('igw_trafic_international')
+
+    top_incidents = _dispo_top_incidents(request)
+    generated_on = date.today().strftime('%d/%m/%Y')
+    base = 'GDI_Disponibilite_Trafic_IGW'
+
+    if fmt == 'pptx':
+        from .pptx_report import generate_igw_dispo
+        buf = generate_igw_dispo(report, top_incidents, generated_on)
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+    if fmt == 'png':
+        from .igw_dispo import build_png
+        buf = build_png(report, top_incidents, generated_on)
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.png',
+            content_type='image/png')
+
+    raise Http404('Format inconnu')
+
 
 
 def transport_rapport_noc(request):
     from .reporting_config import PLATFORMS
     cfg = PLATFORMS['transmission']
-    return render(request, 'reports/transport_rapport_noc.html', {'cfg': cfg, 'platform': 'transmission'})
+    report = request.session.get('transport_noc_report')
+    img1_b64 = img2_b64 = img3_b64 = None
+    if report:
+        import base64
+        from .transport_noc import (build_png_image1, build_png_image2,
+                                    build_png_image3)
+        generated_on = date.today().strftime('%d/%m/%Y')
+        try:
+            img1_b64 = base64.b64encode(
+                build_png_image1(report, generated_on).getvalue()).decode('ascii')
+            img2_b64 = base64.b64encode(
+                build_png_image2(report, generated_on).getvalue()).decode('ascii')
+            img3_b64 = base64.b64encode(
+                build_png_image3(report, generated_on).getvalue()).decode('ascii')
+        except Exception:
+            img1_b64 = img2_b64 = img3_b64 = None
+    ctx = {
+        'cfg': cfg,
+        'platform': 'transmission',
+        'report': report,
+        'source': request.session.get('transport_noc_source'),
+        'img1_b64': img1_b64,
+        'img2_b64': img2_b64,
+        'img3_b64': img3_b64,
+    }
+    return render(request, 'reports/transport_rapport_noc.html', ctx)
+
+
+def transport_noc_process(request):
+    """Reçoit le fichier TRANSMISSION_*.xlsx, construit les rapports NOC
+    (Image 1 & Image 2), les stocke en session puis réaffiche la page."""
+    if request.method != 'POST':
+        return redirect('transport_rapport_noc')
+
+    uploaded = request.FILES.get('transport_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('transport_rapport_noc')
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('transport_rapport_noc')
+
+    import tempfile
+    from .transport_noc import parse_transport_noc
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+    try:
+        report = parse_transport_noc(tmp_path, filename=uploaded.name)
+    except Exception as e:
+        messages.error(request, f'Lecture impossible : {e}')
+        return redirect('transport_rapport_noc')
+    finally:
+        os.unlink(tmp_path)
+
+    request.session['transport_noc_report'] = report
+    request.session['transport_noc_source'] = uploaded.name
+    messages.success(
+        request,
+        f'{report["total_inc"]} incident(s) analysé(s) — {report["period_label"]}.'
+    )
+    from django.urls import reverse
+    return redirect(reverse('transport_rapport_noc') + '#transport-report')
+
+
+def transport_noc_export(request, image, fmt):
+    """Exporte Image 1, 2 ou 3 du rapport NOC transmission (PPTX ou PNG)."""
+    report = request.session.get('transport_noc_report')
+    if not report:
+        messages.error(request, 'Aucun rapport en mémoire. Importez d’abord le fichier TRANSMISSION.')
+        return redirect('transport_rapport_noc')
+
+    if image not in ('image1', 'image2', 'image3', 'all'):
+        raise Http404('Image inconnue')
+
+    generated_on = date.today().strftime('%d/%m/%Y')
+    from .transport_noc import (build_png_image1, build_png_image2,
+                                build_png_image3)
+
+    # Export groupé : les 3 images dans un seul PPTX (diapos modifiables)
+    if image == 'all':
+        if fmt != 'pptx':
+            raise Http404('Format inconnu')
+        from .pptx_report import generate_transport_editable
+        buf = generate_transport_editable(report, generated_on)
+        return FileResponse(
+            buf, as_attachment=True, filename='GDI_Transmission_Rapport_NOC.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+    if image == 'image1':
+        png = build_png_image1(report, generated_on)
+        base = 'GDI_Transmission_Detail_Incident'
+    elif image == 'image2':
+        png = build_png_image2(report, generated_on)
+        base = 'GDI_Transmission_Count_Inc_MTTR'
+    else:
+        png = build_png_image3(report, generated_on)
+        base = 'GDI_Transmission_Dispo_Clients_IPT_IPLC'
+
+    if fmt == 'png':
+        return FileResponse(
+            png, as_attachment=True, filename=f'{base}.png',
+            content_type='image/png')
+
+    if fmt == 'pptx':
+        from .pptx_report import generate_transport_editable
+        buf = generate_transport_editable(report, generated_on, images=(image,))
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+    raise Http404('Format inconnu')
 
 
 def transport_rapport_fo(request):
@@ -4106,7 +4571,136 @@ def transport_rapport_fo(request):
 def fixe_rapport_ftth(request):
     from .reporting_config import PLATFORMS
     cfg = PLATFORMS['fixe']
-    return render(request, 'reports/fixe_rapport_ftth.html', {'cfg': cfg, 'platform': 'fixe'})
+    report = request.session.get('ftth_report')
+    img1_b64 = img2_b64 = img3_b64 = img4_b64 = None
+    if report:
+        import base64
+        from .fixe_ftth import (build_png_image1, build_png_image2,
+                                build_png_image3, build_png_image4)
+        generated_on = date.today().strftime('%d/%m/%Y')
+        try:
+            img1_b64 = base64.b64encode(
+                build_png_image1(report, generated_on).getvalue()).decode('ascii')
+            img2_b64 = base64.b64encode(
+                build_png_image2(report, generated_on).getvalue()).decode('ascii')
+            img3_b64 = base64.b64encode(
+                build_png_image3(report, generated_on).getvalue()).decode('ascii')
+            img4_b64 = base64.b64encode(
+                build_png_image4(report, generated_on).getvalue()).decode('ascii')
+        except Exception:
+            img1_b64 = img2_b64 = img3_b64 = img4_b64 = None
+    ftth_images = []
+    if report:
+        ftth_images = [
+            {'key': 'image1', 'b64': img1_b64,
+             'title': '🗺 Image 1 — Types incidents par régions',
+             'sub': f"{report['period_label']} — {report['total']} incident(s)"},
+            {'key': 'image2', 'b64': img2_b64,
+             'title': '📊 Image 2 — Inc / Métier / MTTR',
+             'sub': report['month_label']},
+            {'key': 'image3', 'b64': img3_b64,
+             'title': '📈 Image 3 — Incidents / Régions Vs MTTR',
+             'sub': report['period_label']},
+            {'key': 'image4', 'b64': img4_b64,
+             'title': '📉 Image 4 — Statistiques / causes',
+             'sub': report['period_label']},
+        ]
+    ctx = {
+        'cfg': cfg,
+        'platform': 'fixe',
+        'report': report,
+        'source': request.session.get('ftth_source'),
+        'ftth_images': ftth_images,
+    }
+    return render(request, 'reports/fixe_rapport_ftth.html', ctx)
+
+
+def fixe_ftth_process(request):
+    """Reçoit le fichier RESEAU_FIXE_*.xlsx, construit les 4 rapports
+    (Image 1 à 4), les stocke en session puis réaffiche la page."""
+    if request.method != 'POST':
+        return redirect('fixe_rapport_ftth')
+
+    uploaded = request.FILES.get('ftth_file')
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return redirect('fixe_rapport_ftth')
+
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return redirect('fixe_rapport_ftth')
+
+    import tempfile
+    from .fixe_ftth import parse_reseau_fixe
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+    try:
+        report = parse_reseau_fixe(tmp_path, filename=uploaded.name)
+    except Exception as e:
+        messages.error(request, f'Lecture impossible : {e}')
+        return redirect('fixe_rapport_ftth')
+    finally:
+        os.unlink(tmp_path)
+
+    request.session['ftth_report'] = report
+    request.session['ftth_source'] = uploaded.name
+    messages.success(
+        request,
+        f'{report["total"]} incident(s) analysé(s) — {report["period_label"]}.'
+    )
+    from django.urls import reverse
+    return redirect(reverse('fixe_rapport_ftth') + '#ftth-report')
+
+
+def fixe_ftth_export(request, image, fmt):
+    """Exporte Image 1 à 4 du rapport FTTH réseau fixe (PPTX ou PNG)."""
+    report = request.session.get('ftth_report')
+    if not report:
+        messages.error(request, 'Aucun rapport en mémoire. Importez d’abord le fichier RESEAU_FIXE.')
+        return redirect('fixe_rapport_ftth')
+
+    if image not in ('image1', 'image2', 'image3', 'image4', 'all'):
+        raise Http404('Image inconnue')
+
+    generated_on = date.today().strftime('%d/%m/%Y')
+    from .fixe_ftth import (build_png_image1, build_png_image2,
+                            build_png_image3, build_png_image4)
+    from .pptx_report import generate_image_slide, generate_image_deck
+
+    builders = {
+        'image1': (build_png_image1, 'GDI_FTTH_Types_Incidents_Regions'),
+        'image2': (build_png_image2, 'GDI_FTTH_Inc_Metier_MTTR'),
+        'image3': (build_png_image3, 'GDI_FTTH_Inc_Regions_MTTR'),
+        'image4': (build_png_image4, 'GDI_FTTH_Statistiques_Causes'),
+    }
+
+    # Export groupé : les 4 images dans un seul PPTX
+    if image == 'all':
+        if fmt != 'pptx':
+            raise Http404('Format inconnu')
+        pngs = [b(report, generated_on) for b, _ in builders.values()]
+        buf = generate_image_deck(pngs, generated_on, report.get('period_label', ''))
+        return FileResponse(
+            buf, as_attachment=True, filename='GDI_FTTH_Rapport_Complet.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+    builder, base = builders[image]
+    png = builder(report, generated_on)
+
+    if fmt == 'png':
+        return FileResponse(png, as_attachment=True, filename=f'{base}.png',
+                            content_type='image/png')
+    if fmt == 'pptx':
+        buf = generate_image_slide(png, generated_on, report.get('period_label', ''))
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.pptx',
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+
+    raise Http404('Format inconnu')
 
 
 # ─────────────────────────────────────────────────────────────────────────────

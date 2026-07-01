@@ -280,6 +280,97 @@
 
 </div>
 
+{% if platform == 'core' %}
+<!-- ══ Rapport GDI : Disponibilité et trafic IGW (Incidents core) ══ -->
+<div class="section-hdr" id="gdi-report">
+  <div class="section-hdr-pill" style="background:linear-gradient(135deg,#0d2461,#162d72)">📋 Comité Gestion des Incidents</div>
+  <div class="section-hdr-line"></div>
+  {% if gdi_report %}<span class="section-hdr-cnt">{{ gdi_report.total }} incident{% if gdi_report.total > 1 %}s{% endif %}</span>{% endif %}
+</div>
+
+<div class="import-card">
+  <div class="import-card-head" style="background:linear-gradient(135deg,#0d2461,#162d72)">
+    <div class="import-card-head-icon">📋</div>
+    <div>
+      <div class="import-card-head-title">Disponibilité et trafic IGW — Incidents core</div>
+      <div class="import-card-head-sub">Importez le fichier de tickets (CORE_ET_IGW_*.xlsx) pour générer le rapport</div>
+    </div>
+  </div>
+  <div class="import-card-body">
+    <form method="post" action="{% url 'core_gdi_process' %}" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="import-form-row">
+        <div class="import-file-wrap">
+          <label class="import-label" for="gdi_file">Fichier de tickets d'incidents</label>
+          <input type="file" name="gdi_file" id="gdi_file"
+                 accept=".xlsx,.xls" class="import-file-input" required>
+          <div class="import-hint">Colonnes attendues : Nature de l'incident, Impact - Service, Cause, Escalade, Duration</div>
+        </div>
+        <div class="import-actions">
+          <button type="submit" class="btn-import" style="background:linear-gradient(135deg,#0d2461,#162d72)">📋 Générer le rapport</button>
+        </div>
+      </div>
+    </form>
+
+    {% if gdi_report %}
+    <div style="margin-top:24px; border-top:1px solid #eef2fa; padding-top:20px;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <div>
+          <div style="font-size:18px; font-weight:800; color:#003087;">COMITE GESTION DES INCIDENTS</div>
+          <div style="font-size:14px; font-weight:700; color:#e30013;">Disponibilité et trafic IGW{% if gdi_report.period_label %} — {{ gdi_report.period_label }}{% endif %}</div>
+          {% if gdi_source %}<div style="font-size:11px; color:#9aa3ba; margin-top:3px;">Source : {{ gdi_source }}</div>{% endif %}
+        </div>
+        <img id="gdi-yas-logo" alt="Yas" style="height:54px; width:auto;">
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+        <a href="{% url 'core_gdi_export' 'pptx' %}" class="btn-import" style="background:linear-gradient(135deg,#b34700,#e05a00); text-decoration:none;">⬇ Export PPTX (Top 3)</a>
+        <a href="{% url 'core_gdi_export' 'pptx' %}?scope=all" class="btn-import" style="background:linear-gradient(135deg,#1d4ed8,#3b82f6); text-decoration:none;">⬇ Export PPTX (Tous)</a>
+        <a href="{% url 'core_gdi_export' 'png' %}" class="btn-import" style="background:linear-gradient(135deg,#166534,#22c55e); text-decoration:none;">🖼 Export PNG</a>
+      </div>
+
+      <div style="display:inline-block; background:#FFC72C; color:#003087; font-weight:800; font-size:13px; padding:6px 16px; border-radius:6px; margin-bottom:10px;">Incidents core</div>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+          <thead>
+            <tr>
+              <th style="background:#FFC72C; color:#003087; text-align:left; padding:9px 12px; border:2px solid #fff;">Nature de l'incident</th>
+              <th style="background:#FFC72C; color:#003087; text-align:left; padding:9px 12px; border:2px solid #fff;">Impact - Service</th>
+              <th style="background:#FFC72C; color:#003087; text-align:left; padding:9px 12px; border:2px solid #fff;">Cause</th>
+              <th style="background:#FFC72C; color:#003087; text-align:left; padding:9px 12px; border:2px solid #fff;">Escalade</th>
+              <th style="background:#FFC72C; color:#003087; text-align:center; padding:9px 12px; border:2px solid #fff;">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in gdi_report.rows %}
+            <tr>
+              <td style="background:#0d2461; color:#fff; font-weight:700; padding:9px 12px; border:2px solid #fff;">{{ r.nature }}</td>
+              <td style="background:#e8ecf4; color:#003087; padding:9px 12px; border:2px solid #fff;">{{ r.impact }}</td>
+              <td style="background:#e8ecf4; color:#003087; padding:9px 12px; border:2px solid #fff;">{{ r.cause }}</td>
+              <td style="background:#e8ecf4; color:#003087; padding:9px 12px; border:2px solid #fff;">{{ r.escalade }}</td>
+              <td style="background:#e8ecf4; color:#003087; text-align:center; white-space:nowrap; padding:9px 12px; border:2px solid #fff;">{{ r.duration }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" style="padding:14px; text-align:center; color:#9aa3ba;">Aucun incident dans le fichier importé.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script src="{% static 'reports/yas_logo.js' %}"></script>
+<script>
+  (function(){
+    var el = document.getElementById('gdi-yas-logo');
+    if (el && window.YAS_LOGO_DATA) { el.src = window.YAS_LOGO_DATA; }
+    else if (el) { el.style.display = 'none'; }
+  })();
+</script>
+{% endif %}
+
 <!-- ══ Rapports Excel ══ -->
 {% if excel_reports %}
 <div class="section-hdr">
@@ -371,6 +462,7 @@
 {% endif %}
 
 <!-- ══ Import ══ -->
+{% if platform != 'core' %}
 <div class="section-hdr" style="margin-top:32px;">
   <div class="section-hdr-pill import">📂 Import des données</div>
   <div class="section-hdr-line"></div>
@@ -408,5 +500,6 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 {% endblock %}

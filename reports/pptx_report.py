@@ -739,3 +739,687 @@ def generate_report(mois_mobile=None, mois_dr2=None, mois_fixe=None,
     prs.save(buf)
     buf.seek(0)
     return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAPPORT GDI CORE — « Disponibilité et trafic IGW » (1 slide, depuis upload)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _gdi_core_slide(prs, table_rows, period_label, page_label=''):
+    """Construit une slide « Incidents core » avec les lignes fournies."""
+    sl = _blank(prs)
+    _rect(sl, 0, 0, SW, SH, C_WHITE)
+
+    # Titres
+    _txt(sl, 'COMITE GESTION DES INCIDENTS', MARGIN, Inches(0.18),
+         Inches(9), Inches(0.45), size=22, bold=True, color=C_BLUE)
+    _txt(sl, 'Disponibilité et trafic IGW', MARGIN, Inches(0.62),
+         Inches(9), Inches(0.40), size=16, bold=True,
+         color=RGBColor(0xE3, 0x00, 0x13))
+    if period_label:
+        _txt(sl, period_label, Inches(9.0), Inches(0.22), Inches(2.6), Inches(0.4),
+             size=14, bold=True, color=C_BLUE, align=PP_ALIGN.RIGHT)
+
+    # Logo Yas (haut-droite)
+    try:
+        from .gdi_core import yas_logo_bytes
+        logo = yas_logo_bytes()
+        if logo:
+            from PIL import Image as _PILImage
+            _img = _PILImage.open(BytesIO(logo))
+            ratio = _img.height / _img.width
+            lw = Inches(1.25)
+            lh = Inches(1.25 * ratio)
+            sl.shapes.add_picture(BytesIO(logo), SW - MARGIN - lw, Inches(0.18), lw, lh)
+    except Exception:
+        pass
+
+    # Étiquette « Incidents core »
+    _rect(sl, MARGIN, Inches(1.20), Inches(2.0), Inches(0.46), C_YELL)
+    _txt(sl, 'Incidents core', MARGIN, Inches(1.24), Inches(2.0), Inches(0.40),
+         size=14, bold=True, color=C_BLUE, align=PP_ALIGN.CENTER)
+    if page_label:
+        _txt(sl, page_label, SW - MARGIN - Inches(2.4), Inches(1.24),
+             Inches(2.4), Inches(0.40), size=12, bold=True, color=C_BLUE3,
+             align=PP_ALIGN.RIGHT)
+
+    headers = ["Nature de l'incident", 'Impact - Service', 'Cause', 'Escalade', 'Duration']
+
+    if not table_rows:
+        _txt(sl, 'Aucun incident dans le fichier importé.',
+             MARGIN, Inches(2.2), SW - 2*MARGIN, Inches(0.5),
+             size=14, color=C_BLUE3)
+        return
+
+    nr = len(table_rows) + 1
+    top = Inches(1.95)
+    height = SH - top - Inches(0.45)
+    tbl = sl.shapes.add_table(
+        nr, 5, MARGIN, top, SW - 2*MARGIN, height).table
+    tbl.first_row = False
+    tbl.horz_banding = False
+
+    widths = [3.3, 2.5, 2.9, 2.2, 1.5]
+    tw = SW - 2*MARGIN
+    tot = sum(widths)
+    for i, cw in enumerate(widths):
+        tbl.columns[i].width = int(tw * cw / tot)
+
+    # En-tête plus fine, lignes de données hautes (style Image 2)
+    hdr_h = Inches(0.5)
+    tbl.rows[0].height = hdr_h
+    body_h = int((height - hdr_h) / len(table_rows))
+    for i in range(1, nr):
+        tbl.rows[i].height = body_h
+
+    from pptx.enum.text import MSO_ANCHOR
+
+    def _c(cell, val, bg, fg, bold, align, fs=11):
+        cell.text = ''
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = bg
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+        cell.margin_left = Inches(0.08)
+        cell.margin_right = Inches(0.08)
+        cell.margin_top = Inches(0.04)
+        cell.margin_bottom = Inches(0.04)
+        tf = cell.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = align
+        r = p.add_run()
+        r.text = str(val) if val is not None else ''
+        r.font.size = Pt(fs)
+        r.font.bold = bold
+        r.font.color.rgb = fg
+
+    # En-tête jaune, texte bleu (gras, aligné à gauche)
+    for j, h in enumerate(headers):
+        _c(tbl.cell(0, j), h, C_YELL, C_BLUE, True, PP_ALIGN.LEFT, fs=12)
+
+    C_NAVY_CELL = RGBColor(0x0D, 0x24, 0x61)
+    C_GRAY_CELL = RGBColor(0xE8, 0xEC, 0xF4)
+    # Réduire la police quand beaucoup de lignes pour rester lisible
+    fs = 11 if len(table_rows) <= 9 else 9
+    for i, row in enumerate(table_rows):
+        for j, val in enumerate(row):
+            if j == 0:
+                _c(tbl.cell(i+1, j), val, C_NAVY_CELL, C_WHITE, True,
+                   PP_ALIGN.CENTER, fs=fs)
+            else:
+                _c(tbl.cell(i+1, j), val, C_GRAY_CELL, C_BLUE, False,
+                   PP_ALIGN.CENTER, fs=fs)
+
+
+def generate_gdi_core(rows, period_label='', generated_on='', top_n=3,
+                      rows_per_slide=12):
+    """
+    Génère un PPTX reproduisant le rapport « COMITE GESTION DES INCIDENTS –
+    Disponibilité et trafic IGW » avec le bloc « Incidents core ».
+
+    Si `top_n` est défini, affiche le TOP `top_n` des incidents les plus
+    critiques (durée la plus longue) sur une seule slide. Si `top_n` est None,
+    affiche TOUS les incidents, paginés sur plusieurs slides
+    (`rows_per_slide` lignes par slide).
+    `rows` = liste de dicts : {nature, impact, cause, escalade, duration, duration_sec}
+    Retourne un BytesIO.
+    """
+    prs = Presentation()
+    prs.slide_width  = SW
+    prs.slide_height = SH
+
+    all_rows = rows or []
+    if top_n is not None:
+        all_rows = all_rows[:top_n]
+
+    def _row(r):
+        return [r.get('nature', ''), r.get('impact', ''), r.get('cause', ''),
+                r.get('escalade', ''), r.get('duration', '')]
+
+    table_rows = [_row(r) for r in all_rows]
+
+    if not table_rows:
+        _gdi_core_slide(prs, [], period_label)
+    else:
+        chunks = [table_rows[i:i + rows_per_slide]
+                  for i in range(0, len(table_rows), rows_per_slide)]
+        n_pages = len(chunks)
+        for idx, chunk in enumerate(chunks, start=1):
+            page_label = f'Page {idx}/{n_pages}' if n_pages > 1 else ''
+            _gdi_core_slide(prs, chunk, period_label, page_label)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def generate_igw_dispo(report, top_incidents=None, generated_on=''):
+    """
+    Génère un PPTX 1 slide « COMITE GESTION DES INCIDENTS – Disponibilité et
+    trafic IGW » combinant :
+      • à gauche, le tableau « Disponibilité Lien IGW » (Lien / Nombre Inc / Taux),
+      • à droite, le « TOP 3 Incidents critiques du mois » (issu de la page Core).
+    Retourne un BytesIO.
+    """
+    from pptx.enum.text import MSO_ANCHOR
+    from .igw_dispo import fmt_pct
+
+    links = report.get('links', [])
+    month_label = report.get('month_label', '')
+    period_label = report.get('period_label', '')
+    top_incidents = (top_incidents or [])[:3]
+
+    C_NAVY_CELL = RGBColor(0x0D, 0x24, 0x61)
+    C_GRAY_CELL = RGBColor(0xE8, 0xEC, 0xF4)
+    C_GREEN = RGBColor(0x22, 0xC5, 0x5E)
+    C_ORANGE = RGBColor(0xF5, 0xC0, 0x00)
+    C_RED = RGBColor(0xE3, 0x00, 0x13)
+
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    sl = _blank(prs)
+    _rect(sl, 0, 0, SW, SH, C_WHITE)
+
+    # Titres
+    _txt(sl, 'COMITE GESTION DES INCIDENTS', MARGIN, Inches(0.16),
+         Inches(9), Inches(0.45), size=22, bold=True, color=C_BLUE)
+    _txt(sl, 'Disponibilité et trafic IGW', MARGIN, Inches(0.60),
+         Inches(9), Inches(0.38), size=15, bold=True, color=C_RED)
+
+    # Logo Yas
+    try:
+        from .gdi_core import yas_logo_bytes
+        logo = yas_logo_bytes()
+        if logo:
+            from PIL import Image as _PILImage
+            _img = _PILImage.open(BytesIO(logo))
+            ratio = _img.height / _img.width
+            lw = Inches(1.2)
+            lh = Inches(1.2 * ratio)
+            sl.shapes.add_picture(BytesIO(logo), SW - MARGIN - lw, Inches(0.16), lw, lh)
+    except Exception:
+        pass
+
+    def _cell(cell, val, bg, fg, bold, align, fs=10):
+        cell.text = ''
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = bg
+        cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+        cell.margin_left = Inches(0.06)
+        cell.margin_right = Inches(0.06)
+        cell.margin_top = Inches(0.02)
+        cell.margin_bottom = Inches(0.02)
+        tf = cell.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = align
+        r = p.add_run()
+        r.text = str(val) if val is not None else ''
+        r.font.size = Pt(fs)
+        r.font.bold = bold
+        r.font.color.rgb = fg
+
+    top = Inches(1.55)
+    bottom = SH - Inches(0.35)
+    gap = Inches(0.30)
+    left_w = Inches(6.2)
+    right_w = SW - 2 * MARGIN - left_w - gap
+    right_x = MARGIN + left_w + gap
+
+    # ── Étiquette gauche ──
+    _rect(sl, MARGIN, Inches(1.08), left_w, Inches(0.42), C_YELL)
+    _txt(sl, f'Disponibilité Lien IGW {month_label}'.strip(),
+         MARGIN, Inches(1.11), left_w, Inches(0.36),
+         size=13, bold=True, color=C_BLUE, align=PP_ALIGN.CENTER)
+
+    # ── Tableau gauche : Lien / Nombre Inc / Taux ──
+    nrows = len(links) + 1
+    if nrows < 2:
+        nrows = 2
+    tblL = sl.shapes.add_table(nrows, 3, MARGIN, top, left_w, bottom - top).table
+    tblL.first_row = False
+    tblL.horz_banding = False
+    lw3 = [3.3, 1.3, 1.6]
+    tot = sum(lw3)
+    for i, cw in enumerate(lw3):
+        tblL.columns[i].width = int(left_w * cw / tot)
+    hL = Inches(0.34)
+    tblL.rows[0].height = hL
+    body_h = int((bottom - top - hL) / max(len(links), 1))
+    for i in range(1, nrows):
+        tblL.rows[i].height = body_h
+    for j, h in enumerate(['Lien', 'Nombre Inc', month_label or 'Taux']):
+        _cell(tblL.cell(0, j), h, C_NAVY_CELL, C_WHITE, True, PP_ALIGN.CENTER, fs=11)
+    if not links:
+        _cell(tblL.cell(1, 0), 'Aucun lien dans le fichier.', C_GRAY_CELL,
+              C_BLUE, False, PP_ALIGN.LEFT, fs=10)
+        _cell(tblL.cell(1, 1), '', C_GRAY_CELL, C_BLUE, False, PP_ALIGN.CENTER)
+        _cell(tblL.cell(1, 2), '', C_GRAY_CELL, C_BLUE, False, PP_ALIGN.CENTER)
+    for i, lk in enumerate(links):
+        avail = lk['availability']
+        is100 = avail >= 99.999
+        _cell(tblL.cell(i + 1, 0), lk['short'], C_GRAY_CELL, C_BLUE, True,
+              PP_ALIGN.LEFT, fs=10)
+        _cell(tblL.cell(i + 1, 1), str(lk['n_inc']), C_GRAY_CELL, C_BLUE, True,
+              PP_ALIGN.CENTER, fs=10)
+        _cell(tblL.cell(i + 1, 2), fmt_pct(avail),
+              C_GREEN if is100 else C_ORANGE,
+              C_WHITE if is100 else C_NAVY_CELL, True, PP_ALIGN.CENTER, fs=10)
+
+    # ── Étiquette droite ──
+    _rect(sl, right_x, Inches(1.08), right_w, Inches(0.42), C_NAVY_CELL)
+    _txt(sl, 'TOP 3 Incidents critiques du mois',
+         right_x, Inches(1.11), right_w, Inches(0.36),
+         size=13, bold=True, color=C_WHITE, align=PP_ALIGN.CENTER)
+
+    # ── Tableau droit : TOP 3 ──
+    rrows = len(top_incidents) + 1
+    if rrows < 2:
+        rrows = 2
+    rh_total = min(bottom - top, Inches(0.5) + Inches(1.2) * len(top_incidents)) \
+        if top_incidents else Inches(2.0)
+    tblR = sl.shapes.add_table(rrows, 5, right_x, top, right_w, rh_total).table
+    tblR.first_row = False
+    tblR.horz_banding = False
+    rw3 = [2.6, 1.9, 2.0, 1.4, 1.1]
+    totr = sum(rw3)
+    for i, cw in enumerate(rw3):
+        tblR.columns[i].width = int(right_w * cw / totr)
+    hR = Inches(0.40)
+    tblR.rows[0].height = hR
+    if top_incidents:
+        rbody = int((rh_total - hR) / len(top_incidents))
+        for i in range(1, rrows):
+            tblR.rows[i].height = rbody
+    for j, h in enumerate(["Nature de l'incident", 'Impact - Service', 'Cause', 'Escalade', 'Duration']):
+        _cell(tblR.cell(0, j), h, C_YELL, C_BLUE, True, PP_ALIGN.LEFT, fs=11)
+    if not top_incidents:
+        _cell(tblR.cell(1, 0),
+              'Importez le fichier de tickets sur la page Core (TOP 3).',
+              C_GRAY_CELL, C_BLUE, False, PP_ALIGN.LEFT, fs=10)
+        for jj in range(1, 5):
+            _cell(tblR.cell(1, jj), '', C_GRAY_CELL, C_BLUE, False, PP_ALIGN.CENTER)
+    for i, inc in enumerate(top_incidents):
+        _cell(tblR.cell(i + 1, 0), inc.get('nature', ''), C_NAVY_CELL, C_WHITE,
+              True, PP_ALIGN.CENTER, fs=10)
+        _cell(tblR.cell(i + 1, 1), inc.get('impact', ''), C_GRAY_CELL, C_BLUE,
+              False, PP_ALIGN.CENTER, fs=10)
+        _cell(tblR.cell(i + 1, 2), inc.get('cause', ''), C_GRAY_CELL, C_BLUE,
+              False, PP_ALIGN.CENTER, fs=10)
+        _cell(tblR.cell(i + 1, 3), inc.get('escalade', ''), C_GRAY_CELL, C_BLUE,
+              False, PP_ALIGN.CENTER, fs=10)
+        _cell(tblR.cell(i + 1, 4), inc.get('duration', ''), C_GRAY_CELL, C_BLUE,
+              False, PP_ALIGN.CENTER, fs=10)
+
+    if generated_on:
+        _txt(sl, f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — {period_label}',
+             MARGIN, SH - Inches(0.30), SW - 2 * MARGIN, Inches(0.25),
+             size=8, color=C_BLUE)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def generate_image_slide(png_buf, generated_on='', footer=''):
+    """Place une image PNG (BytesIO) en plein écran sur une diapo unique."""
+    from PIL import Image as _PILImage
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    _add_image_slide(prs, png_buf, generated_on, footer)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _add_image_slide(prs, png_buf, generated_on='', footer=''):
+    """Ajoute une diapo plein écran contenant l'image PNG à `prs`."""
+    from PIL import Image as _PILImage
+    sl = _blank(prs)
+    _rect(sl, 0, 0, SW, SH, C_WHITE)
+
+    png_buf.seek(0)
+    im = _PILImage.open(png_buf)
+    w, h = im.size
+    png_buf.seek(0)
+    ratio = h / w
+    avail_w = SW - 2 * MARGIN
+    avail_h = SH - 2 * MARGIN - Inches(0.3)
+    iw = avail_w
+    ih = int(iw * ratio)
+    if ih > avail_h:
+        ih = int(avail_h)
+        iw = int(ih / ratio)
+    left = int((SW - iw) / 2)
+    top = int((SH - ih - Inches(0.3)) / 2)
+    sl.shapes.add_picture(png_buf, left, top, int(iw), int(ih))
+
+    if generated_on or footer:
+        _txt(sl, f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — {footer}',
+             MARGIN, SH - Inches(0.30), SW - 2 * MARGIN, Inches(0.25),
+             size=8, color=C_BLUE)
+    return sl
+
+
+def generate_image_deck(png_bufs, generated_on='', footer=''):
+    """Regroupe plusieurs images PNG (BytesIO) en un seul PPTX, une par diapo."""
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    for png_buf in png_bufs:
+        _add_image_slide(prs, png_buf, generated_on, footer)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAPPORT NOC TRANSMISSION — DIAPOS NATIVES (MODIFIABLES)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR
+
+C_NAVY_T = RGBColor(0x0D, 0x24, 0x61)
+C_RED_T  = RGBColor(0xE3, 0x00, 0x13)
+C_GCELL  = RGBColor(0xE8, 0xEC, 0xF4)
+
+
+def _t_logo(slide):
+    from .gdi_core import yas_logo_bytes
+    data = yas_logo_bytes()
+    if not data:
+        return
+    try:
+        slide.shapes.add_picture(BytesIO(data), SW - Inches(1.55), Inches(0.16),
+                                 height=Inches(0.78))
+    except Exception:
+        pass
+
+
+def _t_header(slide, subtitle):
+    _rect(slide, 0, 0, SW, SH, C_WHITE)
+    _txt(slide, 'COMITE GESTION DES INCIDENTS', MARGIN, Inches(0.16),
+         Inches(9), Inches(0.45), size=21, bold=True, color=C_BLUE)
+    _txt(slide, subtitle, MARGIN, Inches(0.64), Inches(9), Inches(0.35),
+         size=14, bold=True, color=C_RED_T)
+    _t_logo(slide)
+
+
+def _t_oval(slide, l, t, w, h, fill, text='', size=13, color=C_WHITE, bold=True):
+    shp = slide.shapes.add_shape(MSO_SHAPE.OVAL, l, t, w, h)
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = fill
+    shp.line.fill.background()
+    if text:
+        tf = shp.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = text
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.color.rgb = color
+    return shp
+
+
+def _t_arrow(slide, l, t, w, h, fill):
+    shp = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, l, t, w, h)
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = fill
+    shp.line.fill.background()
+    return shp
+
+
+def _t_box(slide, l, t, w, h, fill, lines, size=9):
+    """lines = liste de (texte, couleur, gras)."""
+    shp = _rect(slide, l, t, w, h, fill)
+    tf = shp.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.08)
+    tf.margin_top = Inches(0.04)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    for i, (txt, col, bd) in enumerate(lines):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        r = p.add_run()
+        r.text = txt
+        r.font.size = Pt(size)
+        r.font.bold = bd
+        r.font.color.rgb = col
+    return shp
+
+
+def _t_cell(cell, text, bg, fg, size=9, bold=False, align=PP_ALIGN.CENTER):
+    cell.fill.solid()
+    cell.fill.fore_color.rgb = bg
+    cell.margin_left = Inches(0.05)
+    cell.margin_right = Inches(0.05)
+    cell.margin_top = Inches(0.02)
+    cell.margin_bottom = Inches(0.02)
+    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf = cell.text_frame
+    tf.word_wrap = True
+    for i, ln in enumerate(str(text).split('\n')):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = align
+        r = p.add_run()
+        r.text = ln
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.color.rgb = fg
+
+
+def _slide_transport_image1(prs, report, generated_on):
+    sl = _blank(prs)
+    im1 = report['image1']
+    _t_header(sl, 'Détails Incident transport')
+    _txt(sl, f"{report['total_inc']} incidents enregistrés", MARGIN, Inches(1.12),
+         Inches(4), Inches(0.4), size=14, bold=True, color=C_NAVY_T)
+
+    # Cercle central (image officielle si dispo, sinon ovale jaune + texte)
+    import os
+    cl, ct, cd = Inches(0.55), Inches(2.25), Inches(2.0)
+    bg = os.path.join(os.path.dirname(__file__), 'static', 'reports',
+                      'backbone_togo.png')
+    placed = False
+    if os.path.exists(bg):
+        try:
+            sl.shapes.add_picture(bg, cl, ct, cd, cd)
+            placed = True
+        except Exception:
+            placed = False
+    if not placed:
+        _t_oval(sl, cl, ct, cd, cd, C_YELL,
+                'Backbone de transmission De Yas', size=11, color=C_NAVY_T)
+
+    def branch(node_top, label, blk):
+        nx, r = Inches(3.3), Inches(1.0)
+        _t_oval(sl, nx, node_top, r, r, C_NAVY_T, label, size=12)
+        tx = nx + r + Inches(0.15)
+        _txt(sl, f"Inc : {blk['inc']}", tx, node_top + Inches(0.12),
+             Inches(2.0), Inches(0.3), size=14, bold=True, color=C_NAVY_T)
+        _txt(sl, f"MTTR : {_fmt(blk['mttr_sec'])}", tx, node_top + Inches(0.5),
+             Inches(2.3), Inches(0.3), size=14, bold=True, color=C_RED_T)
+        _t_arrow(sl, Inches(6.55), node_top + Inches(0.3),
+                 Inches(0.75), Inches(0.4), C_NAVY_T)
+        bx, bw, bh = Inches(7.5), Inches(2.95), Inches(0.62)
+        s, a = blk['sans_impact'], blk['avec_impact']
+        _t_box(sl, bx, node_top - Inches(0.05), bw, bh, C_NAVY_T,
+               [('INC SANS IMPACT', C_YELL, True),
+                (f"Nbre : {s['inc']}    MTTR : {_fmt(s['mttr_sec'])}", C_WHITE, False)])
+        _t_box(sl, bx, node_top + Inches(0.63), bw, bh, C_NAVY_T,
+               [('INC AVEC IMPACT', C_YELL, True),
+                (f"Nbre : {a['inc']}    MTTR : {_fmt(a['mttr_sec'])}", C_WHITE, False)])
+
+    branch(Inches(1.65), 'Backhaul', im1['backhaul'])
+    branch(Inches(3.55), 'BackBone', im1['backbone'])
+
+    # Tableau détails Backbone
+    details = im1['backbone_details']
+    if details:
+        _txt(sl, 'Détails incidents BACKBONE', MARGIN, Inches(5.0),
+             Inches(5), Inches(0.3), size=12, bold=True, color=C_NAVY_T)
+        rows = details[:5]
+        widths = [Inches(3.3), Inches(2.4), Inches(2.3)]
+        tbl = sl.shapes.add_table(len(rows) + 1, 3, MARGIN, Inches(5.35),
+                                  sum(widths, Inches(0)), Inches(0.4) * (len(rows) + 1)).table
+        tbl.first_row = False
+        tbl.horz_banding = False
+        for i, w in enumerate(widths):
+            tbl.columns[i].width = w
+        for i, h in enumerate(["Nature de l'incident", 'Impact - Service', 'Cause']):
+            _t_cell(tbl.cell(0, i), h, C_BLUE3, C_YELL, size=10, bold=True)
+        for ri, row in enumerate(rows, start=1):
+            _t_cell(tbl.cell(ri, 0), row['lien'], C_NAVY_T, C_WHITE,
+                    size=9, align=PP_ALIGN.LEFT)
+            _t_cell(tbl.cell(ri, 1), row['impact'], C_GCELL, C_NAVY_T, size=9)
+            _t_cell(tbl.cell(ri, 2), row['cause'], C_GCELL, C_NAVY_T, size=9)
+
+    if generated_on:
+        _txt(sl, f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — '
+             f"{report.get('period_label', '')}", MARGIN, SH - Inches(0.32),
+             Inches(11), Inches(0.25), size=8, color=C_BLUE)
+    return sl
+
+
+def _slide_transport_image2(prs, report, generated_on):
+    sl = _blank(prs)
+    im2 = report['image2']
+    regions = [r for r in im2['regions'] if r['canonical'] or r['has_data']]
+    _t_header(sl, 'Count Inc & MTTR par Métier et par Régions')
+
+    band, wm, wi, wt = Inches(1.25), Inches(1.65), Inches(0.85), Inches(1.45)
+    tw = band + wm + wi + wt
+    row_h = Inches(0.26)
+    cols_x = [MARGIN, MARGIN + tw + Inches(0.4)]
+
+    def draw_region(x, y, reg):
+        nrows = 1 + len(reg['metiers'])
+        tbl = sl.shapes.add_table(nrows, 4, x, y, tw, row_h * nrows).table
+        tbl.first_row = False
+        tbl.horz_banding = False
+        for i, w in enumerate([band, wm, wi, wt]):
+            tbl.columns[i].width = w
+        for i in range(nrows):
+            tbl.rows[i].height = row_h
+        # bandeau région (col 0 fusionnée)
+        tbl.cell(0, 0).merge(tbl.cell(nrows - 1, 0))
+        _t_cell(tbl.cell(0, 0), reg['region'], C_YELL, C_NAVY_T, size=11, bold=True)
+        for i, h in enumerate(['Métier', 'Inc', 'MTTR'], start=1):
+            _t_cell(tbl.cell(0, i), h, C_MGRAY, C_NAVY_T, size=9, bold=True)
+        for ri, m in enumerate(reg['metiers'], start=1):
+            hot = m['mttr_sec'] >= 5 * 3600
+            mttr = _fmt(m['mttr_sec']) if m['inc'] else '0:00:00'
+            _t_cell(tbl.cell(ri, 1), m['metier'], C_WHITE, C_NAVY_T,
+                    size=9, align=PP_ALIGN.LEFT)
+            _t_cell(tbl.cell(ri, 2), str(m['inc']), C_WHITE, C_NAVY_T, size=9, bold=True)
+            _t_cell(tbl.cell(ri, 3), mttr, C_RED_T if hot else C_WHITE,
+                    C_WHITE if hot else C_NAVY_T, size=9, bold=True)
+        return nrows * row_h + Inches(0.18)
+
+    n = len(regions)
+    columns = [regions[:(n + 1) // 2], regions[(n + 1) // 2:]]
+    ys = [Inches(1.3), Inches(1.3)]
+    for ci, lst in enumerate(columns):
+        for reg in lst:
+            ys[ci] += draw_region(cols_x[ci], ys[ci], reg)
+
+    # Box BACKBONE DWDM (sous la colonne la moins remplie)
+    dwdm = im2['backbone_dwdm']
+    ci = 0 if ys[0] <= ys[1] else 1
+    by = ys[ci]
+    shp = sl.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, cols_x[ci], by, tw, Inches(1.0))
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = C_NAVY_T
+    shp.line.fill.background()
+    tf = shp.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.1)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    for i, ln in enumerate([
+            f"{dwdm['count']} Indisponibilité(s) du BACKBONE DWDM",
+            f"MTTR : {_fmt(dwdm['mttr_sec'])}", dwdm['services']]):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        r = p.add_run()
+        r.text = ln
+        r.font.size = Pt(10)
+        r.font.bold = (i == 0)
+        r.font.color.rgb = C_WHITE
+
+    if generated_on:
+        _txt(sl, f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — '
+             f"{report.get('period_label', '')}", MARGIN, SH - Inches(0.32),
+             Inches(11), Inches(0.25), size=8, color=C_BLUE)
+    return sl
+
+
+def _slide_transport_image3(prs, report, generated_on):
+    sl = _blank(prs)
+    clients = report['image3']['clients']
+    _t_header(sl, 'Disponibilité clients IPT et IPLC')
+    band = _rect(sl, MARGIN, Inches(1.08), Inches(2.3), Inches(0.38), C_NAVY_T)
+    _txt(sl, 'Clients IPT & IPLC', MARGIN + Inches(0.1), Inches(1.12),
+         Inches(2.1), Inches(0.3), size=12, bold=True, color=C_WHITE)
+
+    widths = [Inches(3.2), Inches(1.3), Inches(1.9), Inches(2.4)]
+    tw = sum(widths, Inches(0))
+    left = (SW - tw) / 2
+    nrows = 1 + len(clients)
+    top = Inches(1.6)
+    avail = SH - top - Inches(0.35)
+    tbl = sl.shapes.add_table(nrows, 4, left, top, tw, avail).table
+    tbl.first_row = False
+    tbl.horz_banding = False
+    for i, w in enumerate(widths):
+        tbl.columns[i].width = w
+    for i, h in enumerate(['LIENS', 'Nbre Inc', 'Durée', 'TAUX DE DISPONIBILITE']):
+        _t_cell(tbl.cell(0, i), h, C_MGRAY, C_NAVY_T, size=11, bold=True)
+    for ri, c in enumerate(clients, start=1):
+        nb_bg = C_YELL if c['inc'] > 0 else C_WHITE
+        durs = '\n'.join(_fmt(x) for x in c['durations']) if c['durations'] else '0:00:00'
+        taux = f"{c['taux']:.2f}".replace('.', ',') + ' %'
+        _t_cell(tbl.cell(ri, 0), c['name'], C_WHITE, C_NAVY_T, size=11, bold=True)
+        _t_cell(tbl.cell(ri, 1), str(c['inc']), nb_bg,
+                C_RED_T if c['inc'] > 0 else C_NAVY_T, size=11, bold=True)
+        _t_cell(tbl.cell(ri, 2), durs, C_WHITE, C_NAVY_T, size=10)
+        _t_cell(tbl.cell(ri, 3), taux, C_WHITE, C_NAVY_T, size=11, bold=True)
+
+    if generated_on:
+        _txt(sl, f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — '
+             f"{report.get('period_label', '')}", MARGIN, SH - Inches(0.32),
+             Inches(11), Inches(0.25), size=8, color=C_BLUE)
+    return sl
+
+
+_TRANSPORT_SLIDES = {
+    'image1': _slide_transport_image1,
+    'image2': _slide_transport_image2,
+    'image3': _slide_transport_image3,
+}
+
+
+def generate_transport_editable(report, generated_on='',
+                                images=('image1', 'image2', 'image3')):
+    """Rapport NOC transmission en diapos natives PowerPoint (modifiables)."""
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    for im in images:
+        fn = _TRANSPORT_SLIDES.get(im)
+        if fn:
+            fn(prs, report, generated_on)
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
