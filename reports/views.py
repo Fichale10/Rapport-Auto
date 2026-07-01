@@ -1,5 +1,6 @@
 import calendar
 import json
+import logging
 import time  # noqa
 import os
 import math
@@ -16,6 +17,7 @@ from django.contrib import messages
 
 from .models import UploadedReport
 from .forms import UploadForm
+from accounts.decorators import gestionnaire_required, admin_required
 
 from treatement import process_file
 
@@ -290,6 +292,12 @@ def home(request):
     date_from_str = request.GET.get('date_from', '')
     date_to_str   = request.GET.get('date_to', '')
     custom_start  = custom_end = None
+    # Valeurs affichées dans les inputs (toujours pré-remplies)
+    _td = date.today()
+    _home_default_from = f"{_td.year}-{_td.month:02d}-01T00:00"
+    _home_default_to   = f"{_td.isoformat()}T23:59"
+    home_date_from_display = date_from_str or _home_default_from
+    home_date_to_display   = date_to_str   or _home_default_to
 
     if date_from_str and date_to_str:
         try:
@@ -307,6 +315,26 @@ def home(request):
             uploaded_at__date__gte=custom_start,
             uploaded_at__date__lte=custom_end,
         )
+        # Aucune donnée locale → auto-fetch depuis l'API (segmenté par mois si > 31 jours)
+        if not base_qs.exists():
+            try:
+                from .api_import import run_import_months as _rim
+                import logging as _log
+                _logger_home = _log.getLogger('reports.api_import')
+                _res = _rim(
+                    custom_start.isoformat(), custom_end.isoformat(),
+                    triggered_by=request.user, overwrite=True, network='mobile',
+                )
+                if _res.get('errors'):
+                    _logger_home.error("Home auto-fetch errors: %s", _res['errors'])
+                if _res.get('created') or _res.get('skipped'):
+                    base_qs = all_reports.filter(
+                        uploaded_at__date__gte=custom_start,
+                        uploaded_at__date__lte=custom_end,
+                    )
+            except Exception as _exc:
+                import logging as _log
+                _log.getLogger('reports.api_import').exception("Home auto-fetch failed: %s", _exc)
     else:
         base_qs = all_reports
 
@@ -468,8 +496,8 @@ def home(request):
 
     return render(request, 'reports/home.html', {
         'period':           period,
-        'date_from':        date_from_str,
-        'date_to':          date_to_str,
+        'date_from':        home_date_from_display,
+        'date_to':          home_date_to_display,
         'synth_rows':       synth_rows,
         'synth_total_inc':  synth_total_inc,
         'total_reports':        total_reports,
@@ -496,6 +524,7 @@ def home(request):
     })
 
 
+@gestionnaire_required
 def upload(request):
     from datetime import timedelta
     if request.method == 'POST':
@@ -721,6 +750,7 @@ def results(request, pk):
     return render(request, 'reports/results.html', {'report': report, 'period_label': _period_label(report)})
 
 
+@gestionnaire_required
 def download_file(request, pk, file_type):
     report = get_object_or_404(UploadedReport, pk=pk, processed=True)
     if report.user != request.user and not request.user.is_superuser:
@@ -1013,6 +1043,7 @@ def _make_donut_svg(data, total_h):
     )
 
 
+@gestionnaire_required
 def export_pdf(request, pk):
     import datetime
     from django.http import HttpResponse
@@ -1375,6 +1406,7 @@ def comparer(request):
     })
 
 
+@gestionnaire_required
 def export_statistiques(request):
     import openpyxl
     import openpyxl.chart.label
@@ -2088,6 +2120,388 @@ def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
     return semaine_labels, dispo_table, outage_table
 
 
+def _compute_fixe_stats_lazy(report):
+    """Calcule fixe_stats_json depuis le fichier brut si non encore calculé, puis le met en cache."""
+    if report.fixe_stats_json:
+        return report.fixe_stats_json
+
+    try:
+        import pandas as _pd
+
+        if not report.file:
+            return {}
+
+        df = _pd.read_excel(report.file.path)
+
+        def _fmt(secs):
+            s = int(secs or 0)
+            return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+        # Calcul durée bornée à la période du rapport
+        debut_str = str(report.date_rapport or '')[:10]
+        fin_str   = str(report.date_fin or report.date_rapport or '')[:10]
+        debut_ts  = _pd.Timestamp(f"{debut_str} 00:00:00") if debut_str else None
+        fin_ts    = _pd.Timestamp(f"{fin_str} 23:59:59")   if fin_str   else None
+
+        df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        if fin_ts:
+            df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+        if debut_ts:
+            df['_at'] = df['_at'].clip(lower=debut_ts)
+        df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+        # Détection colonnes (insensible à la casse)
+        cols_lower = {c.strip().lower(): c for c in df.columns}
+        esc_col    = cols_lower.get('escalade')
+        reg_col    = cols_lower.get('région') or cols_lower.get('region')
+        status_col = cols_lower.get('status')
+        cause_col  = cols_lower.get('cause')
+        nat_col    = next(
+            (cols_lower[k] for k in cols_lower
+             if k in ("incident nature", "nature de l'incident",
+                       "nature de l’incident", "incident_nature")),
+            None
+        )
+
+        def _group_stats(col):
+            out = []
+            for val, grp in df.groupby(col):
+                val = str(val).strip()
+                if not val or val.lower() == 'nan':
+                    continue
+                n   = len(grp)
+                td  = float(grp['_dur'].sum())
+                mttr = td / n if n else 0
+                out.append({'name': val, 'count': n, 'total_dur_sec': td,
+                             'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            return sorted(out, key=lambda x: x['count'], reverse=True)
+
+        metier_stats = _group_stats(esc_col) if esc_col else []
+        region_stats = _group_stats(reg_col) if reg_col else []
+
+        open_causes = []
+        if cause_col:
+            df_open = df
+            if status_col:
+                mask    = df[status_col].astype(str).str.upper().isin(['OUVERT', 'OPEN'])
+                df_open = df[mask] if mask.any() else df
+            for cause, cnt in df_open[cause_col].dropna().astype(str).value_counts().items():
+                cause = str(cause).strip()
+                if cause and cause.lower() != 'nan':
+                    open_causes.append({'name': cause, 'count': int(cnt)})
+
+        incident_types = []
+        if nat_col:
+            for itype, cnt in df[nat_col].dropna().astype(str).value_counts().head(20).items():
+                itype = str(itype).strip()
+                if itype and itype.lower() != 'nan':
+                    incident_types.append({'name': itype, 'count': int(cnt)})
+
+        stats = {
+            'metier': metier_stats, 'region': region_stats,
+            'open_causes': open_causes, 'incident_types': incident_types,
+        }
+
+        # Mise en cache pour les prochaines requêtes
+        report.fixe_stats_json = stats
+        report.save(update_fields=['fixe_stats_json'])
+        return stats
+
+    except Exception:
+        return {}
+
+
+def _build_fixe_context(reports, platform):
+    """Agrège les fixe_stats_json de plusieurs rapports en données prêtes pour le template."""
+    if platform != 'fixe':
+        return {'fixe_stats': None}
+
+    from collections import defaultdict
+
+    metier_agg  = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0, 'mttr_sec': 0.0})
+    region_agg  = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0, 'mttr_sec': 0.0})
+    causes_agg  = defaultdict(int)
+    types_agg   = defaultdict(int)
+
+    for r in reports:
+        # Utilise fixe_stats_json pré-calculé OU le calcule à la volée depuis le fichier
+        fs = _compute_fixe_stats_lazy(r)
+        for m in fs.get('metier', []):
+            metier_agg[m['name']]['count']         += m['count']
+            metier_agg[m['name']]['total_dur_sec'] += m.get('total_dur_sec', 0)
+        for rg in fs.get('region', []):
+            region_agg[rg['name']]['count']         += rg['count']
+            region_agg[rg['name']]['total_dur_sec'] += rg.get('total_dur_sec', 0)
+        for c in fs.get('open_causes', []):
+            causes_agg[c['name']] += c['count']
+        for t in fs.get('incident_types', []):
+            types_agg[t['name']] += t['count']
+
+    def _fmt(secs):
+        s = int(secs or 0)
+        return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+    def _build_chart(agg, key='count'):
+        items = sorted(agg.items(), key=lambda x: x[1][key] if isinstance(x[1], dict) else x[1], reverse=True)
+        max_v = items[0][1][key] if items and isinstance(items[0][1], dict) else (items[0][1] if items else 1)
+        max_v = max_v or 1
+        result = []
+        for name, v in items:
+            if isinstance(v, dict):
+                n  = v['count']
+                td = v['total_dur_sec']
+                mttr = td / n if n else 0
+                result.append({
+                    'name': name, 'count': n,
+                    'mttr': _fmt(mttr), 'mttr_sec': mttr,
+                    'pct_count': round(n / max_v * 100),
+                    'pct_mttr':  0,
+                })
+            else:
+                result.append({'name': name, 'count': v, 'pct_count': round(v / max_v * 100)})
+        # pct_mttr normalisé séparément (axe secondaire)
+        max_mttr = max((x.get('mttr_sec', 0) for x in result), default=1) or 1
+        for x in result:
+            x['pct_mttr'] = round(x.get('mttr_sec', 0) / max_mttr * 100)
+        return result
+
+    metier_chart = _build_chart(metier_agg)
+    region_chart = _build_chart(region_agg)
+
+    # Causes ouvertes
+    max_cause = max(causes_agg.values(), default=1) or 1
+    causes_chart = [
+        {'name': k, 'count': v, 'pct': round(v / max_cause * 100)}
+        for k, v in sorted(causes_agg.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    # Types d'incidents
+    total_types = sum(types_agg.values()) or 1
+    types_chart = sorted(
+        [{'name': k, 'count': v, 'pct': round(v / total_types * 100)} for k, v in types_agg.items()],
+        key=lambda x: x['count'], reverse=True
+    )[:20]
+
+    total_incidents_fixe = sum(r.total_incidents or 0 for r in reports)
+    total_unresolved_fixe = sum(r.unresolved_count or 0 for r in reports)
+    total_duration_h_fixe = round(sum(r.total_duration_sec or 0 for r in reports) / 3600, 1)
+
+    fixe_stats = {
+        'metier_chart':       metier_chart,
+        'region_chart':       region_chart,
+        'causes_chart':       causes_chart,
+        'types_chart':        types_chart,
+        'total_types':        sum(types_agg.values()),
+        'metier_chart_js':    mark_safe(json.dumps(metier_chart)),
+        'region_chart_js':    mark_safe(json.dumps(region_chart)),
+        'total_incidents':    total_incidents_fixe,
+        'total_unresolved':   total_unresolved_fixe,
+        'total_resolved':     total_incidents_fixe - total_unresolved_fixe,
+        'total_duration_h':   total_duration_h_fixe,
+    }
+    return {'fixe_stats': fixe_stats}
+
+
+def _compute_transmission_stats_lazy(report):
+    """Calcule transmission_stats_json depuis le fichier brut si non encore calculé, puis le met en cache."""
+    if report.transmission_stats_json:
+        return report.transmission_stats_json
+
+    try:
+        import pandas as _pd
+
+        if not report.file:
+            return {}
+
+        df = _pd.read_excel(report.file.path)
+
+        def _fmt(secs):
+            s = int(secs or 0)
+            return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+        debut_str = str(report.date_rapport or '')[:10]
+        fin_str   = str(report.date_fin or report.date_rapport or '')[:10]
+        debut_ts  = _pd.Timestamp(f"{debut_str} 00:00:00") if debut_str else None
+        fin_ts    = _pd.Timestamp(f"{fin_str} 23:59:59")   if fin_str   else None
+        period_secs = (fin_ts - debut_ts).total_seconds() if (debut_ts and fin_ts) else 0
+
+        df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+        if fin_ts:
+            df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+        if debut_ts:
+            df['_at'] = df['_at'].clip(lower=debut_ts)
+        df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+        cols_lower = {c.strip().lower(): c for c in df.columns}
+        esc_col = cols_lower.get('escalade')
+        reg_col = cols_lower.get('région') or cols_lower.get('region')
+
+        # Categories (Backhaul / BackBone)
+        cat_col = None
+        for col in df.columns:
+            vals_lower = df[col].dropna().astype(str).str.strip().str.lower()
+            if vals_lower.isin(['backhaul', 'backbone', 'back haul', 'back bone']).any():
+                cat_col = col
+                break
+        if not cat_col and esc_col:
+            esc_vals = df[esc_col].dropna().astype(str).str.lower()
+            if esc_vals.str.contains('backhaul|backbone', na=False).any():
+                cat_col = esc_col
+
+        def _normalize_cat(v):
+            v_lower = str(v).strip().lower()
+            if 'backhaul' in v_lower: return 'Backhaul'
+            if 'backbone' in v_lower: return 'BackBone'
+            return str(v).strip()
+
+        categories = []
+        if cat_col:
+            df['_cat'] = df[cat_col].apply(_normalize_cat)
+            for cat, grp in df.groupby('_cat'):
+                n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+                categories.append({'name': cat, 'count': n, 'total_dur_sec': td,
+                                    'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            categories.sort(key=lambda x: x['count'], reverse=True)
+        elif esc_col:
+            for val, grp in df.groupby(esc_col):
+                val = str(val).strip()
+                if not val or val.lower() == 'nan': continue
+                n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+                categories.append({'name': val, 'count': n, 'total_dur_sec': td,
+                                    'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            categories.sort(key=lambda x: x['count'], reverse=True)
+
+        # Region × Métier
+        region_metier = {}
+        if reg_col and esc_col:
+            for region, rgrp in df.groupby(reg_col):
+                region = str(region).strip()
+                if not region or region.lower() == 'nan': continue
+                metier_list = []
+                for metier, mgrp in rgrp.groupby(esc_col):
+                    metier = str(metier).strip()
+                    if not metier or metier.lower() == 'nan': continue
+                    n = len(mgrp); td = float(mgrp['_dur'].sum()); mttr = td / n if n else 0
+                    metier_list.append({'name': metier, 'count': n, 'total_dur_sec': td,
+                                        'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+                metier_list.sort(key=lambda x: x['count'], reverse=True)
+                region_metier[region] = metier_list
+
+        # Partenaires / Clients IPT & IPLC
+        partenaires = []
+        part_col = None
+        for keyword in ('partenaire', 'client', 'liens', 'lien', 'service client'):
+            if keyword in cols_lower:
+                part_col = cols_lower[keyword]
+                break
+        if part_col:
+            for name, grp in df.groupby(part_col):
+                name = str(name).strip()
+                if not name or name.lower() == 'nan': continue
+                n = len(grp); td = float(grp['_dur'].sum())
+                taux = max(0.0, 100.0 - (td / period_secs * 100)) if period_secs > 0 else 100.0
+                partenaires.append({'name': name, 'nbre_inc': n, 'total_dur_sec': td,
+                                    'duree': _fmt(td), 'taux_dispo': round(taux, 2)})
+            partenaires.sort(key=lambda x: x['taux_dispo'])
+
+        stats = {
+            'total': len(df), 'categories': categories,
+            'region_metier': region_metier, 'partenaires': partenaires,
+        }
+        report.transmission_stats_json = stats
+        report.save(update_fields=['transmission_stats_json'])
+        return stats
+
+    except Exception:
+        return {}
+
+
+def _build_transmission_context(reports, platform):
+    """Agrège les transmission_stats_json de plusieurs rapports en données prêtes pour le template."""
+    if platform != 'transmission':
+        return {'transmission_stats': None}
+
+    from collections import defaultdict
+
+    cat_agg    = defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0})
+    rm_agg     = defaultdict(lambda: defaultdict(lambda: {'count': 0, 'total_dur_sec': 0.0}))
+    part_agg   = defaultdict(lambda: {'nbre_inc': 0, 'total_dur_sec': 0.0})
+    period_secs_total = 0.0
+
+    for r in reports:
+        ts = _compute_transmission_stats_lazy(r)
+        for cat in ts.get('categories', []):
+            cat_agg[cat['name']]['count']         += cat['count']
+            cat_agg[cat['name']]['total_dur_sec'] += cat.get('total_dur_sec', 0)
+        for region, metiers in ts.get('region_metier', {}).items():
+            for m in metiers:
+                rm_agg[region][m['name']]['count']         += m['count']
+                rm_agg[region][m['name']]['total_dur_sec'] += m.get('total_dur_sec', 0)
+        for p in ts.get('partenaires', []):
+            part_agg[p['name']]['nbre_inc']        += p['nbre_inc']
+            part_agg[p['name']]['total_dur_sec']   += p.get('total_dur_sec', 0)
+        # Période pour calcul disponibilité
+        d1 = r.date_rapport
+        d2 = r.date_fin or r.date_rapport
+        if d1 and d2:
+            from datetime import date as _date
+            delta = (d2 - d1).days + 1
+            period_secs_total += delta * 86400
+
+    def _fmt(secs):
+        s = int(secs or 0)
+        return f"{s // 3600}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+    # Catégories agrégées
+    categories = []
+    for name, v in sorted(cat_agg.items(), key=lambda x: x[1]['count'], reverse=True):
+        n = v['count']; td = v['total_dur_sec']; mttr = td / n if n else 0
+        categories.append({'name': name, 'count': n, 'total_dur_sec': td,
+                           'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+
+    # Région × Métier ordonnée
+    REGION_ORDER = ['LOME', 'MARITIME', 'PLATEAUX', 'CENTRALE', 'KARA', 'SAVANES']
+    region_metier_list = []
+    done = set()
+    for region in REGION_ORDER + sorted(rm_agg.keys()):
+        if region in done or region not in rm_agg:
+            continue
+        done.add(region)
+        metiers = []
+        for metier, v in sorted(rm_agg[region].items(), key=lambda x: x[1]['count'], reverse=True):
+            n = v['count']; td = v['total_dur_sec']; mttr = td / n if n else 0
+            color = '#e53e3e' if mttr > 36000 else ('#f97316' if mttr > 18000 else ('#FFC72C' if n > 5 else 'inherit'))
+            metiers.append({'name': metier, 'count': n, 'mttr': _fmt(mttr), 'mttr_sec': mttr, 'color': color})
+        region_metier_list.append({'region': region, 'metiers': metiers})
+
+    # Partenaires avec disponibilité
+    partenaires = []
+    for name, v in sorted(part_agg.items(), key=lambda x: x[1]['total_dur_sec'], reverse=True):
+        td = v['total_dur_sec']; n = v['nbre_inc']
+        taux = max(0.0, 100.0 - (td / period_secs_total * 100)) if period_secs_total > 0 else 100.0
+        partenaires.append({'name': name, 'nbre_inc': n, 'total_dur_sec': td,
+                           'duree': _fmt(td), 'taux_dispo': round(taux, 2)})
+
+    total_incidents_t  = sum(r.total_incidents  or 0 for r in reports)
+    total_unresolved_t = sum(r.unresolved_count or 0 for r in reports)
+    total_duration_h_t = round(sum(r.total_duration_sec or 0 for r in reports) / 3600, 1)
+
+    transmission_stats = {
+        'total':            total_incidents_t,
+        'categories':       categories,
+        'categories_js':    mark_safe(json.dumps(categories)),
+        'region_metier_list': region_metier_list,
+        'partenaires':      partenaires,
+        'total_incidents':  total_incidents_t,
+        'total_unresolved': total_unresolved_t,
+        'total_resolved':   total_incidents_t - total_unresolved_t,
+        'total_duration_h': total_duration_h_t,
+    }
+    return {'transmission_stats': transmission_stats}
+
+
 def statistiques(request):
     from collections import defaultdict
     from datetime import timedelta
@@ -2101,22 +2515,72 @@ def statistiques(request):
         'core':         '⚙️ CORE ET IGW',
         'transmission': '📶 TRANSMISSION',
     }
-    # Plateformes sans données : retour rapide avec carte "bientôt"
-    if platform not in ('mobile', 'all'):
-        return render(request, 'reports/statistiques.html', {
-            'platform':       platform,
-            'platform_label': PLATFORM_LABELS.get(platform, platform.upper()),
-            'platform_labels': PLATFORM_LABELS,
-        })
-
     if request.user.is_superuser:
         base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
         base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
 
+    # Filtrage par plateforme via le préfixe du nom de fichier API
+    from django.db.models import Q as _Q
+    _PREFIX = {
+        'mobile':       'API_MOBILE_',
+        'fixe':         'API_FIXE_',
+        'transmission': 'API_TRANSMISSION_',
+        'core':         'API_CORE_',
+    }
+    if platform in _PREFIX:
+        _p = _PREFIX[platform]
+        if platform == 'mobile':
+            # rapports API mobile + imports manuels (pas de préfixe API_)
+            base_qs = base_qs.filter(_Q(original_filename__startswith=_p) | ~_Q(original_filename__startswith='API_'))
+        else:
+            base_qs = base_qs.filter(original_filename__startswith=_p)
+
     report_pk     = request.GET.get('report')
     single_report = None
     period_filter = request.GET.get('period', 'latest')
+
+    _import_logger = logging.getLogger('reports.api_import')
+
+    def _auto_fetch_platform(network, date_from_str, date_to_str):
+        """
+        Importe via l'API netXcare et retourne un queryset des rapports créés.
+        Segmente automatiquement par mois calendaire si la période dépasse 31 jours.
+        Retourne None en cas d'erreur bloquante.
+        """
+        from .api_import import run_import_months as _run_import_months
+        from datetime import date as _d
+        try:
+            _res = _run_import_months(
+                date_from_str, date_to_str,
+                triggered_by=request.user, overwrite=True, network=network,
+            )
+            if _res.get('errors'):
+                _import_logger.error("Auto-fetch %s errors: %s", network, _res['errors'])
+                messages.error(request,
+                    f"Import {network.upper()} : {'; '.join(_res['errors'][:2])}")
+            if not _res.get('created') and not _res.get('skipped'):
+                messages.warning(request,
+                    f"Aucune donnée retournée par l'API pour {network.upper()} "
+                    f"({date_from_str} → {date_to_str}).")
+                return None
+            # Retourner tous les rapports de ce réseau créés pour la plage demandée
+            _prefix  = f"API_{network.upper()}_"
+            _d_from  = _d.fromisoformat(date_from_str)
+            _d_to    = _d.fromisoformat(date_to_str)
+            return UploadedReport.objects.filter(
+                original_filename__startswith=_prefix,
+                processed=True,
+                date_rapport__gte=_d_from,
+                date_rapport__lte=_d_to,
+            ).order_by('date_rapport')
+        except Exception as _exc:
+            _import_logger.exception("Auto-fetch %s failed: %s", network, _exc)
+            messages.error(request,
+                f"Erreur lors de l'import {network.upper()} : {type(_exc).__name__}: {_exc}")
+            return None
+
+    _NON_MOBILE_PLATFORMS = ('fixe', 'transmission', 'core')
 
     if report_pk:
         single_report = get_object_or_404(base_qs, pk=report_pk)
@@ -2125,7 +2589,17 @@ def statistiques(request):
     elif period_filter == 'latest' or period_filter not in (
             'day','3days','week','2weeks','month','quarter','half','year','all','custom'):
         single_report = base_qs.first()
-        reports       = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
+        # Pour les plateformes non-mobile : si aucune donnée locale,
+        # auto-fetch les 30 derniers jours depuis l'API
+        if single_report is None and platform in _NON_MOBILE_PLATFORMS:
+            _today    = date.today()
+            _from_str = (_today - timedelta(days=30)).isoformat()
+            _to_str   = _today.isoformat()
+            _net_map  = {'fixe': 'fixe', 'transmission': 'transmission', 'core': 'core'}
+            _qs = _auto_fetch_platform(_net_map[platform], _from_str, _to_str)
+            if _qs is not None and _qs.exists():
+                single_report = _qs.order_by('-uploaded_at').first()
+        reports = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
         today = date.today()
@@ -2146,8 +2620,8 @@ def statistiques(request):
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
         elif period_filter == 'custom':
-            date_from = request.GET.get('date_from')
-            date_to   = request.GET.get('date_to')
+            date_from = request.GET.get('date_from', '')
+            date_to   = request.GET.get('date_to', '')
             if date_from and date_to:
                 try:
                     from django.utils import timezone as _tz
@@ -2156,6 +2630,20 @@ def statistiques(request):
                     reports = base_qs.filter(uploaded_at__gte=dt_from, uploaded_at__lte=dt_to)
                 except (ValueError, TypeError):
                     reports = base_qs
+
+                # Aucune donnée locale → fetch automatique depuis l'API netXcare
+                # Segmenté par mois si la période > 31 jours
+                if not reports.exists():
+                    _net_map2 = {
+                        'mobile': 'mobile', 'fixe': 'fixe',
+                        'transmission': 'transmission', 'core': 'core',
+                    }
+                    _network = _net_map2.get(platform, 'mobile')
+                    _df_date = date_from[:10]
+                    _dt_date = date_to[:10]
+                    _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
+                    if _qs is not None and _qs.exists():
+                        reports = _qs
             else:
                 reports = base_qs
         else:
@@ -2363,10 +2851,14 @@ def statistiques(request):
     # ── Date range pour les inputs dynamiques ────────────────────────────────
     first_up = base_qs.order_by('uploaded_at').values_list('uploaded_at', flat=True).first()
     last_up  = base_qs.order_by('-uploaded_at').values_list('uploaded_at', flat=True).first()
-    date_min_str = first_up.strftime('%Y-%m-%dT%H:%M') if first_up else ''
-    date_max_str = last_up.strftime('%Y-%m-%dT%H:%M')  if last_up  else ''
-    date_from_val = request.GET.get('date_from') or date_min_str
-    date_to_val   = request.GET.get('date_to')   or date_max_str
+    date_min_str = first_up.strftime('%Y-%m-%dT00:00') if first_up else ''
+    date_max_str = last_up.strftime('%Y-%m-%dT23:59')  if last_up  else ''
+    # Fallback : si aucun rapport existant, proposer 1er du mois → aujourd'hui
+    _td = date.today()
+    _fallback_from = f"{_td.year}-{_td.month:02d}-01T00:00"
+    _fallback_to   = f"{_td.isoformat()}T23:59"
+    date_from_val = request.GET.get('date_from') or date_min_str or _fallback_from
+    date_to_val   = request.GET.get('date_to')   or date_max_str or _fallback_to
 
     return render(request, 'reports/statistiques.html', {
         'period_filter':        period_filter,
@@ -2399,24 +2891,162 @@ def statistiques(request):
         'platform':             platform,
         'platform_label':       PLATFORM_LABELS.get(platform, '📡 RÉSEAU MOBILE'),
         'platform_labels':      PLATFORM_LABELS,
+        **_build_fixe_context(reports, platform),
+        **_build_transmission_context(reports, platform),
+    })
+
+
+def _build_live_stats(report, plat_label, date_from, date_to):
+    """Calcule les stats d'affichage depuis un UploadedReport (pour statistiques_live)."""
+    from collections import defaultdict
+
+    def _hms(s):
+        try:
+            parts = str(s).split(':')
+            if len(parts) == 3:
+                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+        except Exception:
+            pass
+        return 0
+
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    total       = report.total_incidents or 0
+    unresolved  = report.unresolved_count or 0
+    duration_h  = round((report.total_duration_sec or 0) / 3600, 1)
+
+    # ── Escalade (depuis synthesis_json) ─────────────────────────────────────
+    esc_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0})
+    for row in (report.synthesis_json or []):
+        esc = (row.get('Escalade') or '').strip()
+        if not esc or esc.upper() == 'TOTAL':
+            continue
+        esc_data[esc]['count']      += int(row.get('Inc count') or 0)
+        esc_data[esc]['outage_sec'] += _hms(row.get('OUTAGE', '0:00:00'))
+    esc_sorted   = sorted(esc_data.items(), key=lambda x: x[1]['count'], reverse=True)
+    max_esc      = esc_sorted[0][1]['count'] if esc_sorted else 1
+    esc_chart    = [
+        {'name': k, 'count': v['count'], 'outage_h': round(v['outage_sec'] / 3600, 1),
+         'pct': round(v['count'] / max_esc * 100)}
+        for k, v in esc_sorted if v['count'] > 0
+    ]
+
+    # ── Top sites ─────────────────────────────────────────────────────────────
+    raw_sites  = report.top_sites_json or []
+    max_site   = raw_sites[0]['count'] if raw_sites else 1
+    sites_chart = [
+        {'name': s['name'], 'count': s['count'], 'pct': round(s['count'] / max_site * 100)}
+        for s in raw_sites
+    ]
+
+    # ── Top causes par durée ──────────────────────────────────────────────────
+    raw_causes   = sorted(report.top_causes_json or [], key=lambda x: x['duration_sec'], reverse=True)[:10]
+    max_cause    = raw_causes[0]['duration_sec'] if raw_causes else 1
+    causes_chart = [
+        {'name': c['name'], 'duree_h': round(c['duration_sec'] / 3600, 1),
+         'pct': round(c['duration_sec'] / max_cause * 100)}
+        for c in raw_causes
+    ]
+
+    # ── Régions ───────────────────────────────────────────────────────────────
+    region_chart = sorted(
+        [{'region': r, 'nb_sites': len(s)} for r, s in (report.region_sites_json or {}).items()],
+        key=lambda x: x['nb_sites'], reverse=True
+    )
+    max_region   = region_chart[0]['nb_sites'] if region_chart else 1
+    for r in region_chart:
+        r['pct'] = round(r['nb_sites'] / max_region * 100)
+
+    return {
+        'plat_label':   plat_label,
+        'date_from':    date_from,
+        'date_to':      date_to,
+        'total':        total,
+        'unresolved':   unresolved,
+        'resolved':     total - unresolved,
+        'duration_h':   duration_h,
+        'esc_chart':    esc_chart,
+        'sites_chart':  sites_chart,
+        'causes_chart': causes_chart,
+        'region_chart': region_chart,
+        'report_id':    str(report.pk),
+    }
+
+
+def statistiques_live(request):
+    """Statistiques à la demande : fetch depuis l'API netXcare pour la période choisie."""
+    PLATFORM_NETWORKS = {
+        'mobile':       ('mobile',       '📡 Réseau Mobile'),
+        'fixe':         ('fixe',         '☎ Réseau Fixe'),
+        'transmission': ('transmission', '🔗 Transport'),
+        'core':         ('core',         '🌐 Core & IGW'),
+    }
+
+    result    = None
+    error     = None
+    platform  = 'mobile'
+    date_from = ''
+    date_to   = ''
+
+    if request.method == 'POST':
+        from .api_import import run_import
+        date_from = request.POST.get('date_from', '').strip()
+        date_to   = request.POST.get('date_to',   '').strip()
+        platform  = request.POST.get('platform', 'mobile').strip()
+
+        if not date_from or not date_to:
+            error = "Veuillez renseigner les deux dates."
+        elif date_to < date_from:
+            error = "La date de fin doit être après la date de début."
+        else:
+            network, plat_label = PLATFORM_NETWORKS.get(platform, ('mobile', '📡 Réseau Mobile'))
+            try:
+                import_result = run_import(
+                    date_from, date_to,
+                    triggered_by=request.user,
+                    overwrite=True,
+                    network=network,
+                )
+                if import_result.get('errors'):
+                    error = import_result['errors'][0]
+                else:
+                    net_label = network.upper()
+                    filename  = f"API_{net_label}_{date_from}_{date_to}.xlsx"
+                    report = UploadedReport.objects.filter(
+                        original_filename=filename, processed=True
+                    ).order_by('-uploaded_at').first()
+                    if report:
+                        result = _build_live_stats(report, plat_label, date_from, date_to)
+                    else:
+                        error = "Aucune donnée retournée par l'API pour cette période."
+            except Exception as exc:
+                error = str(exc)
+
+    return render(request, 'reports/statistiques_live.html', {
+        'result':        result,
+        'error':         error,
+        'platform':      platform,
+        'date_from':     date_from,
+        'date_to':       date_to,
+        'platform_list': PLATFORM_NETWORKS,
     })
 
 
 def incident_tracking(request):
     from .models import Incident
-    from django.db.models import Count, Sum, Q
+    from django.db.models import Count, Sum, Avg, Q
     from django.core.paginator import Paginator
 
     # Filtres
-    domain  = request.GET.get('domain', '')
-    mois    = request.GET.get('mois', '')
-    statut  = request.GET.get('statut', '')   # 'ouvert' | 'resolu' | ''
-    q       = request.GET.get('q', '').strip()
+    escalade = request.GET.get('escalade', '')
+    region   = request.GET.get('region', '')
+    mois     = request.GET.get('mois', '')
 
-    qs = Incident.objects.all()
+    qs = Incident.objects.filter(domain='mobile')
 
-    if domain:
-        qs = qs.filter(domain=domain)
+    if escalade:
+        qs = qs.filter(escalade=escalade)
+    if region:
+        qs = qs.filter(region=region)
     if mois:
         try:
             from datetime import datetime as _dt
@@ -2424,24 +3054,13 @@ def incident_tracking(request):
             qs = qs.filter(mois_rapport__year=d.year, mois_rapport__month=d.month)
         except ValueError:
             pass
-    if statut == 'ouvert':
-        qs = qs.filter(cancel_time__isnull=True)
-    elif statut == 'resolu':
-        qs = qs.filter(cancel_time__isnull=False)
-    if q:
-        qs = qs.filter(
-            Q(numero_ticket__icontains=q) |
-            Q(site_name__icontains=q) |
-            Q(nature__icontains=q) |
-            Q(region__icontains=q)
-        )
 
     # KPIs globaux (sans filtre)
     total_all   = Incident.objects.count()
     total_open  = Incident.objects.filter(cancel_time__isnull=True).count()
     total_clos  = Incident.objects.filter(cancel_time__isnull=False).count()
 
-    # Mois disponibles pour le filtre
+    # Listes pour les filtres
     mois_list = (
         Incident.objects
         .exclude(mois_rapport__isnull=True)
@@ -2449,39 +3068,159 @@ def incident_tracking(request):
         .order_by('-mois_rapport')
         .distinct()[:24]
     )
+    region_list = (
+        Incident.objects
+        .filter(domain='mobile')
+        .exclude(region='')
+        .values_list('region', flat=True)
+        .order_by('region')
+        .distinct()
+    )
+    escalade_list = (
+        Incident.objects
+        .filter(domain='mobile')
+        .exclude(escalade='')
+        .values_list('escalade', flat=True)
+        .order_by('escalade')
+        .distinct()
+    )
 
     paginator = Paginator(qs.order_by('-alarm_time'), 50)
     page      = request.GET.get('page', 1)
     incidents = paginator.get_page(page)
 
+    # ── Stats sites avec durée > 10 min ──────────────────────────────────────
+    THRESHOLD_SEC = 600
+
+    def _fmt_sec(s):
+        if not s:
+            return "—"
+        s = int(s); h = s // 3600; m = (s % 3600) // 60; sc = s % 60
+        return f"{h}h {m:02d}m" if h > 0 else f"{m}m {sc:02d}s"
+
+    stats_raw = (
+        qs.filter(duration_sec__gt=THRESHOLD_SEC)
+        .values('site_name', 'region', 'escalade')
+        .annotate(
+            nb_inc=Count('id'),
+            total_sec=Sum('duration_sec'),
+            avg_sec=Avg('duration_sec'),
+            nb_ouverts=Count('id', filter=Q(cancel_time__isnull=True)),
+        )
+        .order_by('-total_sec')
+    )
+
+    # Calcul DR2 par site
+    from collections import defaultdict
+    inc_gt10 = list(
+        qs.filter(duration_sec__gt=THRESHOLD_SEC)
+        .values('site_name', 'region', 'escalade', 'alarm_time', 'cancel_time')
+    )
+    dr2_counts = defaultdict(int)
+    for inc in inc_gt10:
+        alarm = inc['alarm_time']
+        if not alarm:
+            continue
+        if alarm.tzinfo is not None:
+            alarm = alarm.replace(tzinfo=None)
+        partial = alarm.minute * 60 + alarm.second
+        secs_to_next = (3600 - partial) if partial > 0 else 3600
+        dr2_offset = secs_to_next + 10800
+        end = inc['cancel_time']
+        if end is None:
+            from django.utils import timezone as _tz
+            end = _tz.now()
+        if end.tzinfo is not None:
+            end = end.replace(tzinfo=None)
+        if (end - alarm).total_seconds() >= dr2_offset:
+            dr2_counts[(inc['site_name'], inc['region'], inc['escalade'])] += 1
+
+    stats_sites = []
+    for s in stats_raw:
+        key = (s['site_name'], s['region'], s['escalade'])
+        stats_sites.append({
+            'site_name':  s['site_name'] or '—',
+            'region':     s['region'] or '—',
+            'escalade':   s['escalade'] or '—',
+            'nb_inc':     s['nb_inc'],
+            'nb_ouverts': s['nb_ouverts'],
+            'total_dur':  _fmt_sec(s['total_sec']),
+            'avg_dur':    _fmt_sec(s['avg_sec']),
+            'total_sec':  s['total_sec'] or 0,
+            'nb_dr2':     dr2_counts[key],
+        })
+
+    nb_sites_gt10 = len(stats_sites)
+    nb_dr2_total  = sum(dr2_counts.values())
+
     return render(request, 'reports/incident_tracking.html', {
-        'incidents':   incidents,
-        'total_all':   total_all,
-        'total_open':  total_open,
-        'total_clos':  total_clos,
-        'total_filtre': qs.count(),
-        'domain_choices': Incident.DOMAIN_CHOICES,
-        'mois_list':   mois_list,
-        'f_domain':    domain,
-        'f_mois':      mois,
-        'f_statut':    statut,
-        'f_q':         q,
+        'incidents':      incidents,
+        'total_all':      total_all,
+        'total_open':     total_open,
+        'total_clos':     total_clos,
+        'total_filtre':   qs.count(),
+        'mois_list':      mois_list,
+        'region_list':    region_list,
+        'escalade_list':  escalade_list,
+        'f_escalade':     escalade,
+        'f_region':       region,
+        'f_mois':         mois,
+        'stats_sites':    stats_sites,
+        'nb_sites_gt10':  nb_sites_gt10,
+        'nb_dr2_total':   nb_dr2_total,
     })
+
+
+def isocep_extract_sites(request):
+    """AJAX : lit le fichier disponibilité et retourne la liste des sites des 3 onglets."""
+    from django.http import JsonResponse
+    if request.method != 'POST' or not request.FILES.get('avail_file'):
+        return JsonResponse({'error': 'Fichier manquant'}, status=400)
+
+    import tempfile, os, pandas as pd
+
+    f = request.FILES['avail_file']
+    suffix = os.path.splitext(f.name)[1]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    for chunk in f.chunks():
+        tmp.write(chunk)
+    tmp.close()
+
+    sites = set()
+    try:
+        for sheet, col in [('2G', 'BCF name'), ('3G', 'WBTS name'), ('4G', 'MRBTS name')]:
+            try:
+                df = pd.read_excel(tmp.name, sheet_name=sheet, engine='openpyxl', usecols=[col])
+                sites.update(df[col].dropna().astype(str).str.strip().unique())
+            except Exception:
+                pass
+    finally:
+        os.unlink(tmp.name)
+
+    return JsonResponse({'sites': sorted(sites)})
 
 
 def isocep_process(request):
     """Traitement iSOCEP : KPI vs Incident ou Courbe de disponibilité."""
+    import logging
+    _log = logging.getLogger(__name__)
+
     if request.method != 'POST':
         return redirect('incident_tracking')
 
-    import tempfile, os, uuid, io, base64
-    import pandas as pd
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
     from django.http import HttpResponse, JsonResponse
-    from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+
+    try:
+        import tempfile, os, uuid, io, base64
+        import pandas as pd
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from .isocep_processor import ExcelDataProcessor, ExcelGraphProcessor
+    except Exception as _imp_err:
+        _log.exception("isocep_process : erreur d'import")
+        return JsonResponse({'success': False, 'error': f"Erreur d'initialisation : {_imp_err}"}, status=500)
 
     mode = request.POST.get('mode', 'kpi')
 
@@ -2694,6 +3433,7 @@ def _fmt_sec(secs):
     return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
 
 
+@gestionnaire_required
 def reporting_import(request):
     """Upload du fichier multi-feuilles BASES DES INCIDENTS et import dans Incident."""
     from .models import Incident
@@ -2856,6 +3596,7 @@ def reporting_platform(request, platform):
     })
 
 
+@gestionnaire_required
 def reporting_platform_import(request, platform):
     """Import de données lié à une plateforme spécifique."""
     from .reporting_config import PLATFORMS
@@ -2988,6 +3729,7 @@ def reporting_platform_import(request, platform):
     return redirect('reporting_platform', platform=platform)
 
 
+@gestionnaire_required
 def generate_pptx_platform(request, platform):
     """Génère le rapport PowerPoint pour une plateforme (redirige vers generate_pptx_report)."""
     from django.urls import reverse
@@ -3088,84 +3830,155 @@ DR2_ESCALADE_ORDER = [
 ]
 
 
-def _parse_dr2_dates(request):
-    """Parse debut/fin depuis GET params, avec défaut = mois dernier."""
-    today = date.today()
-    last_month_first = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-    debut_str = request.GET.get('debut', '')
-    fin_str   = request.GET.get('fin', '')
-    try:
-        debut = date.fromisoformat(debut_str) if debut_str else last_month_first
-    except ValueError:
-        debut = last_month_first
-    try:
-        fin = date.fromisoformat(fin_str) if fin_str else today
-    except ValueError:
-        fin = today
-    return debut, fin
+def _parse_dr2_excel(fileobj):
+    """Parse un fichier DR2 Excel. Retourne une liste de dicts JSON-sérialisables."""
+    import openpyxl
+    from datetime import datetime as _dt, date as _date
+
+    wb = openpyxl.load_workbook(fileobj, data_only=True)
+    ws = wb.active
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        return []
+
+    def norm(h):
+        return str(h or '').strip().upper().replace('É', 'E').replace('È', 'E').replace('Ê', 'E').replace('\xa0', ' ')
+
+    headers = [norm(h) for h in all_rows[0]]
+
+    def find_col(*names):
+        for name in names:
+            for i, h in enumerate(headers):
+                if name.upper() in h:
+                    return i
+        return None
+
+    ci = {
+        'date':      find_col('DATE'),
+        'ticket':    find_col('NUMERO TICKET', 'TICKET'),
+        'site_name': find_col('SITE NAME'),
+        'site_id':   find_col('SITE ID'),
+        'categorie': find_col('CATEGORIE', 'CAT'),
+        'cause':     find_col('CAUSE'),
+        'cancel':    find_col('CANCEL TIME'),
+        'dr2':       find_col('DR2'),
+        'region':    find_col('REGION'),
+        'zone':      find_col('ZONE'),
+    }
+
+    result = []
+    for row in all_rows[1:]:
+        if not any(v for v in row if v is not None):
+            continue
+
+        def cell(key):
+            i = ci.get(key)
+            return row[i] if i is not None and i < len(row) else None
+
+        dr2_val = str(cell('dr2') or '').strip().upper()
+        if dr2_val not in ('OUI', 'YES', '1', 'TRUE', 'X'):
+            continue
+
+        # DATE
+        d = cell('date')
+        if isinstance(d, _dt):
+            d = d.date()
+        elif isinstance(d, _date):
+            pass
+        elif isinstance(d, str):
+            for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y'):
+                try:
+                    d = _dt.strptime(d.strip(), fmt).date(); break
+                except ValueError:
+                    pass
+            else:
+                d = None
+        else:
+            d = None
+
+        cancel_raw = cell('cancel')
+        is_resolved = (cancel_raw is not None and
+                       str(cancel_raw).strip().upper() not in ('N/A', 'EN COURS', '', 'NONE', 'NULL'))
+
+        result.append({
+            'date':        d.isoformat() if d else None,
+            'ticket':      str(cell('ticket')    or ''),
+            'site_name':   str(cell('site_name') or ''),
+            'site_id':     str(cell('site_id')   or ''),
+            'categorie':   str(cell('categorie') or '').strip() or '—',
+            'cause':       str(cell('cause')     or ''),
+            'is_resolved': is_resolved,
+            'region':      str(cell('region')    or '').strip().upper() or '—',
+            'zone':        str(cell('zone')      or ''),
+        })
+    return result
 
 
-def _build_dr2_data(debut, fin):
-    """Construit le dataset DR2 pour une période. Partagé entre view et export."""
-    from .models import Incident
-    from django.utils import timezone
-    import datetime
+def _build_dr2_from_rows(raw_rows, debut=None, fin=None):
+    """Construit le dataset DR2 à partir des lignes parsées."""
+    from datetime import date as _date, timedelta
 
-    today = date.today()
-    period_days = (fin - debut).days + 1
+    today = _date.today()
 
-    debut_dt = timezone.make_aware(datetime.datetime.combine(debut, datetime.time.min))
-    fin_dt   = timezone.make_aware(datetime.datetime.combine(fin,   datetime.time.max))
+    rows = []
+    for r in raw_rows:
+        try:
+            d = _date.fromisoformat(r['date']) if r.get('date') else None
+        except (ValueError, TypeError):
+            d = None
+        rows.append({**r, 'date': d})
 
-    qs = Incident.objects.filter(domain='dr2', alarm_time__gte=debut_dt, alarm_time__lte=fin_dt)
-    total_dr2 = qs.count()
-    moyenne   = round(total_dr2 / period_days, 2) if period_days else 0
+    if debut or fin:
+        rows = [r for r in rows if r['date'] and
+                (not debut or r['date'] >= debut) and
+                (not fin   or r['date'] <= fin)]
 
-    yesterday = today - timedelta(days=1)
-    y_s = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.min))
-    y_e = timezone.make_aware(datetime.datetime.combine(yesterday, datetime.time.max))
-    nbre_j1 = Incident.objects.filter(domain='dr2', alarm_time__gte=y_s, alarm_time__lte=y_e).count()
+    valid_dates = [r['date'] for r in rows if r['date']]
+    debut = debut or (min(valid_dates) if valid_dates else today)
+    fin   = fin   or (max(valid_dates) if valid_dates else today)
+    period_days = max((fin - debut).days + 1, 1)
+    total_dr2   = len(rows)
+    moyenne     = round(total_dr2 / period_days, 2)
+    yesterday   = today - timedelta(days=1)
+    nbre_j1     = sum(1 for r in rows if r['date'] == yesterday)
 
-    db_escs = list(qs.exclude(escalade='').values_list('escalade', flat=True).distinct())
-    escalade_vals = [e for e in DR2_ESCALADE_ORDER if e in db_escs]
-    for e in db_escs:
+    all_cats = [r['categorie'] for r in rows if r['categorie'] and r['categorie'] != '—']
+    unique_cats = list(dict.fromkeys(all_cats))
+    escalade_vals = [e for e in DR2_ESCALADE_ORDER if e in unique_cats]
+    for e in unique_cats:
         if e not in escalade_vals:
             escalade_vals.append(e)
 
+    total_metier = sum(1 for r in rows if r['is_resolved'])
+
     region_rows = []
-    for region in DR2_REGION_TARGETS:
-        rqs      = qs.filter(region__iexact=region)
-        dr2      = rqs.count()
-        tget     = DR2_REGION_TARGETS[region]
-        pct_reg  = round(dr2 / total_dr2 * 100) if total_dr2 else 0
-        pct_tget = round(dr2 / tget * 100)       if tget else 0
-        metier   = rqs.exclude(cancel_time__isnull=True).count()
+    for region, tget in DR2_REGION_TARGETS.items():
+        rrows    = [r for r in rows if r['region'] == region]
+        dr2_cnt  = len(rrows)
+        pct_reg  = round(dr2_cnt / total_dr2 * 100) if total_dr2 else 0
+        pct_tget = round(dr2_cnt / tget * 100)       if tget     else 0
         color    = 'red' if pct_tget >= 100 else ('yellow' if pct_tget >= 70 else 'green')
         region_rows.append({
             'region':    region,
             'tget':      tget,
-            'dr2':       dr2,
-            'metier':    metier,
+            'dr2':       dr2_cnt,
             'pct_reg':   pct_reg,
             'pct_tget':  pct_tget,
-            'escalades': {e: rqs.filter(escalade=e).count() for e in escalade_vals},
+            'escalades': {e: sum(1 for r in rrows if r['categorie'] == e) for e in escalade_vals},
             'color':     color,
         })
 
-    metier_qs   = qs.exclude(cancel_time__isnull=True)
-    metier_tots = {e: metier_qs.filter(escalade=e).count() for e in escalade_vals}
-    total_metier = sum(metier_tots.values())
-
     esc_stats = []
     for e in escalade_vals:
-        tot    = qs.filter(escalade=e).count()
-        metier = metier_tots.get(e, 0)
+        e_rows = [r for r in rows if r['categorie'] == e]
+        tot    = len(e_rows)
+        metier = sum(1 for r in e_rows if r['is_resolved'])
         esc_stats.append({
             'escalade': e,
             'total':    tot,
             'metier':   metier,
             'pct_tgt':  round(metier / tot * 100) if tot else None,
-            'pct_tt':   round(metier / total_dr2 * 100) if total_dr2 else 0,
+            'pct_tt':   round(metier / total_metier * 100) if total_metier else 0,
         })
 
     return {
@@ -3184,13 +3997,56 @@ def _build_dr2_data(debut, fin):
 
 
 def dr2_daily_report(request):
-    debut, fin = _parse_dr2_dates(request)
-    ctx = _build_dr2_data(debut, fin)
+    """DR2 Report — généré depuis un fichier Excel uploadé."""
+    ctx = {'no_file': True, 'upload_error': None}
+
+    if request.method == 'POST' and request.FILES.get('dr2_file'):
+        try:
+            rows = _parse_dr2_excel(request.FILES['dr2_file'])
+            if not rows:
+                raise ValueError("Aucune ligne avec DR2 = OUI trouvée dans le fichier.")
+            debut_str = request.POST.get('debut', '').strip()
+            fin_str   = request.POST.get('fin', '').strip()
+            try:
+                debut = date.fromisoformat(debut_str) if debut_str else None
+            except ValueError:
+                debut = None
+            try:
+                fin = date.fromisoformat(fin_str) if fin_str else None
+            except ValueError:
+                fin = None
+            request.session['dr2_rows']     = rows
+            request.session['dr2_debut']    = debut_str
+            request.session['dr2_fin']      = fin_str
+            request.session['dr2_filename'] = request.FILES['dr2_file'].name
+            ctx = _build_dr2_from_rows(rows, debut, fin)
+            ctx['no_file']  = False
+            ctx['filename'] = request.FILES['dr2_file'].name
+        except Exception as exc:
+            ctx['upload_error'] = str(exc)
+
+    elif request.method == 'GET' and 'dr2_rows' in request.session:
+        rows = request.session['dr2_rows']
+        debut_str = request.GET.get('debut', request.session.get('dr2_debut', ''))
+        fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   ''))
+        try:
+            debut = date.fromisoformat(debut_str) if debut_str else None
+        except ValueError:
+            debut = None
+        try:
+            fin = date.fromisoformat(fin_str) if fin_str else None
+        except ValueError:
+            fin = None
+        ctx = _build_dr2_from_rows(rows, debut, fin)
+        ctx['no_file']  = False
+        ctx['filename'] = request.session.get('dr2_filename', '')
+
     return render(request, 'reports/dr2_daily.html', ctx)
 
 
+@gestionnaire_required
 def dr2_daily_export(request):
-    """Génère l'export Excel du DR2 Daily Report."""
+    """Génère l'export Excel du DR2 Report depuis les données en session."""
     from openpyxl import Workbook
     from openpyxl.styles import (
         PatternFill, Font, Alignment, Border, Side, numbers
@@ -3198,12 +4054,22 @@ def dr2_daily_export(request):
     from openpyxl.utils import get_column_letter
     from django.http import HttpResponse
 
-    debut, fin = _parse_dr2_dates(request)
-    d = _build_dr2_data(debut, fin)
+    rows = request.session.get('dr2_rows', [])
+    debut_str = request.GET.get('debut', request.session.get('dr2_debut', ''))
+    fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   ''))
+    try:
+        debut = date.fromisoformat(debut_str) if debut_str else None
+    except ValueError:
+        debut = None
+    try:
+        fin = date.fromisoformat(fin_str) if fin_str else None
+    except ValueError:
+        fin = None
+    d = _build_dr2_from_rows(rows, debut, fin)
 
     wb = Workbook()
     ws = wb.active
-    ws.title = 'DR2 Daily Report'
+    ws.title = 'DR2 Report'
 
     # ── Couleurs ──────────────────────────────────────────────────────────────
     C_BLUE_DARK  = 'FF003087'
@@ -3650,6 +4516,7 @@ def site_search_api(request):
     return JsonResponse(hits, safe=False)
 
 
+@gestionnaire_required
 def sites_export_excel(request):
     """Export de tous les sites en fichier Excel (admin uniquement)."""
     if not request.user.is_staff:
@@ -3751,6 +4618,7 @@ def sites_export_excel(request):
     return response
 
 
+@gestionnaire_required
 def sites_import_excel(request):
     """Import des sites depuis un fichier Excel (admin uniquement)."""
     if not request.user.is_staff:
@@ -3936,6 +4804,7 @@ def sites_import_excel(request):
 
 # ── Import API manuel ─────────────────────────────────────────────────────────
 
+@gestionnaire_required
 def api_import_view(request):
     """Récupère les données API, sauvegarde en Excel et redirige vers process_report."""
     import datetime as _dt
@@ -4025,11 +4894,14 @@ def audit_view(request):
 
         return redirect('audit')
 
+    return render(request, 'reports/audit.html')
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Génération du rapport PowerPoint
 # ─────────────────────────────────────────────────────────────────────────────
 
+@gestionnaire_required
 def generate_pptx_report(request):
     """Génère et télécharge le rapport PowerPoint Comité GDI."""
     from datetime import date
@@ -4109,6 +4981,7 @@ def bases_incidents_view(request):
     })
 
 
+@gestionnaire_required
 def bases_incidents_export(request):
     """Génère et télécharge le fichier Bases des Incidents."""
     from datetime import date
@@ -4240,6 +5113,7 @@ def platform_bases_incidents(request, platform):
     })
 
 
+@gestionnaire_required
 def platform_bases_incidents_export(request, platform):
     """Génère et télécharge les Bases des Incidents pour une plateforme."""
     from datetime import date as date_
@@ -5197,5 +6071,260 @@ def chatbot_api(request):
         reply = data['choices'][0]['message']['content']
     except (ValueError, KeyError, IndexError):
         return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
+
+    return JsonResponse({'reply': reply})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOBILE CGI — Synthèse Mensuelle Réseau Mobile depuis fichier Excel
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def mobile_cgi_view(request):
+    from .cgi_parser import parse_mobile, stats_mobile, _norm, _find_header_row, _sheet_rows
+    import openpyxl
+
+    ctx = {'no_file': True, 'mois_label': ''}
+
+    if request.method == 'POST' and request.FILES.get('mobile_file'):
+        f = request.FILES['mobile_file']
+        mois_label = request.POST.get('mois_label', '').strip()
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+            # Trouver la feuille mobile — cherche par nom, sinon prend la première
+            sheets_norm = {_norm(s).replace(' ', ''): s for s in wb.sheetnames}
+            ws = None
+            mobile_keywords = ('MOBILE', 'RESEAU', 'INCIDENT', 'DR2')
+            for key, name in sheets_norm.items():
+                if any(kw in key for kw in mobile_keywords):
+                    ws = wb[name]
+                    break
+            if ws is None:
+                # Fichier mono-feuille dédié mobile : prend la première
+                ws = wb[wb.sheetnames[0]]
+
+            rows = parse_mobile(ws)
+            st   = stats_mobile(rows)
+
+            # Sérialiser pour la session
+            request.session['mob_rows']       = _mob_rows_to_json(rows)
+            request.session['mob_mois_label'] = mois_label
+            request.session['mob_filename']   = f.name
+
+            ctx = _build_mob_ctx(st, rows, mois_label, f.name)
+        except Exception as exc:
+            ctx['upload_error'] = f"Erreur : {exc}"
+            ctx['no_file'] = True
+
+    elif request.method == 'GET' and request.session.get('mob_rows'):
+        rows = _mob_rows_from_json(request.session['mob_rows'])
+        st   = stats_mobile(rows)
+        ctx  = _build_mob_ctx(st, rows,
+                               request.session.get('mob_mois_label', ''),
+                               request.session.get('mob_filename', ''))
+
+    return render(request, 'reports/mobile_cgi.html', ctx)
+
+
+@gestionnaire_required
+def mobile_cgi_export(request):
+    from django.http import HttpResponse
+    from .pptx_report import generate_mobile_from_excel
+    from .cgi_parser import stats_mobile
+
+    if request.method != 'POST':
+        from django.shortcuts import redirect
+        return redirect('mobile_cgi')
+
+    rows_json  = request.session.get('mob_rows', [])
+    mois_label = request.POST.get('mois_label', '').strip() or \
+                 request.session.get('mob_mois_label', '')
+
+    if not rows_json:
+        from django.shortcuts import redirect
+        return redirect('mobile_cgi')
+
+    rows = _mob_rows_from_json(rows_json)
+    st   = stats_mobile(rows)
+    buf  = generate_mobile_from_excel(st, mois_label)
+
+    slug = mois_label.replace(' ', '_') or 'rapport'
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="Mobile_Rapport_{slug}.pptx"'
+    return resp
+
+
+def _mob_rows_to_json(rows):
+    from datetime import datetime
+    out = []
+    for r in rows:
+        row = dict(r)
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
+        out.append(row)
+    return out
+
+
+def _mob_rows_from_json(rows_json):
+    from datetime import datetime
+    out = []
+    for r in rows_json:
+        row = dict(r)
+        for k in ('alarm', 'cancel'):
+            if isinstance(row.get(k), str):
+                try:
+                    row[k] = datetime.fromisoformat(row[k])
+                except Exception:
+                    row[k] = None
+        out.append(row)
+    return out
+
+
+def _build_mob_ctx(stats, rows, mois_label, filename):
+    return {
+        'no_file':    False,
+        'stats':      stats,
+        'rows':       rows,
+        'mois_label': mois_label,
+        'filename':   filename,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CGI RAPPORT — Synthèse Mensuelle Plateformes (Fixe, Transport, IGW, Core)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def cgi_rapport_view(request):
+    """Page principale : upload fichier Excel → parsing → affichage stats par onglet."""
+    from .cgi_parser import parse_all
+
+    ctx = {'no_file': True, 'mois_label': ''}
+
+    if request.method == 'POST' and request.FILES.get('cgi_file'):
+        f = request.FILES['cgi_file']
+        mois_label = request.POST.get('mois_label', '').strip()
+        try:
+            data = parse_all(f)
+            # Stocker en session (sérialisable : on stocke rows comme dicts simples)
+            session_data = {}
+            for plat, val in data.items():
+                session_data[plat] = {
+                    'stats': _cgi_stats_to_json(val['stats'], plat),
+                    'rows':  _cgi_rows_to_json(val['rows'], plat),
+                }
+            request.session['cgi_data'] = session_data
+            request.session['cgi_filename'] = f.name
+            request.session['cgi_mois_label'] = mois_label
+            ctx = _build_cgi_ctx(data, mois_label, f.name)
+        except Exception as exc:
+            ctx['upload_error'] = f"Erreur de lecture du fichier : {exc}"
+            ctx['no_file'] = True
+
+    elif request.method == 'GET' and request.session.get('cgi_data'):
+        data = _cgi_data_from_session(request.session['cgi_data'])
+        mois_label = request.session.get('cgi_mois_label', '')
+        filename   = request.session.get('cgi_filename', '')
+        ctx = _build_cgi_ctx(data, mois_label, filename)
+
+    return render(request, 'reports/cgi_rapport.html', ctx)
+
+
+@gestionnaire_required
+def cgi_rapport_export(request):
+    """Export PPTX depuis les données en session."""
+    from .pptx_report import generate_cgi_from_excel
+    from django.http import HttpResponse
+
+    if request.method != 'POST':
+        from django.shortcuts import redirect
+        return redirect('cgi_rapport')
+
+    session_data = request.session.get('cgi_data', {})
+    mois_label   = request.POST.get('mois_label', '').strip() or \
+                   request.session.get('cgi_mois_label', '')
+
+    if not session_data:
+        from django.shortcuts import redirect
+        return redirect('cgi_rapport')
+
+    data = _cgi_data_from_session(session_data)
+    buf  = generate_cgi_from_excel(data, mois_label)
+
+    slug = mois_label.replace(' ', '_') or 'rapport'
+    resp = HttpResponse(
+        buf,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="CGI_Rapport_{slug}.pptx"'
+    return resp
+
+
+# ── Helpers session ──────────────────────────────────────────────────────────
+
+def _cgi_stats_to_json(stats, plat):
+    """Convertit les tuples de stats et les datetime en valeurs JSON-sérialisables."""
+    from datetime import datetime
+    result = dict(stats)
+    # Tuples → listes
+    for key in ('by_plateforme', 'by_escalade', 'by_region', 'by_lien'):
+        if key in result and isinstance(result[key], list):
+            result[key] = [[name, agg] for name, agg in result[key]]
+    # Listes de lignes contenant des datetime (top3, rows)
+    for key in ('top3', 'rows'):
+        if key in result and isinstance(result[key], list):
+            serialized = []
+            for row in result[key]:
+                r = dict(row)
+                for k, v in r.items():
+                    if isinstance(v, datetime):
+                        r[k] = v.isoformat()
+                serialized.append(r)
+            result[key] = serialized
+    return result
+
+
+def _cgi_rows_to_json(rows, plat):
+    """Convertit les datetime en strings pour la session."""
+    from datetime import datetime
+    out = []
+    for r in rows:
+        row = dict(r)
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
+        out.append(row)
+    return out
+
+
+def _cgi_data_from_session(session_data):
+    """Restaure les données depuis la session (stats avec tuples, rows)."""
+    data = {}
+    for plat, val in session_data.items():
+        stats = dict(val['stats'])
+        for key in ('by_plateforme', 'by_escalade', 'by_region', 'by_lien'):
+            if key in stats and isinstance(stats[key], list):
+                stats[key] = [(item[0], item[1]) for item in stats[key]]
+        data[plat] = {'rows': val['rows'], 'stats': stats}
+    return data
+
+
+def _build_cgi_ctx(data, mois_label, filename):
+    """Construit le contexte template depuis les données parsées."""
+    ctx = {
+        'no_file':    False,
+        'mois_label': mois_label,
+        'filename':   filename,
+        'active_tab': None,
+    }
+    tabs_order = ['fixe', 'transport', 'igw', 'core']
+    for plat in tabs_order:
+        if plat in data:
+            ctx[plat] = data[plat]
+            if ctx['active_tab'] is None:
+                ctx['active_tab'] = plat
+    return ctx
 
     return JsonResponse({'reply': reply})

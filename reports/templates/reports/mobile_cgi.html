@@ -1,0 +1,393 @@
+{% extends 'base.html' %}
+{% load static report_extras %}
+
+{% block title %}Rapport Mensuel Mobile — ReportXCare{% endblock %}
+{% block breadcrumb %}Reporting / Réseau Mobile & DR2 / Rapport Mensuel{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  .mob-banner {
+    background: linear-gradient(120deg,#002776 0%,#003087 50%,#0044bb 100%);
+    border-radius:20px; padding:28px 32px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:16px; margin-bottom:24px;
+    box-shadow:0 6px 28px rgba(0,48,135,.22); position:relative; overflow:hidden;
+  }
+  .mob-banner::after { content:''; position:absolute; right:-60px; top:-60px;
+    width:250px; height:250px; border-radius:50%;
+    background:rgba(255,199,44,.05); pointer-events:none; }
+  .banner-left { display:flex; align-items:center; gap:16px; position:relative; z-index:1; }
+  .banner-icon { width:56px; height:56px; background:rgba(255,199,44,.16); border-radius:15px;
+    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;
+    border:1.5px solid rgba(255,199,44,.25); }
+  .banner-tag  { font-size:10px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:var(--yellow); }
+  .banner-ttl  { font-size:22px; font-weight:900; color:#fff; margin-top:2px; }
+  .banner-sub  { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+  .banner-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; position:relative; z-index:1; }
+  .btn-action { display:inline-flex; align-items:center; gap:6px; padding:9px 18px;
+    border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; text-decoration:none; transition:all .15s; }
+  .btn-primary { background:var(--yellow); color:#003087; }
+  .btn-primary:hover { background:#ffd54f; }
+  .btn-outline { background:rgba(255,255,255,.1); color:rgba(255,255,255,.85);
+    border:1.5px solid rgba(255,255,255,.3); }
+  .btn-outline:hover { background:rgba(255,255,255,.18); color:#fff; }
+
+  /* Upload */
+  .upload-card { background:#fff; border-radius:20px; padding:40px 32px;
+    border:2px dashed #d0d8e8; text-align:center;
+    box-shadow:0 2px 16px rgba(0,48,135,.06); margin-bottom:24px;
+    transition:border-color .2s; }
+  .upload-card:hover { border-color:#003087; }
+  .upload-icon { font-size:48px; margin-bottom:12px; }
+  .upload-title { font-size:18px; font-weight:800; color:#003087; margin-bottom:6px; }
+  .upload-desc { font-size:13px; color:#8896b3; margin-bottom:20px; line-height:1.6; }
+  .upload-label { display:inline-flex; align-items:center; gap:8px; padding:10px 22px;
+    border-radius:12px; background:#003087; color:#fff; font-size:13px; font-weight:700;
+    cursor:pointer; transition:background .15s; }
+  .upload-label:hover { background:#0047cc; }
+  .upload-error { background:#fff0f0; color:#c53030; border-radius:12px;
+    padding:10px 18px; font-size:13px; font-weight:600; margin-bottom:16px; }
+
+  /* KPI row */
+  .kpi-row { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:22px; }
+  @media(max-width:1100px){ .kpi-row{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:600px){ .kpi-row{ grid-template-columns:repeat(2,1fr); } }
+  .kpi { background:#fff; border-radius:16px; padding:18px 16px;
+    border:1px solid #e8edf5; box-shadow:0 2px 12px rgba(0,48,135,.07);
+    display:flex; align-items:center; gap:12px; }
+  .kpi-icon { width:42px; height:42px; border-radius:12px; display:flex; align-items:center;
+    justify-content:center; font-size:20px; flex-shrink:0; }
+  .kpi-icon.blue   { background:#e8f0ff; border:1px solid #c8d8f8; }
+  .kpi-icon.green  { background:#f0fdf4; border:1px solid #a7f3d0; }
+  .kpi-icon.orange { background:#fff7ed; border:1px solid #fed7aa; }
+  .kpi-icon.red    { background:#fff0f0; border:1px solid #fca5a5; }
+  .kpi-icon.yellow { background:#fffbeb; border:1px solid #fde68a; }
+  .kpi-val { font-family:'Bebas Neue',sans-serif; font-size:28px; color:#003087; letter-spacing:1px; line-height:1; }
+  .kpi-val.red { color:#e53e3e; } .kpi-val.orange { color:#d97706; }
+  .kpi-lbl { font-size:10px; color:#8896b3; text-transform:uppercase; letter-spacing:.5px; margin-top:3px; font-weight:600; }
+
+  /* Cards */
+  .stat-card { background:#fff; border-radius:20px; padding:22px 24px;
+    border:1px solid #e8edf5; box-shadow:0 2px 16px rgba(0,48,135,.07); margin-bottom:18px; }
+  .card-header { display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #f0f4ff; }
+  .card-title { font-size:14px; font-weight:800; color:#003087; display:flex; align-items:center; gap:8px; }
+  .card-badge { background:#e8f0ff; color:#003087; font-size:11px; font-weight:700;
+    padding:3px 12px; border-radius:20px; border:1px solid #c8d8f8; }
+  .card-badge.red { background:#fff0f0; color:#c53030; border-color:#fca5a5; }
+  .card-badge.green { background:#f0fdf4; color:#16a34a; border-color:#a7f3d0; }
+
+  /* Table */
+  .data-wrap { overflow-x:auto; }
+  .data-table { width:100%; border-collapse:collapse; font-size:12px; min-width:500px; }
+  .data-table thead th { padding:8px 12px; background:#f8faff; color:#777;
+    font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.4px;
+    border-bottom:2px solid #e8edf5; white-space:nowrap; }
+  .data-table tbody td { padding:9px 12px; border-bottom:1px solid #f5f7fb; vertical-align:middle; }
+  .data-table tbody tr:last-child td { border-bottom:none; }
+  .data-table tbody tr:hover td { background:#f8faff; }
+  .data-table td.num { text-align:right; font-family:monospace; }
+  .data-table td.ctr { text-align:center; }
+
+  /* Efficiency badge */
+  .eff-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; }
+  .eff-high { background:#f0fdf4; color:#16a34a; }
+  .eff-med  { background:#fffbeb; color:#b45309; }
+  .eff-low  { background:#fff0f0; color:#b91c1c; }
+
+  /* DR2 red badge */
+  .dr2-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px;
+    border-radius:12px; font-size:11px; font-weight:700; background:#fff0f0; color:#b91c1c; }
+
+  /* Bar */
+  .bar-list { display:flex; flex-direction:column; gap:10px; }
+  .bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:3px; }
+  .bar-name { font-size:13px; font-weight:500; color:#333; max-width:70%;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-val  { font-size:13px; font-weight:700; color:#003087; }
+  .bar-track { height:7px; background:#f0f4ff; border-radius:4px; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:4px; transition:width .5s ease; }
+  .bar-fill.blue   { background:linear-gradient(90deg,#003087,#0047cc); }
+  .bar-fill.orange { background:linear-gradient(90deg,#d97706,#f59e0b); }
+  .bar-fill.red    { background:linear-gradient(90deg,#dc2626,#ef4444); }
+  .bar-fill.green  { background:linear-gradient(90deg,#059669,#10b981); }
+
+  /* Grid */
+  .row-2col { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .row-3col { display:grid; grid-template-columns:2fr 1fr; gap:18px; }
+  @media(max-width:950px){ .row-2col,.row-3col{ grid-template-columns:1fr; } }
+
+  /* Annule l'animation opacity:0 héritée de base.html pour cette page */
+  .kpi-row > div, .kpi, .stat-card, .upload-card, .kpi-row,
+  .row-2col, .row-3col, .bar-fill {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Banner -->
+<div class="mob-banner">
+  <div class="banner-left">
+    <div class="banner-icon">📡</div>
+    <div>
+      <div class="banner-tag">Réseau Mobile</div>
+      <div class="banner-ttl">Rapport Mensuel Mobile</div>
+      <div class="banner-sub">{% if filename %}{{ filename }}{% else %}DR1 · DR2 · Efficacité · Métiers · Régions{% endif %}</div>
+    </div>
+  </div>
+  <div class="banner-right">
+    {% if not no_file %}
+    <form method="post" action="{% url 'mobile_cgi_export' %}" style="display:inline;">
+      {% csrf_token %}
+      <input type="hidden" name="mois_label" value="{{ mois_label }}">
+      <button type="submit" class="btn-action btn-primary">⬇ Export PPTX</button>
+    </form>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" id="mob-upload-form" style="display:inline;">
+      {% csrf_token %}
+      <label for="mob-file-input" class="btn-action btn-outline">📂 Charger fichier</label>
+      <input type="file" id="mob-file-input" name="mobile_file" accept=".xlsx,.xls" style="display:none;">
+      <input type="hidden" name="mois_label" value="{{ mois_label }}">
+    </form>
+  </div>
+</div>
+
+{% if upload_error %}<div class="upload-error">⚠ {{ upload_error }}</div>{% endif %}
+
+{% if no_file %}
+<div class="upload-card">
+  <div class="upload-icon">📡</div>
+  <div class="upload-title">Charger le fichier Bases des Incidents Mobile</div>
+  <div class="upload-desc">
+    Sélectionnez le fichier Excel contenant la feuille <strong>Reseau mobile</strong>.<br>
+    Colonnes attendues : Site Name, Région, Base, Escalade, Duration, Status, Root Cause, Point bloquant…
+  </div>
+  <label for="mob-file-input" class="upload-label">📂 Sélectionner le fichier Excel</label>
+</div>
+
+{% else %}
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-icon blue">📡</div>
+    <div><div class="kpi-val">{{ stats.total }}</div><div class="kpi-lbl">Total Incidents</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon green">✅</div>
+    <div><div class="kpi-val">{{ stats.closed }}</div><div class="kpi-lbl">Fermés</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon orange">🔓</div>
+    <div><div class="kpi-val orange">{{ stats.open }}</div><div class="kpi-lbl">Ouverts</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon blue">⏱</div>
+    <div><div class="kpi-val" style="font-size:18px;">{{ stats.mttr_fmt }}</div><div class="kpi-lbl">MTTR Global</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon yellow">⚠</div>
+    <div><div class="kpi-val orange">{{ stats.nb_dr1 }}</div><div class="kpi-lbl">Sites DR1</div></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-icon red">🔴</div>
+    <div><div class="kpi-val red">{{ stats.nb_dr2 }}</div><div class="kpi-lbl">Violations DR2</div></div>
+  </div>
+</div>
+
+<!-- Top Sites DR1 + Points bloquants -->
+<div class="row-3col">
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">⚠ Top Sites DR1 — Sites récurrents</div>
+      <span class="card-badge red">TDR1 = {{ stats.nb_dr1 }} sites</span>
+    </div>
+    <div class="data-wrap">
+      <table class="data-table">
+        <thead><tr><th>Site</th><th>Région</th><th>Count</th><th>Cause principale</th></tr></thead>
+        <tbody>
+        {% for s in stats.top_sites_dr1 %}
+        <tr>
+          <td><strong>{{ s.site_name }}</strong></td>
+          <td>{{ s.region }}</td>
+          <td class="ctr"><span style="font-weight:800;color:#003087;">{{ s.count }}</span></td>
+          <td style="font-size:11px;color:#666;">{{ s.cause|truncatechars:40 }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" style="text-align:center;color:#ccc;padding:20px;">Aucun site DR1</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">🚧 Points Bloquants</div>
+      <span class="card-badge">{{ stats.points_bloquants|length }}</span>
+    </div>
+    <div class="bar-list">
+      {% if stats.points_bloquants %}
+      {% with max_pb=stats.points_bloquants.0.count %}
+      {% for pb in stats.points_bloquants %}
+      <div>
+        <div class="bar-meta">
+          <span class="bar-name">{{ pb.cause }}</span>
+          <span class="bar-val">{{ pb.count }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill red" style="width:{% widthratio pb.count max_pb 100 %}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+      {% endwith %}
+      {% else %}<p style="color:#ccc;font-size:13px;text-align:center;padding:20px;">Aucun point bloquant</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Efficacité DR2 par Métier -->
+<div class="stat-card">
+  <div class="card-header">
+    <div class="card-title">📊 Efficacité DR2 par Métier</div>
+    <span class="card-badge red">TDR2 = {{ stats.nb_dr2 }} DR2</span>
+  </div>
+  <div class="data-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Métier (Escalade)</th>
+        <th class="num">Nb Incidents</th>
+        <th class="num">MTTR</th>
+        <th class="num">DR2</th>
+        <th class="ctr">% Efficacité</th>
+      </tr></thead>
+      <tbody>
+      {% for e in stats.by_escalade %}
+      <tr>
+        <td><strong>{{ e.escalade }}</strong></td>
+        <td class="num">{{ e.nb }}</td>
+        <td class="num">{{ e.mttr_fmt }}</td>
+        <td class="num">{% if e.nb_dr2 %}<span class="dr2-badge">🔴 {{ e.nb_dr2 }}</span>{% else %}—{% endif %}</td>
+        <td class="ctr">
+          <span class="eff-badge {% if e.eff_pct >= 95 %}eff-high{% elif e.eff_pct >= 85 %}eff-med{% else %}eff-low{% endif %}">
+            {{ e.eff_pct }}%
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Efficacité DR2 par Région -->
+<div class="stat-card">
+  <div class="card-header">
+    <div class="card-title">🗺 Incidents & DR2 par Région</div>
+    <span class="card-badge">{{ stats.by_region|length }} régions</span>
+  </div>
+  <div class="data-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Région</th>
+        <th class="num">Nb Sites</th>
+        <th class="num">Nb Incidents</th>
+        <th class="num">MTTR</th>
+        <th class="num">DR2</th>
+        <th class="ctr">% Efficacité</th>
+      </tr></thead>
+      <tbody>
+      {% for r in stats.by_region %}
+      <tr>
+        <td><strong>{{ r.region }}</strong></td>
+        <td class="num">{{ r.nb_sites }}</td>
+        <td class="num">{{ r.nb }}</td>
+        <td class="num">{{ r.mttr_fmt }}</td>
+        <td class="num">{% if r.nb_dr2 %}<span class="dr2-badge">🔴 {{ r.nb_dr2 }}</span>{% else %}—{% endif %}</td>
+        <td class="ctr">
+          <span class="eff-badge {% if r.eff_pct >= 95 %}eff-high{% elif r.eff_pct >= 85 %}eff-med{% else %}eff-low{% endif %}">
+            {{ r.eff_pct }}%
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Causes principales -->
+<div class="row-2col">
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">🔍 Causes Principales</div>
+      <span class="card-badge">Top {{ stats.by_cause|length }}</span>
+    </div>
+    {% if stats.by_cause %}
+    {% with max_c=stats.by_cause.0.nb %}
+    <div class="bar-list">
+      {% for c in stats.by_cause %}
+      <div>
+        <div class="bar-meta">
+          <span class="bar-name">{{ c.cause }}</span>
+          <span class="bar-val">{{ c.nb }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill orange" style="width:{% widthratio c.nb max_c 100 %}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endwith %}
+    {% endif %}
+  </div>
+
+  <!-- Détail par Base -->
+  <div class="stat-card">
+    <div class="card-header">
+      <div class="card-title">📍 Efficacité par Base</div>
+      <span class="card-badge">{{ stats.by_base|length }} bases</span>
+    </div>
+    <div class="data-wrap">
+      <table class="data-table">
+        <thead><tr><th>Base</th><th>Région</th><th class="num">Inc</th><th class="num">DR2</th><th class="ctr">Eff.</th></tr></thead>
+        <tbody>
+        {% for b in stats.by_base %}
+        <tr>
+          <td>{{ b.base }}</td>
+          <td style="font-size:11px;color:#8896b3;">{{ b.region }}</td>
+          <td class="num">{{ b.nb }}</td>
+          <td class="num">{% if b.nb_dr2 %}<span class="dr2-badge">{{ b.nb_dr2 }}</span>{% else %}—{% endif %}</td>
+          <td class="ctr">
+            <span class="eff-badge {% if b.eff_pct >= 95 %}eff-high{% elif b.eff_pct >= 85 %}eff-med{% else %}eff-low{% endif %}">
+              {{ b.eff_pct }}%
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('mob-file-input')?.addEventListener('change', function() {
+  if (this.files.length) document.getElementById('mob-upload-form').submit();
+});
+</script>
+{% endblock %}

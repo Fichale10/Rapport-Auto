@@ -236,6 +236,13 @@ def run_import(
         result["skipped"] += 1
         return result
 
+    # ── Traitement selon le réseau ───────────────────────────────────────────
+    if network == "fixe":
+        return _run_import_fixe(df, date_debut, date_fin, label, user, result, existing, overwrite)
+
+    if network == "transmission":
+        return _run_import_transmission(df, date_debut, date_fin, label, user, result, existing, overwrite)
+
     # Garde une copie avec Duration_Sec AVANT que process_file la supprime
     # (process_file retourne df_detail/df_synth sans Duration_Sec)
     try:
@@ -412,3 +419,299 @@ def _merge_results(cumul: dict, res: dict) -> None:
     cumul["created"]  += res.get("created", 0)
     cumul["skipped"]  += res.get("skipped", 0)
     cumul["errors"].extend(res.get("errors", []))
+
+
+def _run_import_fixe(df, date_debut, date_fin, label, user, result, existing, overwrite):
+    """Traitement spécifique réseau fixe (sans filtrage alarmes mobile)."""
+    import pandas as _pd
+    from collections import defaultdict
+
+    d_debut = date_debut[:10]
+    d_fin   = date_fin[:10]
+
+    def _fmt(secs):
+        secs = int(secs or 0)
+        return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
+
+    # Calcul des durées
+    debut_ts = _pd.Timestamp(f"{d_debut} 00:00:00")
+    fin_ts   = _pd.Timestamp(f"{d_fin} 23:59:59")
+
+    df = df.copy()
+    df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+    df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+    df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+    df['_at'] = df['_at'].clip(lower=debut_ts)
+    df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+    total_incidents = len(df)
+    # Détection insensible à la casse pour Status
+    status_col = next((c for c in df.columns if c.strip().lower() == 'status'), None)
+    unresolved  = int((df[status_col].astype(str).str.upper().isin(['OUVERT', 'OPEN'])).sum()) if status_col else 0
+
+    # ── METIER (Escalade) : count + MTTR ─────────────────────────────────────
+    metier_stats = []
+    if 'Escalade' in df.columns:
+        for esc, grp in df.groupby('Escalade'):
+            esc = str(esc).strip()
+            if not esc or esc == 'nan':
+                continue
+            n       = len(grp)
+            tot_dur = float(grp['_dur'].sum())
+            mttr    = tot_dur / n if n > 0 else 0
+            metier_stats.append({
+                'name': esc, 'count': n,
+                'total_dur_sec': tot_dur, 'mttr_sec': mttr,
+                'mttr': _fmt(mttr),
+            })
+        metier_stats.sort(key=lambda x: x['count'], reverse=True)
+
+    # ── REGION : count + MTTR ────────────────────────────────────────────────
+    region_stats = []
+    reg_col = next((c for c in ('Région', 'Region', 'REGION') if c in df.columns), None)
+    if reg_col:
+        for region, grp in df.groupby(reg_col):
+            region = str(region).strip()
+            if not region or region == 'nan':
+                continue
+            n       = len(grp)
+            tot_dur = float(grp['_dur'].sum())
+            mttr    = tot_dur / n if n > 0 else 0
+            region_stats.append({
+                'name': region, 'count': n,
+                'total_dur_sec': tot_dur, 'mttr_sec': mttr,
+                'mttr': _fmt(mttr),
+            })
+        region_stats.sort(key=lambda x: x['count'], reverse=True)
+
+    # ── CAUSES (incidents ouverts, fallback sur tous) ─────────────────────────
+    open_causes = []
+    cause_col = next((c for c in df.columns if c.strip().lower() == 'cause'), None)
+    if cause_col:
+        if status_col:
+            df_open = df[df[status_col].astype(str).str.upper().isin(['OUVERT', 'OPEN'])]
+        else:
+            df_open = df
+        # Fallback : si aucun incident ouvert, prendre tous les incidents
+        if df_open.empty:
+            df_open = df
+        cause_counts = df_open[cause_col].dropna().astype(str).value_counts()
+        for cause, cnt in cause_counts.items():
+            cause = str(cause).strip()
+            if cause and cause.lower() != 'nan':
+                open_causes.append({'name': cause, 'count': int(cnt)})
+
+    # ── TYPES D'INCIDENTS — recherche insensible à la casse ──────────────────
+    incident_types = []
+    nat_col = next(
+        (c for c in df.columns
+         if c.strip().lower() in ("incident nature", "nature de l'incident",
+                                   "nature de l’incident", "incident_nature",
+                                   "type incident", "type d'incident")),
+        None
+    )
+    if nat_col:
+        type_counts = df[nat_col].dropna().astype(str).value_counts().head(20)
+        for itype, cnt in type_counts.items():
+            itype = str(itype).strip()
+            if itype and itype.lower() != 'nan':
+                incident_types.append({'name': itype, 'count': int(cnt)})
+
+    # ── Top sites ─────────────────────────────────────────────────────────────
+    top_sites = []
+    site_col = next((c for c in ('Site Name', 'site_name') if c in df.columns), None)
+    if site_col:
+        for nm, cnt in df[site_col].value_counts().head(10).items():
+            top_sites.append({'name': str(nm), 'count': int(cnt)})
+
+    # ── Top causes par durée (toutes) ─────────────────────────────────────────
+    top_causes = []
+    if 'Cause' in df.columns:
+        cause_dur = defaultdict(float)
+        for _, row in df.iterrows():
+            c = str(row.get('Cause', '')).strip()
+            if c and c != 'nan':
+                cause_dur[c] += float(row.get('_dur', 0) or 0)
+        top_causes = [
+            {'name': k, 'duration_sec': v}
+            for k, v in sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+
+    # ── Sauvegarder ──────────────────────────────────────────────────────────
+    report = existing if (existing and overwrite) else UploadedReport()
+    report.user              = user
+    report.original_filename = f"{label}.xlsx"
+    report.date_rapport      = d_debut
+    report.date_fin          = d_fin if d_fin != d_debut else None
+    report.processed         = True
+    report.source            = "api"
+    report.total_incidents   = total_incidents
+    report.unresolved_count  = unresolved
+    report.total_duration_sec = int(df['_dur'].sum())
+    report.synthesis_json    = []   # non utilisé pour fixe
+    report.top_sites_json    = top_sites
+    report.top_causes_json   = top_causes
+    report.region_sites_json = {}
+    report.outage_journalier_json = {}
+    report.fixe_stats_json   = {
+        'metier':         metier_stats,
+        'region':         region_stats,
+        'open_causes':    open_causes,
+        'incident_types': incident_types,
+    }
+    report.uploaded_at = timezone.now()
+    report.save()
+
+    result["created"] += 1
+    logger.info("Rapport FIXE créé : %s (id=%s, %d incidents)", label, report.pk, total_incidents)
+    return result
+
+
+def _run_import_transmission(df, date_debut, date_fin, label, user, result, existing, overwrite):
+    """Traitement spécifique réseau transmission (sans filtrage alarmes mobile)."""
+    import pandas as _pd
+    from collections import defaultdict
+
+    d_debut = date_debut[:10]
+    d_fin   = date_fin[:10]
+
+    def _fmt(secs):
+        secs = int(secs or 0)
+        return f"{secs // 3600}:{(secs % 3600) // 60:02d}:{secs % 60:02d}"
+
+    # Calcul des durées
+    debut_ts = _pd.Timestamp(f"{d_debut} 00:00:00")
+    fin_ts   = _pd.Timestamp(f"{d_fin} 23:59:59")
+    period_secs = (fin_ts - debut_ts).total_seconds()
+
+    df = df.copy()
+    df['_at'] = _pd.to_datetime(df.get('Alarm Time',  _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+    df['_ct'] = _pd.to_datetime(df.get('Cancel Time', _pd.Series(dtype='object')), dayfirst=True, format='mixed', errors='coerce')
+    df['_ct'] = df['_ct'].fillna(fin_ts).clip(upper=fin_ts)
+    df['_at'] = df['_at'].clip(lower=debut_ts)
+    df['_dur'] = (df['_ct'] - df['_at']).dt.total_seconds().clip(lower=0)
+
+    total_incidents = len(df)
+    cols_lower = {c.strip().lower(): c for c in df.columns}
+    status_col = next((c for c in df.columns if c.strip().lower() == 'status'), None)
+    unresolved = int((df[status_col].astype(str).str.upper().isin(['OUVERT', 'OPEN'])).sum()) if status_col else 0
+    esc_col = cols_lower.get('escalade')
+    reg_col = cols_lower.get('région') or cols_lower.get('region')
+
+    # ── CATEGORIES (Backhaul vs BackBone) ────────────────────────────────────
+    cat_col = None
+    for col in df.columns:
+        vals_lower = df[col].dropna().astype(str).str.strip().str.lower()
+        if vals_lower.isin(['backhaul', 'backbone', 'back haul', 'back bone']).any():
+            cat_col = col
+            break
+    if not cat_col and esc_col:
+        esc_vals = df[esc_col].dropna().astype(str).str.lower()
+        if esc_vals.str.contains('backhaul|backbone', na=False).any():
+            cat_col = esc_col
+
+    def _normalize_cat(v):
+        v_lower = str(v).strip().lower()
+        if 'backhaul' in v_lower or 'back haul' in v_lower:
+            return 'Backhaul'
+        if 'backbone' in v_lower or 'back bone' in v_lower:
+            return 'BackBone'
+        return str(v).strip()
+
+    categories = []
+    if cat_col:
+        df['_cat'] = df[cat_col].apply(_normalize_cat)
+        for cat, grp in df.groupby('_cat'):
+            n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+            categories.append({'name': cat, 'count': n, 'total_dur_sec': td,
+                                'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+        categories.sort(key=lambda x: x['count'], reverse=True)
+    elif esc_col:
+        for val, grp in df.groupby(esc_col):
+            val = str(val).strip()
+            if not val or val.lower() == 'nan': continue
+            n = len(grp); td = float(grp['_dur'].sum()); mttr = td / n if n else 0
+            categories.append({'name': val, 'count': n, 'total_dur_sec': td,
+                                'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+        categories.sort(key=lambda x: x['count'], reverse=True)
+
+    # ── REGION × METIER ──────────────────────────────────────────────────────
+    region_metier = {}
+    if reg_col and esc_col:
+        for region, rgrp in df.groupby(reg_col):
+            region = str(region).strip()
+            if not region or region.lower() == 'nan': continue
+            metier_list = []
+            for metier, mgrp in rgrp.groupby(esc_col):
+                metier = str(metier).strip()
+                if not metier or metier.lower() == 'nan': continue
+                n = len(mgrp); td = float(mgrp['_dur'].sum()); mttr = td / n if n else 0
+                metier_list.append({'name': metier, 'count': n, 'total_dur_sec': td,
+                                    'mttr_sec': mttr, 'mttr': _fmt(mttr)})
+            metier_list.sort(key=lambda x: x['count'], reverse=True)
+            region_metier[region] = metier_list
+
+    # ── PARTENAIRES / Clients IPT & IPLC ─────────────────────────────────────
+    partenaires = []
+    part_col = None
+    for keyword in ('partenaire', 'client', 'liens', 'lien', 'service client'):
+        if keyword in cols_lower:
+            part_col = cols_lower[keyword]
+            break
+
+    if part_col:
+        for name, grp in df.groupby(part_col):
+            name = str(name).strip()
+            if not name or name.lower() == 'nan': continue
+            n = len(grp); td = float(grp['_dur'].sum())
+            taux = max(0.0, 100.0 - (td / period_secs * 100)) if period_secs > 0 else 100.0
+            partenaires.append({'name': name, 'nbre_inc': n, 'total_dur_sec': td,
+                                'duree': _fmt(td), 'taux_dispo': round(taux, 2)})
+        partenaires.sort(key=lambda x: x['taux_dispo'])
+
+    # ── Top sites / causes ────────────────────────────────────────────────────
+    top_sites = []
+    site_col = next((c for c in ('Site Name', 'site_name') if c in df.columns), None)
+    if site_col:
+        for nm, cnt in df[site_col].value_counts().head(10).items():
+            top_sites.append({'name': str(nm), 'count': int(cnt)})
+
+    top_causes = []
+    cause_col = next((c for c in df.columns if c.strip().lower() == 'cause'), None)
+    if cause_col:
+        cause_dur = defaultdict(float)
+        for _, row in df.iterrows():
+            c = str(row.get(cause_col, '')).strip()
+            if c and c != 'nan': cause_dur[c] += float(row.get('_dur', 0) or 0)
+        top_causes = [{'name': k, 'duration_sec': v}
+                      for k, v in sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]]
+
+    # ── Sauvegarder ──────────────────────────────────────────────────────────
+    report = existing if (existing and overwrite) else UploadedReport()
+    report.user              = user
+    report.original_filename = f"{label}.xlsx"
+    report.date_rapport      = d_debut
+    report.date_fin          = d_fin if d_fin != d_debut else None
+    report.processed         = True
+    report.source            = "api"
+    report.total_incidents   = total_incidents
+    report.unresolved_count  = unresolved
+    report.total_duration_sec = int(df['_dur'].sum())
+    report.synthesis_json    = []
+    report.top_sites_json    = top_sites
+    report.top_causes_json   = top_causes
+    report.region_sites_json = {}
+    report.outage_journalier_json = {}
+    report.fixe_stats_json   = {}
+    report.transmission_stats_json = {
+        'total': total_incidents,
+        'categories': categories,
+        'region_metier': region_metier,
+        'partenaires': partenaires,
+    }
+    report.uploaded_at = timezone.now()
+    report.save()
+
+    result["created"] += 1
+    logger.info("Rapport TRANSMISSION créé : %s (id=%s, %d incidents)", label, report.pk, total_incidents)
+    return result

@@ -225,12 +225,89 @@
     background: linear-gradient(135deg,#166534,#22c55e); color: #fff;
     box-shadow: 0 3px 12px rgba(22,101,52,.3);
   }
-  .btn-isocep.courbe:hover { box-shadow: 0 6px 20px rgba(22,101,52,.4); transform: translateY(-1px); }
+  .btn-isocep.courbe:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(22,101,52,.4); transform: translateY(-1px); }
+  .btn-isocep:disabled { opacity: .45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+  /* ── Searchable site dropdown ── */
+  .site-search-wrap { position: relative; }
+  .site-search-input { padding-right: 36px !important; }
+  .site-search-wrap::after {
+    content: '▾'; position: absolute; right: 12px; top: 50%;
+    transform: translateY(-50%); color: #8896b3; pointer-events: none; font-size: 14px;
+  }
+  .site-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1.5px solid #d0d8e8; border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,48,135,.14); z-index: 200;
+    max-height: 220px; overflow-y: auto;
+  }
+  .site-dropdown-item {
+    padding: 9px 14px; font-size: 13px; color: #333; cursor: pointer;
+    border-bottom: 1px solid #f0f4ff; transition: background .1s;
+  }
+  .site-dropdown-item:last-child { border-bottom: none; }
+  .site-dropdown-item:hover, .site-dropdown-item.active { background: #e8f0ff; color: #003087; font-weight: 600; }
+  .site-dropdown-empty { padding: 12px 14px; font-size: 12px; color: #b0b8cc; font-style: italic; }
+  .site-loading { padding: 12px 14px; font-size: 12px; color: #8896b3; display: flex; align-items: center; gap: 8px; }
+  .spinner-sm {
+    width: 14px; height: 14px; border: 2px solid #d0d8e8;
+    border-top-color: #003087; border-radius: 50%;
+    animation: spin .6s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   @media(max-width:900px){
     .it-table thead th:nth-child(n+5) { display: none; }
     .it-table tbody td:nth-child(n+5) { display: none; }
   }
+
+  /* ── Stats sites > 10 min ── */
+  .stat-section-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+  }
+  .stat-section-title {
+    font-size: 14px; font-weight: 800; color: #003087;
+    display: flex; align-items: center; gap: 10px;
+    padding-left: 12px; border-left: 3px solid #FFC72C;
+  }
+  .stat-section-title::after { content:''; flex:1; height:1px; background:#e8edf5; }
+  .stat-count-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+    font-size: 12px; font-weight: 700; padding: 5px 14px; border-radius: 20px;
+  }
+  .stat-table-wrap {
+    overflow-x: auto; border-radius: 14px;
+    box-shadow: 0 2px 16px rgba(0,48,135,.07); border: 1px solid #e8edf5;
+  }
+  .stat-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+  .stat-table thead th {
+    background: #1e3a5f; color: #fff; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .5px;
+    padding: 12px 14px; text-align: left; white-space: nowrap;
+  }
+  .stat-table thead th.num { text-align: center; }
+  .stat-table tbody td { padding: 12px 14px; border-bottom: 1px solid #f0f4ff; color: #222; vertical-align: middle; }
+  .stat-table tbody td.num { text-align: center; }
+  .stat-table tbody tr:last-child td { border-bottom: none; }
+  .stat-table tbody tr:hover td { background: #f8faff; }
+  .stat-site { font-weight: 700; color: #1e3a5f; font-size: 13px; }
+  .stat-region { font-size: 11px; color: #9aa3ba; margin-top: 2px; }
+  .dur-pill {
+    display: inline-block; font-weight: 700; font-size: 12px;
+    padding: 4px 11px; border-radius: 8px;
+  }
+  .dur-low  { background: #fff9c4; color: #856404; }
+  .dur-med  { background: #ffe0b2; color: #e65100; }
+  .dur-high { background: #ffcdd2; color: #c62828; }
+  .stat-empty { text-align: center; padding: 60px 24px; color: #bbb; }
+  .stat-empty-ico { font-size: 52px; margin-bottom: 14px; }
+  @media(max-width:700px){
+    .stat-table thead th:nth-child(n+4) { display:none; }
+    .stat-table tbody td:nth-child(n+4) { display:none; }
+  }
+  .badge-dr2 { background:#eef0ff; color:#4338ca; border:1px solid #c7d2fe; }
 </style>
 {% endblock %}
 
@@ -264,6 +341,14 @@
     <div class="it-kpi">
       <div class="it-kpi-val">{{ total_filtre }}</div>
       <div class="it-kpi-lbl">Filtrés</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val" style="color:#f59e0b;">{{ nb_sites_gt10 }}</div>
+      <div class="it-kpi-lbl">Sites &gt; 10 min</div>
+    </div>
+    <div class="it-kpi">
+      <div class="it-kpi-val" style="color:#f87171;">{{ nb_dr2_total }}</div>
+      <div class="it-kpi-lbl">Incidents DR2</div>
     </div>
   </div>
 </div>
@@ -333,21 +418,26 @@
         <form id="courbe-form" enctype="multipart/form-data">
           {% csrf_token %}
           <input type="hidden" name="mode" value="courbe">
+          <input type="hidden" name="site_name" id="courbe-site-hidden">
 
           <div class="isocep-field">
             <label class="isocep-label">Fichier Disponibilité *</label>
-            <input type="file" name="avail_file" class="isocep-file" accept=".xlsx,.xls" required>
-            <div class="isocep-hint">3 onglets requis : 2G, 3G, 4G</div>
+            <input type="file" name="avail_file" id="courbe-avail-file" class="isocep-file" accept=".xlsx,.xls" required>
+            <div class="isocep-hint" id="courbe-file-hint">3 onglets requis : 2G, 3G, 4G</div>
           </div>
 
-          <div class="isocep-field">
-            <label class="isocep-label">Nom du site *</label>
-            <input type="text" name="site_name" class="isocep-input"
-                   placeholder="Ex : ADJOGUIDI, DAPAONG…" required>
-            <div class="isocep-hint">Insensible à la casse — doit correspondre à un site dans le fichier</div>
+          <!-- Sélection de site (affiché après chargement du fichier) -->
+          <div class="isocep-field" id="courbe-site-field" style="display:none;">
+            <label class="isocep-label">Site *</label>
+            <div class="site-search-wrap">
+              <input type="text" id="courbe-site-search" class="isocep-input site-search-input"
+                     placeholder="Rechercher un site…" autocomplete="off">
+              <div id="courbe-site-dropdown" class="site-dropdown" style="display:none;"></div>
+            </div>
+            <div class="isocep-hint" id="courbe-site-count"></div>
           </div>
 
-          <button type="submit" id="courbe-btn" class="btn-isocep courbe">📈 Générer le graphe</button>
+          <button type="submit" id="courbe-btn" class="btn-isocep courbe" disabled>📈 Générer le graphe</button>
         </form>
       </div>
     </div>
@@ -385,18 +475,28 @@
 <!-- ══ Filtres ══ -->
 <form method="get" class="it-filters">
   <div class="it-filter-group">
-    <span class="it-filter-label">Domaine</span>
-    <select name="domain" class="it-filter-select">
-      <option value="">Tous</option>
-      {% for val, lbl in domain_choices %}
-      <option value="{{ val }}" {% if f_domain == val %}selected{% endif %}>{{ lbl }}</option>
+    <span class="it-filter-label">Escalade</span>
+    <select name="escalade" class="it-filter-select" onchange="this.form.submit()">
+      <option value="">Toutes</option>
+      {% for e in escalade_list %}
+      <option value="{{ e }}" {% if f_escalade == e %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="it-filter-group">
+    <span class="it-filter-label">Région</span>
+    <select name="region" class="it-filter-select" onchange="this.form.submit()">
+      <option value="">Toutes</option>
+      {% for r in region_list %}
+      <option value="{{ r }}" {% if f_region == r %}selected{% endif %}>{{ r }}</option>
       {% endfor %}
     </select>
   </div>
 
   <div class="it-filter-group">
     <span class="it-filter-label">Mois</span>
-    <select name="mois" class="it-filter-select">
+    <select name="mois" class="it-filter-select" onchange="this.form.submit()">
       <option value="">Tous</option>
       {% for m in mois_list %}
       <option value="{{ m|date:'Y-m' }}" {% if f_mois == m|date:'Y-m' %}selected{% endif %}>{{ m|date:"M Y" }}</option>
@@ -404,108 +504,83 @@
     </select>
   </div>
 
-  <div class="it-filter-group">
-    <span class="it-filter-label">Statut</span>
-    <select name="statut" class="it-filter-select">
-      <option value="">Tous</option>
-      <option value="ouvert"  {% if f_statut == 'ouvert'  %}selected{% endif %}>Ouverts</option>
-      <option value="resolu"  {% if f_statut == 'resolu'  %}selected{% endif %}>Résolus</option>
-    </select>
-  </div>
-
-  <div class="it-filter-group">
-    <span class="it-filter-label">Recherche</span>
-    <input type="text" name="q" value="{{ f_q }}" placeholder="Ticket, site, nature…" class="it-filter-input">
-  </div>
-
   <div class="it-filter-actions">
     <a href="{% url 'incident_tracking' %}" class="btn-reset">Réinitialiser</a>
-    <button type="submit" class="btn-filter">🔍 Filtrer</button>
   </div>
 </form>
 
-<!-- ══ Tableau ══ -->
-<div class="it-results-header">
-  <div class="it-results-count"><strong>{{ total_filtre }}</strong> incident{% if total_filtre != 1 %}s{% endif %} trouvé{% if total_filtre != 1 %}s{% endif %}</div>
-  <div class="it-results-count">Page {{ incidents.number }} / {{ incidents.paginator.num_pages }}</div>
-</div>
-
-<div class="it-table-wrap">
-  {% if incidents %}
-  <table class="it-table">
-    <thead>
-      <tr>
-        <th>Ticket</th>
-        <th>Site</th>
-        <th>Domaine</th>
-        <th>Statut</th>
-        <th>Alarme</th>
-        <th>Durée</th>
-        <th>Région</th>
-        <th>Nature</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for inc in incidents %}
-      <tr>
-        <td class="td-ticket">{{ inc.numero_ticket|default:"—" }}</td>
-        <td>
-          <div class="td-site">{{ inc.site_name|default:"—" }}</div>
-          {% if inc.site_id %}<div class="td-region">{{ inc.site_id }}</div>{% endif %}
-        </td>
-        <td>
-          <span class="badge-domain badge-{{ inc.domain }}">{{ inc.get_domain_display }}</span>
-        </td>
-        <td>
-          {% if inc.cancel_time %}
-          <span class="badge-resolu">✓ Résolu</span>
-          {% else %}
-          <span class="badge-ouvert">● Ouvert</span>
-          {% endif %}
-        </td>
-        <td class="td-date">{{ inc.alarm_time|date:"d/m/Y H:i"|default:"—" }}</td>
-        <td class="td-dur">
-          {% if inc.duration_sec %}
-            {% if inc.duration_sec >= 3600 %}
-              {{ inc.duration_sec|floatformat:0|divisibleby:3600 }}h
-              {% with h=inc.duration_sec|floatformat:0 %}{% endwith %}
-            {% else %}
-              {{ inc.duration_sec|floatformat:0 }}s
-            {% endif %}
-          {% else %}—{% endif %}
-        </td>
-        <td class="td-region">{{ inc.region|default:"—" }}</td>
-        <td class="td-nature">{{ inc.nature|truncatechars:60|default:"—" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <!-- Pagination -->
-  {% if incidents.has_other_pages %}
-  <div class="it-pagination">
-    {% if incidents.has_previous %}
-    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.previous_page_number }}" class="pg-btn">‹ Préc.</a>
-    {% endif %}
-
-    {% for num in incidents.paginator.page_range %}
-      {% if num == incidents.number %}
-      <span class="pg-btn active">{{ num }}</span>
-      {% elif num >= incidents.number|add:"-3" and num <= incidents.number|add:"3" %}
-      <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ num }}" class="pg-btn">{{ num }}</a>
-      {% endif %}
-    {% endfor %}
-
-    {% if incidents.has_next %}
-    <a href="?domain={{ f_domain }}&mois={{ f_mois }}&statut={{ f_statut }}&q={{ f_q }}&page={{ incidents.next_page_number }}" class="pg-btn">Suiv. ›</a>
+<!-- ══ Stats : Sites avec durée > 10 min ══ -->
+<div>
+  <div class="stat-section-hdr">
+    <div class="stat-section-title">
+      ⏱ Sites avec durée d'incident &gt; 10 min
+    </div>
+    {% if nb_sites_gt10 %}
+    <span class="stat-count-badge">⚠ {{ nb_sites_gt10 }} site{% if nb_sites_gt10 > 1 %}s{% endif %} concerné{% if nb_sites_gt10 > 1 %}s{% endif %}</span>
     {% endif %}
   </div>
-  {% endif %}
+
+  {% if stats_sites %}
+  <div class="stat-table-wrap">
+    <table class="stat-table">
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Région</th>
+          <th>Escalade</th>
+          <th class="num">Incidents</th>
+          <th class="num">Durée totale</th>
+          <th class="num">Durée moy.</th>
+          <th class="num">DR2</th>
+          <th class="num">État</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in stats_sites %}
+        <tr>
+          <td>
+            <div class="stat-site">{{ s.site_name }}</div>
+          </td>
+          <td><span class="stat-region">{{ s.region }}</span></td>
+          <td><span class="badge-domain">{{ s.escalade }}</span></td>
+          <td class="num"><strong>{{ s.nb_inc }}</strong></td>
+          <td class="num">
+            <span class="dur-pill {% if s.total_sec >= 3600 %}dur-high{% elif s.total_sec >= 1800 %}dur-med{% else %}dur-low{% endif %}">
+              {{ s.total_dur }}
+            </span>
+          </td>
+          <td class="num" style="color:#666; font-size:12px;">{{ s.avg_dur }}</td>
+          <td class="num">
+            {% if s.nb_dr2 > 0 %}
+            <span style="display:inline-flex;align-items:center;gap:5px;background:#fff0f0;color:#b91c1c;border:1px solid #fca5a5;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">
+              🔴 {{ s.nb_dr2 }}
+            </span>
+            {% else %}
+            <span style="color:#9ca3af;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if s.nb_ouverts > 0 %}
+            <span class="badge-ouvert">● {{ s.nb_ouverts }} ouvert{% if s.nb_ouverts > 1 %}s{% endif %}</span>
+            {% else %}
+            <span class="badge-resolu">✓ Résolu</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% else %}
-  <div class="it-empty">
-    <div class="it-empty-icon">📭</div>
-    <div class="it-empty-txt">Aucun incident trouvé pour ces filtres.</div>
+  <div class="stat-empty">
+    <div class="stat-empty-ico">✅</div>
+    <div style="font-size:16px; font-weight:700; color:#333; margin-bottom:8px;">
+      Aucun site avec durée &gt; 10 min
+    </div>
+    <div style="font-size:13px; color:#999;">
+      Tous les incidents dans cette période ont une durée ≤ 10 min
+    </div>
   </div>
   {% endif %}
 </div>
@@ -513,55 +588,177 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script>
 (function () {
-  const form   = document.getElementById('courbe-form');
-  const btn    = document.getElementById('courbe-btn');
-  const result = document.getElementById('courbe-result');
-  const img    = document.getElementById('courbe-chart-img');
-  const label  = document.getElementById('courbe-site-label');
-  const dlBtn  = document.getElementById('courbe-dl-btn');
+  const form        = document.getElementById('courbe-form');
+  const btn         = document.getElementById('courbe-btn');
+  const result      = document.getElementById('courbe-result');
+  const img         = document.getElementById('courbe-chart-img');
+  const siteLabel   = document.getElementById('courbe-site-label');
+  const dlBtn       = document.getElementById('courbe-dl-btn');
+  const fileInput   = document.getElementById('courbe-avail-file');
+  const siteField   = document.getElementById('courbe-site-field');
+  const siteSearch  = document.getElementById('courbe-site-search');
+  const siteDropdown= document.getElementById('courbe-site-dropdown');
+  const siteHidden  = document.getElementById('courbe-site-hidden');
+  const siteCount   = document.getElementById('courbe-site-count');
+  const fileHint    = document.getElementById('courbe-file-hint');
 
   if (!form) return;
 
+  let allSites = [];
+  let activeIdx = -1;
+
+  // Colonnes site par onglet
+  const SHEET_COLS = { '2G': 'BCF name', '3G': 'WBTS name', '4G': 'MRBTS name' };
+
+  // ── 1. Parsing côté client avec SheetJS ──
+  fileInput.addEventListener('change', function () {
+    if (!this.files.length) return;
+
+    siteField.style.display = 'none';
+    siteHidden.value = '';
+    siteSearch.value = '';
+    btn.disabled = true;
+    allSites = [];
+    fileHint.innerHTML = '<span style="color:#8896b3;">⏳ Lecture du fichier…</span>';
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', sheetRows: 0 });
+        const sites = new Set();
+
+        Object.entries(SHEET_COLS).forEach(function ([sheetName, col]) {
+          const ws = wb.Sheets[sheetName];
+          if (!ws) return;
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+          rows.forEach(function (row) {
+            const val = (row[col] || '').toString().trim();
+            if (val) sites.add(val);
+          });
+        });
+
+        allSites = Array.from(sites).sort();
+        fileHint.textContent = '3 onglets requis : 2G, 3G, 4G';
+        siteCount.textContent = allSites.length + ' site' + (allSites.length > 1 ? 's' : '') + ' disponibles';
+        siteField.style.display = 'block';
+      } catch (err) {
+        fileHint.innerHTML = '<span style="color:#e53e3e;">Impossible de lire les sites — vérifiez le fichier.</span>';
+      }
+    };
+    reader.readAsArrayBuffer(this.files[0]);
+  });
+
+  // ── 2. Recherche dans le dropdown ──
+  function renderDropdown(query) {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? allSites.filter(s => s.toLowerCase().includes(q))
+      : allSites;
+
+    siteDropdown.innerHTML = '';
+    activeIdx = -1;
+
+    if (!filtered.length) {
+      siteDropdown.innerHTML = '<div class="site-dropdown-empty">Aucun site trouvé</div>';
+    } else {
+      filtered.slice(0, 60).forEach(function (s, i) {
+        const item = document.createElement('div');
+        item.className = 'site-dropdown-item';
+        // Highlight match
+        if (q) {
+          const idx = s.toLowerCase().indexOf(q);
+          item.innerHTML = s.slice(0, idx) +
+            '<strong>' + s.slice(idx, idx + q.length) + '</strong>' +
+            s.slice(idx + q.length);
+        } else {
+          item.textContent = s;
+        }
+        item.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          selectSite(s);
+        });
+        siteDropdown.appendChild(item);
+      });
+    }
+    siteDropdown.style.display = 'block';
+  }
+
+  function selectSite(name) {
+    siteSearch.value  = name;
+    siteHidden.value  = name;
+    siteDropdown.style.display = 'none';
+    btn.disabled = false;
+  }
+
+  siteSearch.addEventListener('focus', function () {
+    renderDropdown(this.value);
+  });
+
+  siteSearch.addEventListener('input', function () {
+    siteHidden.value = '';
+    btn.disabled = true;
+    renderDropdown(this.value);
+  });
+
+  // Navigation clavier
+  siteSearch.addEventListener('keydown', function (e) {
+    const items = siteDropdown.querySelectorAll('.site-dropdown-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, 0);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && items[activeIdx]) {
+        selectSite(items[activeIdx].textContent.replace(/\s+/g,' ').trim());
+      }
+    } else if (e.key === 'Escape') {
+      siteDropdown.style.display = 'none';
+    }
+  });
+
+  // Fermer si clic dehors
+  document.addEventListener('click', function (e) {
+    if (!form.contains(e.target)) siteDropdown.style.display = 'none';
+  });
+
+  // ── 3. Soumission du formulaire ──
   form.addEventListener('submit', function (e) {
     e.preventDefault();
+    if (!siteHidden.value) { siteSearch.focus(); return; }
 
     btn.disabled    = true;
     btn.textContent = '⏳ Traitement en cours…';
     result.style.display = 'none';
 
     const formData = new FormData(form);
-    const csrf     = form.querySelector('[name=csrfmiddlewaretoken]').value;
-
-    fetch('/incident-tracking/process/', {
-      method:  'POST',
-      body:    formData,
-      headers: { 'X-CSRFToken': csrf },
-    })
-    .then(function (r) {
-      if (!r.ok) throw new Error('Réponse serveur : ' + r.status);
-      return r.json();
-    })
-    .then(function (data) {
-      btn.disabled    = false;
-      btn.textContent = '📈 Générer le graphe';
-
-      if (data.success) {
-        img.src           = data.image;
-        label.textContent = 'Site : ' + data.site;
-        dlBtn.href        = '/incident-tracking/process/download/' + data.token + '/';
-        result.style.display = 'block';
-        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        alert('Erreur : ' + data.error);
-      }
-    })
-    .catch(function (err) {
-      btn.disabled    = false;
-      btn.textContent = '📈 Générer le graphe';
-      alert('Erreur réseau : ' + err);
-    });
+    fetch('/incident-tracking/process/', { method: 'POST', body: formData })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(data => {
+        btn.disabled    = false;
+        btn.textContent = '📈 Générer le graphe';
+        if (data.success) {
+          img.src              = data.image;
+          siteLabel.textContent = 'Site : ' + data.site;
+          dlBtn.href           = '/incident-tracking/process/download/' + data.token + '/';
+          result.style.display = 'block';
+          result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          alert('Erreur : ' + data.error);
+        }
+      })
+      .catch(err => {
+        btn.disabled    = false;
+        btn.textContent = '📈 Générer le graphe';
+        alert('Erreur réseau : ' + err);
+      });
   });
 
   dlBtn.addEventListener('mouseover', function () { this.style.background = '#f0fdf4'; });

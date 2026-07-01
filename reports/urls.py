@@ -12,12 +12,14 @@ urlpatterns = [
     path('download/<uuid:pk>/<str:file_type>/',   login_required(views.download_file),   name='download_file'),
     path('delete/<uuid:pk>/',                     login_required(views.delete_report),   name='delete_report'),
     path('history/',                              login_required(views.history),         name='history'),
-    path('statistiques/',                         login_required(views.statistiques),    name='statistiques'),
+    path('statistiques/',                         login_required(views.statistiques),      name='statistiques'),
+    path('statistiques/live/',                    login_required(views.statistiques_live), name='statistiques_live'),
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('comparer/',                             login_required(views.comparer),        name='comparer'),
     path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),
-    path('incident-tracking/process/',                      login_required(views.isocep_process),  name='isocep_process'),
-    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download), name='isocep_download'),
+    path('incident-tracking/process/',                      login_required(views.isocep_process),        name='isocep_process'),
+    path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download),       name='isocep_download'),
+    path('incident-tracking/extract-sites/',                login_required(views.isocep_extract_sites),  name='isocep_extract_sites'),
 
     # ── Reporting ──────────────────────────────────────────────────────────────
     path('reporting/',                            login_required(views.reporting),       name='reporting'),
@@ -25,6 +27,10 @@ urlpatterns = [
     # Outils globaux (avant le slug générique)
     path('reporting/dr2-daily/',                  login_required(views.dr2_daily_report),  name='dr2_daily'),
     path('reporting/dr2-daily/export/',           login_required(views.dr2_daily_export),  name='dr2_daily_export'),
+    path('reporting/cgi-rapport/',               login_required(views.cgi_rapport_view),   name='cgi_rapport'),
+    path('reporting/cgi-rapport/export/',        login_required(views.cgi_rapport_export), name='cgi_rapport_export'),
+    path('reporting/mobile-cgi/',                login_required(views.mobile_cgi_view),    name='mobile_cgi'),
+    path('reporting/mobile-cgi/export/',         login_required(views.mobile_cgi_export),  name='mobile_cgi_export'),
     path('reporting/generate-pptx/',              login_required(views.generate_pptx_report), name='generate_pptx'),
     path('reporting/bases-incidents/',            login_required(views.bases_incidents_view),   name='bases_incidents'),
     path('reporting/bases-incidents/export/',     login_required(views.bases_incidents_export), name='bases_incidents_export'),
