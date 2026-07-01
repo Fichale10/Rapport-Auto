@@ -8,7 +8,6 @@ class Migration(migrations.Migration):
     dependencies = [
         ('reports', '0019_add_site_parent_fields'),
         ('reports', '0019_alter_incident_domain'),
-        ('reports', '0019_site_technologie_fo'),
     ]
 
     operations = [
