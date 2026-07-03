@@ -827,13 +827,14 @@ def process_report(request, pk):
     else:
         report.site_duration_json = {}
 
-    # ── site_top_cause_json : cause la plus fréquente par site ────────────────
-    _cause_col = next((c for c in ('Root Cause', 'Cause') if c in df_export.columns), None)
-    if _site_dur_col and _cause_col:
+    # ── site_top_cause_json : cause la plus fréquente par site ──────────────
+    # Utilise df_dedup (même source que top_sites_json) pour que les noms correspondent
+    _cause_col_dedup = next((c for c in ('Root Cause', 'Cause') if c in df_dedup.columns), None)
+    if site_col and _cause_col_dedup:
         _sc: dict = {}
-        for _, _row in df_export.iterrows():
-            _s = str(_row.get(_site_dur_col, '')).strip()
-            _c = str(_row.get(_cause_col, '')).strip()
+        for _, _row in df_dedup.iterrows():
+            _s = str(_row.get(site_col, '')).strip()
+            _c = str(_row.get(_cause_col_dedup, '')).strip()
             if _s and _s != 'nan' and _c and _c != 'nan':
                 if _s not in _sc:
                     _sc[_s] = {}

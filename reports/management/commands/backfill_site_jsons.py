@@ -78,8 +78,12 @@ class Command(BaseCommand):
                 continue
 
             site_col  = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
-            cause_col = next((c for c in df.columns if c.strip() in ('Root Cause', 'Cause')), None)
+            cause_col = next((c for c in ('Root Cause', 'Cause') if c in df.columns), None)
             dur_col   = 'Duration' if 'Duration' in df.columns else None
+
+            # Sites connus de top_sites_json — on filtre pour éviter les doublons
+            # (df_export contient les sites enfants ; top_sites_json utilise df_dedup dédoublonné)
+            valid_sites = {s['name'] for s in report.top_sites_json} if report.top_sites_json else None
 
             # ── site_duration_json ──
             sd: dict = {}
@@ -90,11 +94,14 @@ class Command(BaseCommand):
                     if s and s != 'nan' and d > 0:
                         sd[s] = sd.get(s, 0) + d
 
-            # ── site_top_cause_json ──
+            # ── site_top_cause_json — filtré sur les sites de top_sites_json ──
             sc: dict = {}
             if site_col and cause_col:
                 for _, row in df.iterrows():
                     s = str(row.get(site_col, '')).strip()
+                    # Ignorer les sites non présents dans top_sites_json (sites enfants/doublons)
+                    if valid_sites and s not in valid_sites:
+                        continue
                     c = str(row.get(cause_col, '')).strip()
                     if s and s != 'nan' and c and c != 'nan':
                         if s not in sc:
