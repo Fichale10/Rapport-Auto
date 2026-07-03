@@ -1154,8 +1154,10 @@
   @keyframes isocIn { from { opacity:0; transform: translateY(16px) scale(.98); } to { opacity:1; transform:none; } }
   #isoc-panel.open { display: flex; }
 
-  .isoc-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: linear-gradient(135deg,#0047cc,#003087); color: #fff; }
+  .isoc-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: linear-gradient(135deg,#0047cc,#003087); color: #fff; position: relative; }
   .isoc-head img { width: 34px; height: 34px; border-radius: 9px; background: #fff; }
+  .isoc-head .isoc-logo-btn { border: none; background: transparent; padding: 0; cursor: pointer; border-radius: 9px; transition: transform .15s, box-shadow .15s; line-height: 0; }
+  .isoc-head .isoc-logo-btn:hover { transform: scale(1.08); box-shadow: 0 0 0 3px rgba(255,199,44,.45); }
   .isoc-head .isoc-title { font-weight: 700; font-size: 15px; letter-spacing: .3px; }
   .isoc-head .isoc-sub { font-size: 11px; opacity: .85; }
   .isoc-head .isoc-close { margin-left: auto; background: rgba(255,255,255,.18); border: none; color: #fff; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1; }
@@ -1170,6 +1172,22 @@
   .isoc-suggests { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; margin-top: 14px; }
   .isoc-suggest { font-size: 12px; background: #fff; border: 1px solid #e3e7f2; color: #003087; padding: 7px 12px; border-radius: 20px; cursor: pointer; transition: background .15s, border-color .15s; }
   .isoc-suggest:hover { background: #eef2ff; border-color: #c3d0f5; }
+
+  /* Menu de questions (clic sur le logo ISOC) */
+  #isoc-menu {
+    display: none; position: absolute; top: 56px; left: 12px; z-index: 10;
+    width: calc(100% - 24px); max-height: 300px; overflow-y: auto;
+    background: #fff; border: 1px solid #e3e7f2; border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(10,25,80,.22); padding: 8px;
+  }
+  #isoc-menu.open { display: block; }
+  .isoc-menu-title { font-size: 11px; font-weight: 700; color: #6b7a99; text-transform: uppercase; letter-spacing: .5px; padding: 6px 10px 4px; }
+  .isoc-menu-item {
+    display: block; width: 100%; text-align: left; border: none; background: transparent;
+    font-size: 13px; color: #1c2340; padding: 8px 10px; border-radius: 9px; cursor: pointer;
+    font-family: inherit; transition: background .12s;
+  }
+  .isoc-menu-item:hover { background: #eef2ff; color: #003087; }
 
   .isoc-msg { max-width: 84%; padding: 10px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
   .isoc-msg.user { align-self: flex-end; background: linear-gradient(135deg,#003087,#0047cc); color: #fff; border-bottom-right-radius: 4px; }
@@ -1189,12 +1207,35 @@
 
 <div id="isoc-panel" role="dialog" aria-label="Assistant ISOC_IA">
   <div class="isoc-head">
-    <img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA">
+    <button type="button" class="isoc-logo-btn" id="isoc-logo-btn" title="Voir des suggestions de questions" aria-haspopup="true">
+      <img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA">
+    </button>
     <div>
       <div class="isoc-title">ISOC_IA</div>
       <div class="isoc-sub">Site : {{ site.site_name }}</div>
     </div>
     <button class="isoc-close" id="isoc-close" aria-label="Fermer">&times;</button>
+    <div id="isoc-menu" role="menu" aria-label="Suggestions de questions">
+      <div class="isoc-menu-title">Pannes &amp; historique</div>
+      <button class="isoc-menu-item">Combien de fois ce site est-il tombé ?</button>
+      <button class="isoc-menu-item">Quelles sont les causes les plus fréquentes ?</button>
+      <button class="isoc-menu-item">Durée totale d'indisponibilité ?</button>
+      <button class="isoc-menu-item">Historique des derniers incidents</button>
+      <div class="isoc-menu-title">Fiche technique</div>
+      <button class="isoc-menu-item">Donne-moi la fiche technique complète du site</button>
+      <button class="isoc-menu-item">Quelle est la configuration 2G / 3G / 4G ?</button>
+      <button class="isoc-menu-item">Quel est le type d'énergie et le GE auto ?</button>
+      <button class="isoc-menu-item">Où se trouve ce site (région, zone, coordonnées) ?</button>
+      <div class="isoc-menu-title">Architecture réseau</div>
+      <button class="isoc-menu-item">Quels sites dépendent de ce site ?</button>
+      <button class="isoc-menu-item">Quel est le site parent qui porte ce site ?</button>
+      <button class="isoc-menu-item">Quel serait l'impact si ce site tombe ?</button>
+      <div class="isoc-menu-title">Contacts &amp; sécurité</div>
+      <button class="isoc-menu-item">Qui sont les techniciens et contacts du site ?</button>
+      <button class="isoc-menu-item">Quelle société assure le gardiennage ?</button>
+      <div class="isoc-menu-title">Synthèse</div>
+      <button class="isoc-menu-item">Fais-moi une synthèse complète de ce site</button>
+    </div>
   </div>
   <div class="isoc-body" id="isoc-body">
     <div class="isoc-welcome" id="isoc-welcome">
@@ -1296,6 +1337,28 @@
   Array.prototype.forEach.call(document.querySelectorAll('.isoc-suggest'), function(b){
     b.addEventListener('click', function(){ send(b.textContent); });
   });
+
+  // Menu de suggestions via clic sur le logo ISOC (en-tête du panneau)
+  var logoBtn = document.getElementById('isoc-logo-btn');
+  var menu    = document.getElementById('isoc-menu');
+  if (logoBtn && menu) {
+    logoBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      menu.classList.toggle('open');
+    });
+    Array.prototype.forEach.call(menu.querySelectorAll('.isoc-menu-item'), function(b){
+      b.addEventListener('click', function(){
+        menu.classList.remove('open');
+        send(b.textContent);
+      });
+    });
+    // Fermer le menu si on clique ailleurs
+    document.addEventListener('click', function(e){
+      if (menu.classList.contains('open') && !menu.contains(e.target) && e.target !== logoBtn) {
+        menu.classList.remove('open');
+      }
+    });
+  }
 })();
 </script>
 {% endif %}
