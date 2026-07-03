@@ -66,6 +66,7 @@ urlpatterns = [
     # ── Autres ────────────────────────────────────────────────────────────────
     path('site-info/',                            login_required(views.site_info),          name='site_info'),
     path('site-info/search/',                     login_required(views.site_search_api),    name='site_search_api'),
+    path('site-info/architecture/pptx/',          login_required(views.site_architecture_pptx), name='site_architecture_pptx'),
     path('site-info/export/',                     login_required(views.sites_export_excel), name='sites_export_excel'),
     path('site-info/import/',                     login_required(views.sites_import_excel), name='sites_import_excel'),
     path('statistiques/export/',                  login_required(views.export_statistiques), name='export_statistiques'),

@@ -4419,16 +4419,20 @@ def _build_site_architecture(site):
         return (s or '').strip().upper()
 
     rows = Site.objects.values_list(
-        'site_name', 'site_parent_1', 'site_parent_2', 'region'
+        'site_name', 'site_parent_1', 'site_parent_2', 'region', 'typ_trans'
     )
-    info = {}        # NOM_MAJ -> {name, region}
+    info = {}        # NOM_MAJ -> {name, region, typ_trans}
     parents = {}     # ENFANT_MAJ -> [(parent_maj, 'primary'|'secondary')]
     children = {}    # PARENT_MAJ -> [(enfant_maj, type)]
-    for name, p1, p2, region in rows:
+    for name, p1, p2, region, typ_trans in rows:
         nu = norm(name)
         if not nu:
             continue
-        info[nu] = {'name': (name or '').strip(), 'region': region or ''}
+        info[nu] = {
+            'name': (name or '').strip(),
+            'region': region or '',
+            'typ_trans': (typ_trans or '').strip().upper(),
+        }
         ps = []
         if norm(p1):
             ps.append((norm(p1), 'primary'))
@@ -4499,7 +4503,12 @@ def _build_site_architecture(site):
     for nu in selected:
         for p, t in parents.get(nu, []):
             if p in selected:
-                edges.append({'source': p, 'target': nu, 'type': t})
+                edges.append({
+                    'source': p,
+                    'target': nu,
+                    'type': t,
+                    'trans': info[nu]['typ_trans'],
+                })
 
     return {'nodes': nodes, 'edges': edges, 'current': cur}
 
@@ -4514,6 +4523,51 @@ def site_search_api(request):
         .values('site_name', 'site_id', 'region')[:15]
     )
     return JsonResponse(hits, safe=False)
+
+
+def site_architecture_pptx(request):
+    """Exporte le(s) diagramme(s) d'architecture (« qui porte qui ») en
+    PowerPoint modifiable. Deux modes :
+      • ?q=SITE           → un seul site
+      • ?sites=A,B,C      → sélection multi-sites (une diapo par site)"""
+    from .models import Site
+
+    sites_param = request.GET.get('sites', '').strip()
+    query = request.GET.get('q', '').strip()
+
+    names = [s.strip() for s in sites_param.split(',') if s.strip()] if sites_param else ([query] if query else [])
+    if not names:
+        raise Http404('Aucun site demandé.')
+    names = names[:20]   # garde-fou
+
+    items, missing = [], []
+    for name in names:
+        site = Site.objects.filter(site_name__iexact=name).first()
+        data = _build_site_architecture(site) if site else None
+        if data and data.get('nodes'):
+            items.append((data, site.site_name))
+        else:
+            missing.append(name)
+
+    if not items:
+        from django.urls import reverse
+        messages.warning(
+            request,
+            "Aucune donnée d'architecture pour la sélection : " + ', '.join(missing))
+        return redirect(f"{reverse('site_info')}?q={names[0]}")
+
+    from .site_archi_pptx import build_architectures_pptx
+    buf = build_architectures_pptx(items)
+
+    if len(items) == 1:
+        safe = ''.join(c if c.isalnum() else '_' for c in items[0][1]) or 'site'
+        fname = f'Architecture_{safe}.pptx'
+    else:
+        fname = f'Architectures_{len(items)}_sites.pptx'
+
+    return FileResponse(
+        buf, as_attachment=True, filename=fname,
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
 
 @gestionnaire_required
@@ -5793,6 +5847,60 @@ def _build_chatbot_context(message):
     return '\n'.join(lines)
 
 
+def _model_all_fields(obj, exclude=('id',)):
+    """Retourne dynamiquement (label, valeur) pour TOUS les champs non vides d'un
+    objet modèle. Ainsi, toute nouvelle colonne ajoutée à la base (par API,
+    import Excel ou migration) est automatiquement exposée à l'assistant IA,
+    sans modifier le code."""
+    out = []
+    for f in obj._meta.fields:
+        if f.name in exclude:
+            continue
+        try:
+            v = getattr(obj, f.name)
+        except Exception:
+            continue
+        if v in (None, '', ' ', [], {}):
+            continue
+        label = str(getattr(f, 'verbose_name', '') or f.name).replace('_', ' ').strip()
+        out.append((label, v))
+    return out
+
+
+def _json_find_site(data, low, path=''):
+    """Recherche récursive d'un site dans une structure JSON arbitraire.
+
+    Parcourt dictionnaires et listes à n'importe quelle profondeur et renvoie
+    les enregistrements (chemin, extrait) qui mentionnent le site. Permet de
+    retrouver le site dans n'importe quel champ JSON des rapports, quelle que
+    soit sa position dans la base de données."""
+    hits = []
+    if isinstance(data, dict):
+        matched = False
+        for k, v in data.items():
+            if (isinstance(v, str) and low in v.lower()) or \
+               (isinstance(k, str) and low in k.lower()):
+                matched = True
+                break
+        if matched:
+            hits.append((path, data))
+        else:
+            for k, v in data.items():
+                if isinstance(v, (dict, list)):
+                    sub = f"{path}.{k}" if path else str(k)
+                    hits.extend(_json_find_site(v, low, sub))
+    elif isinstance(data, list):
+        for item in data:
+            if isinstance(item, str):
+                if low in item.lower():
+                    hits.append((path, item))
+            elif isinstance(item, (dict, list)):
+                hits.extend(_json_find_site(item, low, path))
+    elif isinstance(data, str) and low in data.lower():
+        hits.append((path, data))
+    return hits
+
+
 def _build_site_chatbot_context(site_name, message):
     """Construit un contexte détaillé centré sur UN site précis.
 
@@ -5802,7 +5910,7 @@ def _build_site_chatbot_context(site_name, message):
     (top_sites_json, region_sites_json, top_causes_json) ET de la table des
     incidents si elle est alimentée.
     """
-    from django.db.models import Count, Sum
+    from django.db.models import Count, Q, Sum
     from .models import Site, Incident, UploadedReport
 
     lines = []
@@ -5816,26 +5924,28 @@ def _build_site_chatbot_context(site_name, message):
     sname = site.site_name
     low = sname.lower().strip()
 
-    # ── Fiche technique complète ───────────────────────────────────────────
-    lines.append(f"=== FICHE TECHNIQUE DU SITE « {sname} » ===")
-    fields = [
-        ('ID site', site.site_id), ('Région', site.region), ('Zone', site.zone),
-        ('Base', site.base), ('OLT', site.olt), ('Latitude', site.latitude),
-        ('Longitude', site.longitude), ('Date MES', site.date_mes),
-        ('Configuration', site.config), ('Technologie', site.techno),
-        ('Type transport', site.typ_trans), ('Type énergie', site.typ_energie),
-        ('GE auto', site.ge_auto), ('Site lithium', site.site_lithium),
-        ('Site ESM', site.site_esm), ('Solaire/Neteco', site.site_solaire_neteco),
-        ('Config 2G', site.config_2g), ('Config 3G', site.config_3g),
-        ('Config 4G', site.config_4g), ('Classif. tech', site.classif_tech),
-        ('Type site', site.type_site), ('Hauteur pylône', site.hauteur_pylone),
-        ('Typologie pylône', site.typologie_pylone), ('N° agent', site.numero_agent),
-        ('Société gardiens', site.societe_gardiens),
-        ('Contacts surveillants', site.contacts_surveillants),
-    ]
-    for k, v in fields:
-        if v not in (None, '', ' '):
-            lines.append(f"- {k} : {v}")
+    # ── Fiche technique complète (TOUS les champs, dynamiquement) ──────────
+    lines.append(f"=== FICHE TECHNIQUE DU SITE « {sname} » (tous les champs en base) ===")
+    for label, v in _model_all_fields(site):
+        lines.append(f"- {label} : {v}")
+
+    # ── Architecture réseau : parents et enfants (« qui porte qui ») ───────
+    parents = [p for p in (site.site_parent_1, site.site_parent_2) if (p or '').strip()]
+    children = list(
+        Site.objects.filter(
+            Q(site_parent_1__iexact=sname) | Q(site_parent_2__iexact=sname)
+        ).values_list('site_name', flat=True)[:80]
+    )
+    if parents or children:
+        lines.append("")
+        lines.append("=== ARCHITECTURE RÉSEAU (dépendances) ===")
+        if parents:
+            lines.append(f"Site(s) parent(s) qui portent « {sname} » : {', '.join(parents)}")
+        if children:
+            lines.append(
+                f"Sites portés par « {sname} » ({len(children)} enfant(s), "
+                f"impactés si ce site tombe) : {', '.join(children)}"
+            )
 
     def _num(x):
         try:
@@ -5850,6 +5960,14 @@ def _build_site_chatbot_context(site_name, message):
     report_hits = []          # [{date, period, count, impacted_region}]
     cause_durations = {}      # {cause_name: duration_sec cumulée (jours impactés)}
     total_outages = 0         # somme des "count" (nombre de fois tombé)
+    json_mentions = []        # mentions du site dans N'IMPORTE QUEL champ JSON des rapports
+
+    # Champs JSON déjà traités de manière dédiée ci-dessous
+    _DEDICATED_JSON = {'top_sites_json', 'region_sites_json', 'top_causes_json'}
+    _other_json_fields = [
+        f.name for f in UploadedReport._meta.fields
+        if f.get_internal_type() == 'JSONField' and f.name not in _DEDICATED_JSON
+    ]
 
     for r in reports:
         count = None
@@ -5893,10 +6011,37 @@ def _build_site_chatbot_context(site_name, message):
                     dur = 0.0
                 cause_durations[cname] = cause_durations.get(cname, 0.0) + dur
 
-    # ── Données issues de la table Incident (si alimentée) ─────────────────
-    incs = Incident.objects.filter(site_name__iexact=sname)
-    if not incs.exists() and site.site_id:
-        incs = Incident.objects.filter(site_id=site.site_id)
+        # 3) Recherche du site dans TOUS les autres champs JSON du rapport
+        #    (outage_journalier_json, fixe_stats_json, transmission_stats_json,
+        #    synthesis_json et tout futur champ ajouté) — quelle que soit la
+        #    position de l'information dans la structure.
+        for fname in _other_json_fields:
+            data = getattr(r, fname, None)
+            if not data:
+                continue
+            try:
+                for path, extract in _json_find_site(data, low)[:5]:
+                    txt = json.dumps(extract, ensure_ascii=False, default=str)
+                    if len(txt) > 400:
+                        txt = txt[:400] + '…'
+                    json_mentions.append(
+                        f"  • Rapport du {r.date_rapport} — champ {fname}"
+                        f"{(' → ' + path) if path else ''} : {txt}"
+                    )
+            except Exception:
+                continue
+        if len(json_mentions) > 60:
+            break
+
+    # ── Données issues de la table Incident (recherche large) ─────────────
+    inc_filter = (
+        Q(site_name__iexact=sname) | Q(site_name__icontains=sname)
+        | Q(site_parent__icontains=sname) | Q(nature__icontains=sname)
+        | Q(impact_equipement__icontains=sname) | Q(impact_service__icontains=sname)
+    )
+    if site.site_id:
+        inc_filter |= Q(site_id=site.site_id)
+    incs = Incident.objects.filter(inc_filter)
     inc_count = incs.count()
 
     lines.append("")
@@ -5947,22 +6092,30 @@ def _build_site_chatbot_context(site_name, message):
                 for c in by_cause:
                     cause_txt = (c['cause'] or '').strip().replace('\n', ' ')[:140]
                     lines.append(f"  • {cause_txt} → {c['n']} fois")
-            # Derniers incidents détaillés
+            # Derniers incidents détaillés (TOUS les champs renseignés)
             lines.append("")
-            lines.append("Derniers incidents détaillés :")
+            lines.append("Derniers incidents détaillés (tous les champs renseignés) :")
             for inc in incs.order_by('-alarm_time')[:15]:
-                date_txt = inc.alarm_time.strftime('%Y-%m-%d %H:%M') if inc.alarm_time else '?'
-                lines.append(
-                    f"  • {date_txt} | ticket {inc.numero_ticket or '?'} | domaine={inc.domain} "
-                    f"| escalade={inc.escalade or '—'} | statut={inc.status or '—'} "
-                    f"| durée={_fmt_duration(inc.duration_sec)} | cause={(inc.cause or '—').strip()[:160]}"
+                detail = '; '.join(
+                    f"{k}={str(v).strip()[:160]}"
+                    for k, v in _model_all_fields(inc, exclude=('id', 'imported_at', 'source_file'))
                 )
+                lines.append(f"  • {detail}")
     else:
         lines.append(
             "Aucune panne enregistrée pour ce site dans les rapports traités "
             "ni dans la table des incidents. Le site n'apparaît dans aucun rapport "
             "comme ayant été impacté."
         )
+
+    # ── Mentions du site dans les autres données des rapports (JSON) ───────
+    if json_mentions:
+        lines.append("")
+        lines.append(
+            "=== AUTRES MENTIONS DU SITE DANS LES DONNÉES DES RAPPORTS "
+            "(stats fixe/FTTH, transmission, outage journalier, synthèses…) ==="
+        )
+        lines.extend(json_mentions[:60])
 
     return '\n'.join(lines)
 
@@ -6015,6 +6168,16 @@ def chatbot_api(request):
             "Base tes réponses UNIQUEMENT sur les données de contexte fournies ci-dessous. "
             "Si une information n'est pas présente, indique-le clairement plutôt que d'inventer.\n"
             "Tu peux faire des calculs simples et des synthèses à partir des chiffres fournis.\n\n"
+            "RÈGLES DE PRÉSENTATION (obligatoires — ta réponse est affichée en TEXTE BRUT, "
+            "le Markdown n'est PAS interprété) :\n"
+            "- N'utilise JAMAIS de Markdown : pas d'étoiles (** ou *), pas de tableaux avec des barres |, "
+            "pas de dièses #, pas de lignes de séparation (---, ===).\n"
+            "- Rédige des phrases complètes et bien construites.\n"
+            "- Pour énumérer, utilise des tirets simples « - », un élément par ligne, "
+            "au format : - Libellé : valeur.\n"
+            "- Structure la réponse : une courte phrase d'introduction, puis la liste si nécessaire, "
+            "puis éventuellement une phrase de conclusion ou de synthèse.\n"
+            "- Sépare les parties par une ligne vide pour aérer la lecture.\n\n"
             "===== DONNÉES DE LA BASE (contexte du site) =====\n"
             f"{db_context}\n"
             "===== FIN DU CONTEXTE ====="
@@ -6030,6 +6193,16 @@ def chatbot_api(request):
             "Si une information demandée n'est pas présente dans le contexte, indique "
             "clairement que tu ne disposes pas de cette donnée plutôt que d'inventer.\n"
             "Tu peux faire des calculs simples et des synthèses à partir des chiffres fournis.\n\n"
+            "RÈGLES DE PRÉSENTATION (obligatoires — ta réponse est affichée en TEXTE BRUT, "
+            "le Markdown n'est PAS interprété) :\n"
+            "- N'utilise JAMAIS de Markdown : pas d'étoiles (** ou *), pas de tableaux avec des barres |, "
+            "pas de dièses #, pas de lignes de séparation (---, ===).\n"
+            "- Rédige des phrases complètes et bien construites.\n"
+            "- Pour énumérer, utilise des tirets simples « - », un élément par ligne, "
+            "au format : - Libellé : valeur.\n"
+            "- Structure la réponse : une courte phrase d'introduction, puis la liste si nécessaire, "
+            "puis éventuellement une phrase de conclusion ou de synthèse.\n"
+            "- Sépare les parties par une ligne vide pour aérer la lecture.\n\n"
             "===== DONNÉES DE LA BASE (contexte) =====\n"
             f"{db_context}\n"
             "===== FIN DU CONTEXTE ====="
@@ -6071,6 +6244,18 @@ def chatbot_api(request):
         reply = data['choices'][0]['message']['content']
     except (ValueError, KeyError, IndexError):
         return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
+
+    # Nettoyage de secours : retire le Markdown résiduel (le widget affiche du texte brut)
+    import re as _re
+    reply = _re.sub(r'\*\*(.+?)\*\*', r'\1', reply)           # **gras**
+    reply = _re.sub(r'(?<!\w)\*(.+?)\*(?!\w)', r'\1', reply)  # *italique*
+    reply = _re.sub(r'^#{1,6}\s*', '', reply, flags=_re.M)    # titres #
+    reply = _re.sub(r'^\s*\|?[-:| ]{4,}\|?\s*$', '', reply, flags=_re.M)  # séparateurs de tableau |---|---|
+    reply = _re.sub(r'^\s*\|(.+)\|\s*$',
+                    lambda m: '- ' + ' : '.join(p.strip() for p in m.group(1).split('|') if p.strip()),
+                    reply, flags=_re.M)                        # lignes de tableau | a | b |
+    reply = _re.sub(r'^\s*(?:---+|===+)\s*$', '', reply, flags=_re.M)  # lignes ---/===
+    reply = _re.sub(r'\n{3,}', '\n\n', reply).strip()
 
     return JsonResponse({'reply': reply})
 

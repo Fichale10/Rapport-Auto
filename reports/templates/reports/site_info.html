@@ -136,6 +136,9 @@
   .archi-legend .lg-leaf { background:#26a35a; }
   .archi-legend .lg-spof { background:transparent; border:2px dashed #ff5a5a; }
   .archi-legend .lg-dash { width:18px; height:0; border-top:2px dashed #FFC72C; border-radius:0; }
+  .archi-legend .lg-fo   { width:18px; height:0; border-top:3.5px solid #6b7a99; border-radius:0; }
+  .archi-legend .lg-fh   { width:18px; height:0; border-top:1.4px dashed #6b7a99; border-radius:0; }
+  .archi-legend .lg-fttm { width:18px; height:0; border-top:1.4px solid #6b7a99; border-radius:0; }
   .site-loc-box {
     background:#f8faff; border:1px solid #e8edf5; border-radius:12px;
     padding:14px 16px; display:flex; flex-direction:column; gap:8px;
@@ -150,6 +153,41 @@
     transition:background .15s;
   }
   .site-archi-btn:hover { background:#0047cc; }
+
+  /* ── Barre d'export de l'architecture ── */
+  .archi-export-bar { display:flex; flex-wrap:wrap; gap:8px; margin-top:2px; }
+  .archi-export-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:700; padding:7px 13px; border-radius:9px;
+    text-decoration:none; border:1px solid #d5def0; cursor:pointer;
+    background:#f2f6ff; color:#003087; transition:background .15s, border-color .15s, transform .12s;
+  }
+  .archi-export-btn:hover { background:#e4edff; border-color:#b9caf0; transform:translateY(-1px); }
+  .archi-export-btn.primary { background:#003087; color:#fff; border-color:#003087; }
+  .archi-export-btn.primary:hover { background:#0047cc; border-color:#0047cc; }
+  .archi-export-btn.selected { background:#26a35a; color:#fff; border-color:#26a35a; }
+  .archi-export-btn.selected:hover { background:#1e8a4b; border-color:#1e8a4b; }
+
+  /* ── Panier de sélection multi-sites ── */
+  .archi-sel-panel {
+    display:none; margin-top:10px; padding:12px 14px;
+    background:#f8faff; border:1px solid #dfe7f5; border-radius:12px;
+  }
+  .archi-sel-panel.show { display:block; }
+  .archi-sel-title { font-size:11.5px; font-weight:800; color:#003087; text-transform:uppercase;
+    letter-spacing:.4px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
+  .archi-sel-clear { font-size:11px; font-weight:600; color:#c0392b; background:none; border:none;
+    cursor:pointer; text-decoration:underline; }
+  .archi-sel-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .archi-sel-chip {
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700;
+    background:#e8f0ff; color:#003087; border:1px solid #c9d8f5; border-radius:16px; padding:4px 6px 4px 11px;
+  }
+  .archi-sel-chip button {
+    background:#c9d8f5; border:none; color:#003087; width:17px; height:17px; border-radius:50%;
+    font-size:11px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  .archi-sel-chip button:hover { background:#ff5a5a; color:#fff; }
 
   /* ── Modal stats rapides ── */
   .site-stats-modal-overlay {
@@ -497,7 +535,27 @@
           <span><i class="lg-node"></i>Nœud porteur</span>
           <span><i class="lg-leaf"></i>Site terminal</span>
           <span><i class="lg-spof"></i>Porteur critique (SPOF)</span>
-          <span><i class="lg-dash"></i>Lien secondaire</span>
+          <span><i class="lg-fo"></i>FO (fibre)</span>
+          <span><i class="lg-fttm"></i>FTTM</span>
+          <span><i class="lg-fh"></i>FH (faisceau hertzien)</span>
+        </div>
+        <div class="archi-export-bar">
+          <button type="button" class="archi-export-btn" id="archiPngBtn">🖼️ Exporter en image (PNG)</button>
+          <a class="archi-export-btn primary" id="archiPptxBtn"
+             href="{% url 'site_architecture_pptx' %}?q={{ site.site_name|urlencode }}">
+            📥 Télécharger PPTX (modifiable)
+          </a>
+          <button type="button" class="archi-export-btn" id="archiSelBtn">➕ Ajouter à la sélection</button>
+        </div>
+        <div class="archi-sel-panel" id="archiSelPanel">
+          <div class="archi-sel-title">
+            <span>🗂️ Sélection pour présentation (<span id="archiSelCount">0</span>)</span>
+            <button type="button" class="archi-sel-clear" id="archiSelClear">Vider</button>
+          </div>
+          <div class="archi-sel-chips" id="archiSelChips"></div>
+          <a class="archi-export-btn primary" id="archiSelExport" href="#">
+            📥 Exporter la sélection en PPTX
+          </a>
         </div>
       </div>
     </div>
@@ -808,22 +866,59 @@
   var g = el('g', { transform: 'translate(' + offX + ',' + offY + ')' });
   svg.appendChild(g);
 
-  // ── Arcs orientés ──
+  // ── Répartition des points d'ancrage : les flèches ne doivent PAS
+  //    se rejoindre au même point sur un nœud. On étale les liens le long
+  //    du bord du cercle (verticalement) selon leur nombre. ──
+  var inIdx = {}, outIdx = {};   // index de chaque lien parmi les entrants / sortants
+  var inCnt = {}, outCnt = {};
   data.edges.forEach(function (e) {
     if (!byId[e.source] || !byId[e.target]) return;
-    var x1 = nx(e.source) + R, y1 = ny(e.source);
-    var x2 = nx(e.target) - R - 6, y2 = ny(e.target);
+    e._in = (inCnt[e.target] = (inCnt[e.target] || 0)); inCnt[e.target]++;
+    e._out = (outCnt[e.source] = (outCnt[e.source] || 0)); outCnt[e.source]++;
+  });
+  // Décalage vertical d'ancrage : réparti dans [-(R-6), +(R-6)]
+  function anchorOffset(idx, total) {
+    if (total <= 1) return 0;
+    var span = (R - 6) * 2;                 // amplitude totale disponible
+    return -span / 2 + (span * idx) / (total - 1);
+  }
+
+  // ── Arcs : orientés (flèche) seulement vers les sites terminaux ──
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    var targetIsLeaf = !(childrenOf[e.target] || []).length;
+    var oy1 = anchorOffset(e._out, outCnt[e.source]);
+    var oy2 = anchorOffset(e._in, inCnt[e.target]);
+    var x1 = nx(e.source) + R, y1 = ny(e.source) + oy1;
+    // Retrait de 6px pour loger la pointe de flèche, sinon on touche le bord
+    var x2 = nx(e.target) - R - (targetIsLeaf ? 6 : 0), y2 = ny(e.target) + oy2;
     var mx = (x1 + x2) / 2;
     var d = 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
     var sec = e.type === 'secondary';
-    g.appendChild(el('path', {
+
+    // ── Style selon le type de transport (TYP TRANS) du site porté ──
+    //   FO   → trait continu fort (épais, plein)
+    //   FH   → trait interrompu fin (fin, pointillé)
+    //   FTTM → trait continu fin (fin, plein)
+    var trans = (e.trans || '').toUpperCase();
+    var width, dash;
+    if (trans === 'FO') { width = 3.5; dash = '0'; }
+    else if (trans === 'FH') { width = 1.4; dash = '4 4'; }
+    else if (trans === 'FTTM') { width = 1.4; dash = '0'; }
+    else { width = sec ? 2 : 2.5; dash = sec ? '6 5' : '0'; }
+
+    // ── Orientation : flèche uniquement vers les sites terminaux (feuilles) ──
+    var pathAttrs = {
       d: d, fill: 'none',
       stroke: sec ? '#FFC72C' : 'rgba(255,255,255,.55)',
-      'stroke-width': sec ? 2 : 2.5,
-      'stroke-dasharray': sec ? '6 5' : '0',
-      'stroke-linecap': 'round',
-      'marker-end': 'url(#' + (sec ? 'arrowSec' : 'arrow') + ')'
-    }));
+      'stroke-width': width,
+      'stroke-dasharray': dash,
+      'stroke-linecap': 'round'
+    };
+    if (targetIsLeaf) {
+      pathAttrs['marker-end'] = 'url(#' + (sec ? 'arrowSec' : 'arrow') + ')';
+    }
+    g.appendChild(el('path', pathAttrs));
   });
 
   // ── Icône pylône (treillis) ──
@@ -886,6 +981,151 @@
   });
 
   mount.appendChild(svg);
+})();
+</script>
+<script>
+/* ── Export de l'architecture en image PNG (rendu client) ── */
+(function () {
+  var btn = document.getElementById('archiPngBtn');
+  if (!btn) return;
+  var SITE = "{{ site.site_name|escapejs }}";
+
+  btn.addEventListener('click', function () {
+    var canvasDiv = document.getElementById('archiCanvas');
+    var svg = canvasDiv ? canvasDiv.querySelector('svg') : null;
+    if (!svg) { alert("Aucun diagramme à exporter."); return; }
+
+    var w = parseInt(svg.getAttribute('width'), 10) || svg.clientWidth || 800;
+    var h = parseInt(svg.getAttribute('height'), 10) || svg.clientHeight || 500;
+
+    var clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', w);
+    clone.setAttribute('height', h);
+
+    var xml = new XMLSerializer().serializeToString(clone);
+    var svgBlob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>' + xml],
+                           { type: 'image/svg+xml;charset=utf-8' });
+    var url = URL.createObjectURL(svgBlob);
+    var img = new Image();
+
+    btn.disabled = true;
+    var oldTxt = btn.textContent;
+    btn.textContent = '⏳ Génération…';
+
+    img.onload = function () {
+      var scale = 2;   // rendu haute définition
+      var canvas = document.createElement('canvas');
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      var ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+
+      // Fond dégradé identique au canvas web
+      var grd = ctx.createRadialGradient(w * 0.3, h * 0.2, 0,
+                                         w * 0.3, h * 0.2, Math.max(w, h));
+      grd.addColorStop(0, '#1c3f96');
+      grd.addColorStop(0.55, '#102a6e');
+      grd.addColorStop(1, '#0b1f55');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob(function (blob) {
+        var a = document.createElement('a');
+        var safe = SITE.replace(/[^A-Za-z0-9]+/g, '_') || 'site';
+        a.download = 'Architecture_' + safe + '.png';
+        a.href = URL.createObjectURL(blob);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+        btn.disabled = false;
+        btn.textContent = oldTxt;
+      }, 'image/png');
+    };
+
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      btn.disabled = false;
+      btn.textContent = oldTxt;
+      alert("Échec de la génération de l'image.");
+    };
+
+    img.src = url;
+  });
+})();
+</script>
+<script>
+/* ── Sélection multi-sites pour export PPTX groupé ── */
+(function () {
+  var KEY = 'archiPptxSelection';
+  var SITE = "{{ site.site_name|escapejs }}";
+  var EXPORT_URL = "{% url 'site_architecture_pptx' %}";
+  var MAX = 20;
+
+  var selBtn   = document.getElementById('archiSelBtn');
+  var panel    = document.getElementById('archiSelPanel');
+  var chips    = document.getElementById('archiSelChips');
+  var countEl  = document.getElementById('archiSelCount');
+  var clearBtn = document.getElementById('archiSelClear');
+  var exportA  = document.getElementById('archiSelExport');
+  if (!selBtn || !panel) return;
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function save(list) { localStorage.setItem(KEY, JSON.stringify(list)); }
+
+  function render() {
+    var list = load();
+    countEl.textContent = list.length;
+    panel.classList.toggle('show', list.length > 0);
+
+    var inSel = list.indexOf(SITE) !== -1;
+    selBtn.classList.toggle('selected', inSel);
+    selBtn.textContent = inSel ? '✓ Dans la sélection (retirer)' : '➕ Ajouter à la sélection';
+
+    chips.innerHTML = '';
+    list.forEach(function (name) {
+      var chip = document.createElement('span');
+      chip.className = 'archi-sel-chip';
+      chip.appendChild(document.createTextNode(name));
+      var x = document.createElement('button');
+      x.type = 'button'; x.textContent = '✕'; x.title = 'Retirer ' + name;
+      x.addEventListener('click', function () {
+        save(load().filter(function (n) { return n !== name; }));
+        render();
+      });
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+
+    exportA.href = EXPORT_URL + '?sites=' + encodeURIComponent(list.join(','));
+    exportA.textContent = '📥 Exporter la sélection en PPTX (' + list.length +
+                          (list.length > 1 ? ' diapos)' : ' diapo)');
+  }
+
+  selBtn.addEventListener('click', function () {
+    var list = load();
+    var i = list.indexOf(SITE);
+    if (i !== -1) { list.splice(i, 1); }
+    else {
+      if (list.length >= MAX) { alert('Maximum ' + MAX + ' sites dans la sélection.'); return; }
+      list.push(SITE);
+    }
+    save(list);
+    render();
+  });
+
+  clearBtn.addEventListener('click', function () {
+    save([]);
+    render();
+  });
+
+  render();
 })();
 </script>
 {% endif %}

@@ -97,7 +97,7 @@ TICKETING_API_IMPORT_INTERVAL_HOURS = int(os.environ.get('TICKETING_API_IMPORT_I
 # ── Chatbot ISOC_IA (Rodium AI / OpenAI-compatible) ─────────────────────────────
 RODIUM_API_KEY  = os.environ.get('RODIUM_API_KEY', '')
 RODIUM_API_BASE = os.environ.get('RODIUM_API_BASE', 'https://api.rodiumai.io/v1').rstrip('/')
-RODIUM_MODEL    = os.environ.get('RODIUM_MODEL', 'anthropic/claude-opus-4-8')
+RODIUM_MODEL    = os.environ.get('RODIUM_MODEL', 'anthropic/claude-fable-5')
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 LOGIN_URL           = '/accounts/login/'
