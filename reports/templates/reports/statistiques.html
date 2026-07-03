@@ -70,6 +70,8 @@
   .bar-list { display:flex; flex-direction:column; gap:12px; }
   .bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
   .bar-name { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:65%; }
+  .site-cause-row { display:flex; align-items:center; gap:4px; margin-top:3px; margin-bottom:6px; }
+  .site-cause-text { font-size:0.67rem; color:#6b7280; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:95%; }
   .bar-val  { font-size:13px; font-weight:700; color:#003087; }
   .bar-track { height:8px; background:#f0f4ff; border-radius:4px; overflow:hidden; }
   .bar-fill        { height:100%; border-radius:4px; background:linear-gradient(90deg,#003087,#0047cc); }
@@ -275,6 +277,15 @@
     .date-field input[type="datetime-local"] { width: 165px; font-size:12px; }
     .btn-export-xl { width: 100%; justify-content: center; }
   }
+
+  /* ── Spinner overlay ── */
+  #statSpinner { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,24,70,.52); backdrop-filter:blur(3px); align-items:center; justify-content:center; }
+  #statSpinner.show { display:flex; }
+  .stat-spin-box { background:#fff; border-radius:20px; padding:38px 52px; display:flex; flex-direction:column; align-items:center; gap:14px; box-shadow:0 12px 48px rgba(0,30,80,.28); }
+  .stat-spin-ring { width:52px; height:52px; border:5px solid #e8edf5; border-top-color:#003087; border-radius:50%; animation:_spin .75s linear infinite; }
+  @keyframes _spin { to { transform:rotate(360deg); } }
+  .stat-spin-label { font-size:15px; font-weight:700; color:#003087; letter-spacing:.2px; }
+  .stat-spin-sub { font-size:12px; color:#888; }
 </style>
 
 </style>
@@ -748,10 +759,15 @@
   const incidents={{ evolution_incidents|safe }},outages={{ evolution_outage|safe }},labels={{ evolution_labels|safe }};
   if(!incidents.length||incidents.length<2)return;
   const W=800,H=160,PL=10,PR=10,PT=20,PB=10,svg=document.getElementById('evoSvg'),tooltip=document.getElementById('evoTooltip'),labelsEl=document.getElementById('evoLabels'),n=incidents.length;
-  const xs=incidents.map((_,i)=>PL+i*(W-PL-PR)/(n-1)),maxInc=Math.max(...incidents)||1,ysInc=incidents.map(v=>H-PB-(v/maxInc)*(H-PT-PB)),maxOut=Math.max(...outages)||1,ysOut=outages.map(v=>H-PB-(v/maxOut)*(H-PT-PB));
+  const xs=incidents.map((_,i)=>PL+i*(W-PL-PR)/(n-1));
+  // BOT : plancher 8 px au-dessus de l'axe des abscisses ; SPAN : hauteur utile
+  const BOT=H-PB-8,SPAN=BOT-PT;
+  // maxInc/maxOut avec 12 % de headroom pour que le point max ne touche pas le haut
+  const maxInc=(Math.max(...incidents)||1)*1.12,ysInc=incidents.map(v=>BOT-(v/maxInc)*SPAN);
+  const maxOut=(Math.max(...outages)||1)*1.12,ysOut=outages.map(v=>BOT-(v/maxOut)*SPAN);
   function makePath(ys,color,gid){const a=document.createElementNS('http://www.w3.org/2000/svg','path');a.setAttribute('d',`M${xs[0]},${H-PB} `+xs.map((x,i)=>`L${x},${ys[i]}`).join(' ')+` L${xs[n-1]},${H-PB} Z`);a.setAttribute('fill',`url(#${gid})`);svg.appendChild(a);let d=`M${xs[0]},${ys[0]}`;for(let i=1;i<n;i++){const c1=xs[i-1]+(xs[i]-xs[i-1])/2,c2=xs[i]-(xs[i]-xs[i-1])/2;d+=` C${c1},${ys[i-1]} ${c2},${ys[i]} ${xs[i]},${ys[i]}`;}const l=document.createElementNS('http://www.w3.org/2000/svg','path');l.setAttribute('d',d);l.setAttribute('fill','none');l.setAttribute('stroke',color);l.setAttribute('stroke-width','2.5');l.setAttribute('stroke-linecap','round');svg.appendChild(l);}
   const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');defs.innerHTML=`<linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#003087" stop-opacity="0.15"/><stop offset="100%" stop-color="#003087" stop-opacity="0.01"/></linearGradient><linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFC72C" stop-opacity="0.2"/><stop offset="100%" stop-color="#FFC72C" stop-opacity="0.01"/></linearGradient>`;svg.appendChild(defs);
-  for(let g=0;g<=4;g++){const y=PT+g*(H-PT-PB)/4,gl=document.createElementNS('http://www.w3.org/2000/svg','line');gl.setAttribute('x1',PL);gl.setAttribute('x2',W-PR);gl.setAttribute('y1',y);gl.setAttribute('y2',y);gl.setAttribute('stroke','#f0f4ff');gl.setAttribute('stroke-width','1');svg.appendChild(gl);}
+  for(let g=0;g<=4;g++){const y=PT+g*SPAN/4,gl=document.createElementNS('http://www.w3.org/2000/svg','line');gl.setAttribute('x1',PL);gl.setAttribute('x2',W-PR);gl.setAttribute('y1',y);gl.setAttribute('y2',y);gl.setAttribute('stroke','#f0f4ff');gl.setAttribute('stroke-width','1');svg.appendChild(gl);}
   makePath(ysInc,'#003087','gInc');makePath(ysOut,'#FFC72C','gOut');
   xs.forEach((x,i)=>{const ci=document.createElementNS('http://www.w3.org/2000/svg','circle');ci.setAttribute('cx',x);ci.setAttribute('cy',ysInc[i]);ci.setAttribute('r','5');ci.setAttribute('fill','#003087');ci.setAttribute('stroke','white');ci.setAttribute('stroke-width','2');const co=document.createElementNS('http://www.w3.org/2000/svg','circle');co.setAttribute('cx',x);co.setAttribute('cy',ysOut[i]);co.setAttribute('r','4');co.setAttribute('fill','#FFC72C');co.setAttribute('stroke','white');co.setAttribute('stroke-width','2');const hit=document.createElementNS('http://www.w3.org/2000/svg','rect');hit.setAttribute('x',x-20);hit.setAttribute('y',PT);hit.setAttribute('width',40);hit.setAttribute('height',H-PT-PB);hit.setAttribute('fill','transparent');hit.style.cursor='pointer';hit.addEventListener('mouseenter',function(){const sr=svg.getBoundingClientRect(),pct=(x-PL)/(W-PL-PR),px=pct*sr.width;tooltip.innerHTML=`<strong>${labels[i]}</strong><br>🔵 ${incidents[i]} incidents<br>🟡 ${outages[i]}h outage`;tooltip.style.opacity='1';tooltip.style.left=(px-60)+'px';tooltip.style.top='-70px';});hit.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});svg.appendChild(ci);svg.appendChild(co);svg.appendChild(hit);});
   labels.forEach(l=>{const s=document.createElement('span');s.className='evo-label';s.textContent=l;labelsEl.appendChild(s);});
@@ -815,6 +831,9 @@
           <div>
             <div class="bar-meta"><span class="bar-name">{{ s.name }}</span><span class="bar-val">{{ s.count }}x</span></div>
             <div class="bar-track"><div class="bar-fill yellow" style="width:{{ s.pct }}%"></div></div>
+            {% if s.top_cause %}
+            <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ s.top_cause }}">{{ s.top_cause }}</span></div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -869,6 +888,9 @@
           <div>
             <div class="bar-meta"><span class="bar-name">{{ d.name }}</span><span class="bar-val">{{ d.duration_h }}h</span></div>
             <div class="bar-track"><div class="bar-fill red" style="width:{{ d.pct }}%"></div></div>
+            {% if d.top_cause %}
+            <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ d.top_cause }}">{{ d.top_cause }}</span></div>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -1150,6 +1172,40 @@
       menu.classList.remove('open');
       wrap.classList.remove('open');
     }
+  });
+})();
+</script>
+
+<!-- Spinner overlay -->
+<div id="statSpinner">
+  <div class="stat-spin-box">
+    <div class="stat-spin-ring"></div>
+    <div class="stat-spin-label">Chargement des données…</div>
+    <div class="stat-spin-sub">Récupération via l'API si nécessaire</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var sp = document.getElementById('statSpinner');
+  if (!sp) return;
+  var _t = null;
+
+  // Délai 350 ms : les charges rapides (données en base) n'affichent jamais le spinner
+  function show() { _t = setTimeout(function(){ sp.classList.add('show'); }, 350); }
+
+  var form = document.getElementById('filterBarForm');
+  if (form) form.addEventListener('submit', show);
+
+  document.querySelectorAll('.plat-drop-item').forEach(function(el){
+    el.addEventListener('click', function(){
+      if (el.getAttribute('data-platform')) show();
+    });
+  });
+
+  window.addEventListener('pageshow', function(e){
+    clearTimeout(_t);
+    if (e.persisted) sp.classList.remove('show');
   });
 })();
 </script>

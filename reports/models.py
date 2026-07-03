@@ -51,6 +51,7 @@ class UploadedReport(models.Model):
     region_sites_json          = models.JSONField(default=dict, blank=True)
     fixe_stats_json            = models.JSONField(default=dict, blank=True)
     transmission_stats_json    = models.JSONField(default=dict, blank=True)
+    site_duration_json         = models.JSONField(default=dict, blank=True)
 
     SOURCE_EXCEL = 'excel'
     SOURCE_API   = 'api'

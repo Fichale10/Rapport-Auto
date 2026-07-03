@@ -276,9 +276,8 @@ def home(request):
     if prev_month == 0:
         prev_month = 12
         prev_year -= 1
-    prev_month_incidents = sum(
-        r.total_incidents for r in _filter_reports_by_month(all_reports, prev_year, prev_month)
-    )
+    _prev_month_reports  = list(_filter_reports_by_month(all_reports, prev_year, prev_month))
+    prev_month_incidents = sum(r.total_incidents for r in _prev_month_reports)
     month_trend_pct = None
     if prev_month_incidents > 0:
         month_trend_pct = round(
@@ -288,9 +287,10 @@ def home(request):
         month_trend_pct = 100.0
 
     # ── Période unifiée pour Évolution + Synthèse ──────────────────────────
-    period = request.GET.get('period', 'week')
+    period        = request.GET.get('period', 'week')
     date_from_str = request.GET.get('date_from', '')
     date_to_str   = request.GET.get('date_to', '')
+    force_refresh = request.GET.get('force_refresh') == '1'
     custom_start  = custom_end = None
     # Valeurs affichées dans les inputs (toujours pré-remplies)
     _td = date.today()
@@ -310,31 +310,85 @@ def home(request):
         except (ValueError, TypeError):
             date_from_str = date_to_str = ''
 
+    _home_logger = logging.getLogger('reports.api_import')
+
+    def _home_auto_fetch(date_from_s, date_to_s):
+        """Même logique que statistiques : API → stockage → queryset par date_rapport."""
+        from .api_import import run_import_months as _rim
+        try:
+            _res = _rim(
+                date_from_s, date_to_s,
+                triggered_by=request.user, overwrite=True, network='mobile',
+            )
+            if _res.get('errors'):
+                _home_logger.error("Home auto-fetch errors: %s", _res['errors'])
+                messages.error(request,
+                    f"Import MOBILE : {'; '.join(_res['errors'][:2])}")
+            if not _res.get('created') and not _res.get('skipped'):
+                messages.warning(request,
+                    f"Aucune donnée retournée par l'API pour MOBILE "
+                    f"({date_from_s} → {date_to_s}).")
+                return None
+            _d_from = date.fromisoformat(date_from_s)
+            _d_to   = date.fromisoformat(date_to_s)
+            return all_reports.filter(
+                date_rapport__gte=_d_from,
+                date_rapport__lte=_d_to,
+            ).order_by('date_rapport')
+        except Exception as _exc:
+            _home_logger.exception("Home auto-fetch failed: %s", _exc)
+            messages.error(request,
+                f"Erreur lors de l'import MOBILE : {type(_exc).__name__}: {_exc}")
+            return None
+
     if period == 'custom' and custom_start and custom_end:
+        # Filtrage par date_rapport (date réelle des données, pas date d'upload)
         base_qs = all_reports.filter(
-            uploaded_at__date__gte=custom_start,
-            uploaded_at__date__lte=custom_end,
+            date_rapport__gte=custom_start,
+            date_rapport__lte=custom_end,
         )
-        # Aucune donnée locale → auto-fetch depuis l'API (segmenté par mois si > 31 jours)
-        if not base_qs.exists():
-            try:
-                from .api_import import run_import_months as _rim
-                import logging as _log
-                _logger_home = _log.getLogger('reports.api_import')
-                _res = _rim(
-                    custom_start.isoformat(), custom_end.isoformat(),
-                    triggered_by=request.user, overwrite=True, network='mobile',
-                )
-                if _res.get('errors'):
-                    _logger_home.error("Home auto-fetch errors: %s", _res['errors'])
-                if _res.get('created') or _res.get('skipped'):
-                    base_qs = all_reports.filter(
-                        uploaded_at__date__gte=custom_start,
-                        uploaded_at__date__lte=custom_end,
-                    )
-            except Exception as _exc:
-                import logging as _log
-                _log.getLogger('reports.api_import').exception("Home auto-fetch failed: %s", _exc)
+
+        # ── Calcul des mois à fetcher ──────────────────────────────────────
+        import calendar as _cal
+        from django.db.models.functions import ExtractYear, ExtractMonth
+
+        # Mois attendus sur la plage
+        _all_months = []
+        _cur = date(custom_start.year, custom_start.month, 1)
+        _end_month_start = date(custom_end.year, custom_end.month, 1)
+        while _cur <= _end_month_start:
+            _all_months.append((_cur.year, _cur.month))
+            if _cur.month == 12:
+                _cur = date(_cur.year + 1, 1, 1)
+            else:
+                _cur = date(_cur.year, _cur.month + 1, 1)
+
+        if force_refresh:
+            # Forcer la MAJ : re-fetcher TOUS les mois (overwrite=True dans _home_auto_fetch)
+            _months_to_fetch = _all_months
+        else:
+            # Mois déjà présents en base
+            _covered = set(
+                base_qs.annotate(
+                    _y=ExtractYear('date_rapport'),
+                    _m=ExtractMonth('date_rapport'),
+                ).values_list('_y', '_m').distinct()
+            )
+            # Fetch uniquement les mois manquants
+            _months_to_fetch = sorted(set(_all_months) - _covered)
+
+        if _months_to_fetch:
+            for _y, _m in _months_to_fetch:
+                _last_day = _cal.monthrange(_y, _m)[1]
+                _m_start  = max(date(_y, _m, 1), custom_start)
+                _m_end    = min(date(_y, _m, _last_day), custom_end)
+                _home_auto_fetch(_m_start.isoformat(), _m_end.isoformat())
+
+            # Re-query après import
+            base_qs = all_reports.filter(
+                date_rapport__gte=custom_start,
+                date_rapport__lte=custom_end,
+            )
     else:
         base_qs = all_reports
 
@@ -445,7 +499,91 @@ def home(request):
             'is_total':   True,
         })
 
-    synth_total_inc = total_inc
+    synth_total_inc   = total_inc
+    period_outage_h   = round(total_outage / 3600, 1) if total_outage else 0
+    period_mttr_hms   = _sec_to_hms(int(total_duree / total_inc)) if total_inc > 0 else '—'
+    period_unresolved = sum(row['unresolved'] for row in synth_rows if not row.get('is_total'))
+
+    # ── Fraîcheur des données ──────────────────────────────────────────────
+    _bq_first = base_qs.order_by('date_rapport').values('date_rapport').first()
+    _bq_last  = base_qs.order_by('-date_rapport').values('date_rapport').first()
+    _bq_fresh = base_qs.order_by('-uploaded_at').values('uploaded_at').first()
+    data_date_from   = _bq_first['date_rapport'] if _bq_first else None
+    data_date_to     = _bq_last['date_rapport']  if _bq_last  else None
+    data_last_update = _bq_fresh['uploaded_at']  if _bq_fresh else None
+
+    # ── Comparaison M vs M-1 ──────────────────────────────────────────────
+    _prev_resolved   = sum((r.total_incidents - (r.unresolved_count or 0)) for r in _prev_month_reports)
+    _prev_unresolved = sum(r.unresolved_count or 0 for r in _prev_month_reports)
+    _prev_outage_h   = round(sum(r.total_duration_sec for r in _prev_month_reports) / 3600, 1)
+    _curr_outage_h   = round(sum(r.total_duration_sec for r in month_reports) / 3600, 1)
+    prev_month_label = f"{MOIS_FR_LONG[prev_month]} {prev_year}"
+
+    def _comp_row(label, cur, prev, unit='', lower_is_better=True):
+        cur_f, prev_f = float(cur), float(prev)
+        mx = max(cur_f, prev_f, 0.001)
+        if prev_f > 0:
+            pct = round((cur_f - prev_f) / prev_f * 100, 1)
+            is_good = (pct <= 0) if lower_is_better else (pct >= 0)
+            trend_str = ('+' if pct > 0 else '') + f"{pct}%"
+        else:
+            pct, is_good, trend_str = None, None, '—'
+        return {
+            'label':      label,
+            'cur':        cur,
+            'prev':       prev,
+            'unit':       unit,
+            'cur_bar':    round(cur_f  / mx * 100),
+            'prev_bar':   round(prev_f / mx * 100),
+            'trend_str':  trend_str,
+            'trend_good': is_good,
+        }
+
+    comparison_rows = [
+        _comp_row('Incidents',   month_incidents,  prev_month_incidents, lower_is_better=True),
+        _comp_row('Résolus',     month_resolved,   _prev_resolved,       lower_is_better=False),
+        _comp_row('Non résolus', month_unresolved, _prev_unresolved,     lower_is_better=True),
+        _comp_row('Outage',      _curr_outage_h,   _prev_outage_h,       unit='h', lower_is_better=True),
+    ]
+
+    # ── Résumé multi-plateformes (mois en cours) ──────────────────────────
+    from django.db.models import Q as _Qpf, Sum as _Spf
+    _month_start = date(_td.year, _td.month, 1)
+
+    def _pf_stats(prefix, manual=False):
+        if manual:
+            _qs = all_reports.filter(
+                (_Qpf(original_filename__startswith=prefix) |
+                 ~_Qpf(original_filename__startswith='API_')),
+                date_rapport__gte=_month_start,
+            )
+        else:
+            _qs = all_reports.filter(
+                original_filename__startswith=prefix,
+                date_rapport__gte=_month_start,
+            )
+        _agg  = _qs.aggregate(total=_Spf('total_incidents'), unres=_Spf('unresolved_count'))
+        _last = _qs.order_by('-date_rapport').values('date_rapport').first()
+        return {
+            'total':      _agg['total'] or 0,
+            'unresolved': _agg['unres'] or 0,
+            'last_date':  _last['date_rapport'] if _last else None,
+        }
+
+    platform_cards = [
+        {'label': 'Mobile',       'icon': '📡', 'color': '#003087', 'platform': 'mobile',       **_pf_stats('API_MOBILE_', manual=True)},
+        {'label': 'Fixe',         'icon': '🔌', 'color': '#0050c8', 'platform': 'fixe',         **_pf_stats('API_FIXE_')},
+        {'label': 'Transmission', 'icon': '📶', 'color': '#6b46c1', 'platform': 'transmission', **_pf_stats('API_TRANSMISSION_')},
+        {'label': 'Core & IGW',   'icon': '⚙️', 'color': '#2d3748', 'platform': 'core',         **_pf_stats('API_CORE_')},
+    ]
+
+    # ── Top 3 escalades dominants (période sélectionnée) ──────────────────
+    top3_escalades = sorted(
+        [r for r in synth_rows if not r.get('is_total') and r['inc_count'] > 0],
+        key=lambda r: r['inc_count'],
+        reverse=True,
+    )[:3]
+    top3_max = top3_escalades[0]['inc_count'] if top3_escalades else 1
 
     # ── Statut Sites par Région ────────────────────────────────────────────
     region_impacted_sets = defaultdict(set)
@@ -498,8 +636,20 @@ def home(request):
         'period':           period,
         'date_from':        home_date_from_display,
         'date_to':          home_date_to_display,
-        'synth_rows':       synth_rows,
-        'synth_total_inc':  synth_total_inc,
+        'force_refresh':    force_refresh,
+        'synth_rows':         synth_rows,
+        'synth_total_inc':    synth_total_inc,
+        'period_outage_h':    period_outage_h,
+        'period_mttr_hms':    period_mttr_hms,
+        'period_unresolved':  period_unresolved,
+        'data_date_from':     data_date_from,
+        'data_date_to':       data_date_to,
+        'data_last_update':   data_last_update,
+        'platform_cards':     platform_cards,
+        'top3_escalades':     top3_escalades,
+        'top3_max':           top3_max,
+        'comparison_rows':    comparison_rows,
+        'prev_month_label':   prev_month_label,
         'total_reports':        total_reports,
         'total_unresolved':     total_unresolved,
         'total_outage_h':       total_outage_h,
@@ -661,6 +811,21 @@ def process_report(request, pk):
         ], cls=_NpEncoder))
     else:
         report.top_causes_json = []
+
+    # ── site_duration_json : durée cumulée par site (évite la relecture Excel en vue) ──
+    _site_dur_col = next(
+        (c for c in df_export.columns if c.strip().lower() == 'site name'), None
+    )
+    if _site_dur_col and 'Duration' in df_export.columns:
+        _sd: dict = {}
+        for _, _row in df_export.iterrows():
+            _s = str(_row.get(_site_dur_col, '')).strip()
+            _d = _parse_duration(str(_row.get('Duration', '')))
+            if _s and _s != 'nan' and _d > 0:
+                _sd[_s] = _sd.get(_s, 0) + _d
+        report.site_duration_json = json.loads(json.dumps(_sd, cls=_NpEncoder))
+    else:
+        report.site_duration_json = {}
 
     report.detailed_file.name = os.path.relpath(output_path, settings.MEDIA_ROOT)
     if os.path.exists(synthesis_path):
@@ -2723,28 +2888,60 @@ def statistiques(request):
 
     site_duration = defaultdict(float)
     for r in reports:
-        if not r.detailed_file:
-            continue
-        file_name = r.detailed_file.name or ''
-        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
-            continue
-        try:
-            import pandas as pd
-            df = pd.read_excel(r.detailed_file.path)
-            site_col = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
-            if site_col and 'Duration' in df.columns:
-                for _, row in df.iterrows():
-                    site = str(row[site_col]).strip()
-                    dur  = parse_hms(row['Duration'])
-                    if site and site != 'nan':
-                        site_duration[site] += dur
-        except Exception:
-            continue
+        if r.site_duration_json:
+            for site, dur in r.site_duration_json.items():
+                site_duration[site] += dur
+        elif r.detailed_file:
+            # Fallback pour les anciens rapports sans site_duration_json
+            file_name = r.detailed_file.name or ''
+            if ('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx'):
+                try:
+                    import pandas as pd
+                    df = pd.read_excel(r.detailed_file.path)
+                    sc = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
+                    if sc and 'Duration' in df.columns:
+                        for _, row in df.iterrows():
+                            s = str(row[sc]).strip()
+                            d = parse_hms(row['Duration'])
+                            if s and s != 'nan':
+                                site_duration[s] += d
+                except Exception:
+                    pass
 
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
     max_deg        = degraded_top10[0][1] if degraded_top10 else 1
+
+    # ── Top cause (escalade) par site ─────────────────────────────────────
+    from .models import Incident as _Inc
+    from collections import Counter as _Counter
+    _all_chart_sites = list(
+        {s['name'] for s in sites_chart} | {k for k, _ in degraded_top10}
+    )
+    _report_months = list(reports.values_list('date_rapport', flat=True).distinct())
+    _site_top_cause: dict = {}
+    if _all_chart_sites and _report_months:
+        _site_counters: dict = defaultdict(_Counter)
+        for _sn, _esc in (
+            _Inc.objects
+            .filter(mois_rapport__in=_report_months, site_name__in=_all_chart_sites)
+            .exclude(cause='')
+            .values_list('site_name', 'cause')
+        ):
+            _site_counters[_sn][_esc] += 1
+        _site_top_cause = {
+            _sn: _cntr.most_common(1)[0][0]
+            for _sn, _cntr in _site_counters.items() if _cntr
+        }
+    for _s in sites_chart:
+        _s['top_cause'] = _site_top_cause.get(_s['name'], '')
+
     degraded_chart = [
-        {'name': k, 'duration_h': round(v / 3600, 1), 'pct': round(v / max_deg * 100)}
+        {
+            'name': k,
+            'duration_h': round(v / 3600, 1),
+            'pct': round(v / max_deg * 100),
+            'top_cause': _site_top_cause.get(k, ''),
+        }
         for k, v in degraded_top10
     ]
 

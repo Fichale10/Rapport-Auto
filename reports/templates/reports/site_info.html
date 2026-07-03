@@ -1363,3 +1363,16 @@
 </script>
 {% endif %}
 {% endblock %}
+
+{% if request.user.is_staff %}
+{% block extra_js %}
+<script>
+  /* Déplace le modal import hors de .main-content pour éviter le bug
+     position:fixed causé par l'animation CSS transform sur le parent. */
+  (function () {
+    var m = document.getElementById('importModal');
+    if (m) document.body.appendChild(m);
+  })();
+</script>
+{% endblock %}
+{% endif %}

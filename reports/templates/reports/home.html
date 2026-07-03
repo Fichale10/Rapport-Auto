@@ -49,13 +49,16 @@
 
   /* ── KPI row dans le hero ── */
   .hero-kpi-row {
-    display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 12px;
     margin-top: 28px; padding-top: 20px;
     border-top: 1px solid rgba(255,255,255,.12); position: relative; z-index: 1;
   }
   .hero-kpi {
     background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.13);
     border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+  }
+  .hero-kpi.hero-kpi-period {
+    background: rgba(255,199,44,.1); border-color: rgba(255,199,44,.25);
   }
   .hero-kpi-ico {
     width: 36px; height: 36px; background: rgba(255,199,44,.18); border-radius: 9px;
@@ -66,6 +69,110 @@
   .hero-kpi-sub { font-size: 11px; margin-top: 3px; font-weight: 600; }
   @media(max-width:900px){ .hero-kpi-row { grid-template-columns: repeat(2,1fr); } }
   @media(max-width:520px){ .hero-kpi-row { grid-template-columns: 1fr 1fr; gap:8px; } }
+
+  /* ── Alerte incidents non résolus ── */
+  .alert-unresolved {
+    display: flex; align-items: center; gap: 14px; justify-content: space-between;
+    background: linear-gradient(135deg,#fff5f5,#fff0f0);
+    border: 1.5px solid #feb2b2; border-radius: 14px;
+    padding: 14px 20px; margin-bottom: 16px;
+  }
+  .alert-unresolved-left { display: flex; align-items: center; gap: 12px; }
+  .alert-unresolved-ico {
+    width: 38px; height: 38px; background: #fc8181; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+  }
+  .alert-unresolved-title { font-size: 14px; font-weight: 700; color: #c53030; }
+  .alert-unresolved-sub   { font-size: 12px; color: #e53e3e; margin-top: 2px; }
+  .alert-unresolved-link  {
+    font-size: 12px; font-weight: 700; color: #c53030; text-decoration: none;
+    padding: 7px 16px; border-radius: 8px; border: 1.5px solid #fc8181;
+    white-space: nowrap; transition: background .15s;
+  }
+  .alert-unresolved-link:hover { background: #fff5f5; }
+
+  /* ── Fraîcheur des données ── */
+  .freshness-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 11.5px; color: #6b7a99; padding: 8px 14px;
+    background: #f8faff; border: 1px solid #e8edf5; border-radius: 10px;
+    margin-top: 10px;
+  }
+  .freshness-bar strong { color: #003087; }
+  .freshness-dot { width: 7px; height: 7px; border-radius: 50%; background: #68d391; flex-shrink:0; }
+
+  /* ── Cartes plateformes ── */
+  .platform-cards {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px;
+  }
+  .platform-card {
+    background: #fff; border-radius: 16px; padding: 18px 20px;
+    border: 1px solid #e8edf5; box-shadow: 0 2px 12px rgba(0,48,135,.06);
+    border-left: 4px solid var(--pf-color);
+    text-decoration: none; display: block;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .platform-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,48,135,.13); }
+  .platform-card-header { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+  .platform-card-icon { font-size: 18px; }
+  .platform-card-label { font-size: 12px; font-weight: 800; color: var(--pf-color); text-transform: uppercase; letter-spacing: .5px; }
+  .platform-card-total { font-family: 'Bebas Neue', sans-serif; font-size: 34px; color: #111; letter-spacing: 1px; line-height: 1; }
+  .platform-card-sub { font-size: 11px; color: #8896b3; margin-top: 5px; }
+  .platform-card-badge {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; font-weight: 700; color: #c53030;
+    background: #fff5f5; border-radius: 6px; padding: 3px 8px;
+  }
+  .platform-card-ok {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; font-weight: 600; color: #276749;
+    background: #f0fff4; border-radius: 6px; padding: 3px 8px;
+  }
+  .platform-card-empty {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; color: #adb5bd; background: #f8f9fa; border-radius: 6px; padding: 3px 8px;
+  }
+  @media(max-width:1100px){ .platform-cards { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:600px) { .platform-cards { grid-template-columns: 1fr 1fr; gap:10px; } }
+
+  /* ── Top 3 escalades ── */
+  .top3-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #f0f4ff;
+  }
+  .top3-item:last-child { border-bottom: none; padding-bottom: 4px; }
+  .top3-rank {
+    font-family: 'Bebas Neue', sans-serif; font-size: 22px;
+    width: 22px; text-align: center; flex-shrink: 0; line-height: 1;
+  }
+  .top3-rank.r1 { color: #FFC72C; }
+  .top3-rank.r2 { color: #adb5bd; }
+  .top3-rank.r3 { color: #cd7f32; }
+  .top3-name { font-size: 12px; font-weight: 700; color: #111; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top3-bar-wrap { width: 110px; background: #eef2ff; border-radius: 5px; height: 9px; flex-shrink: 0; }
+  .top3-bar-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg,#003087,#0050c8); }
+  .top3-count { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #003087; width: 36px; text-align: right; flex-shrink: 0; }
+
+  /* ── Comparaison M vs M-1 ── */
+  .comp-legend { display: flex; gap: 18px; font-size: 12px; font-weight: 600; color: #6b7a99; }
+  .comp-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+  .comp-grid { display: flex; flex-direction: column; gap: 16px; margin-top: 8px; }
+  .comp-row  { display: grid; grid-template-columns: 110px 1fr 100px 72px; align-items: center; gap: 16px; }
+  .comp-label { font-size: 12px; font-weight: 700; color: #444; }
+  .comp-bars  { display: flex; flex-direction: column; gap: 5px; }
+  .comp-bar-wrap { height: 9px; background: #eef2ff; border-radius: 5px; overflow: hidden; }
+  .comp-bar-cur  { height: 100%; background: linear-gradient(90deg,#003087,#0050c8); border-radius: 5px; transition: width .6s cubic-bezier(.22,.61,.36,1); }
+  .comp-bar-prev { height: 100%; background: #c8d4ee; border-radius: 5px; transition: width .6s cubic-bezier(.22,.61,.36,1); }
+  .comp-values   { display: flex; flex-direction: column; gap: 3px; text-align: right; }
+  .comp-val-cur  { font-family: 'Bebas Neue', sans-serif; font-size: 17px; color: #003087; line-height: 1; }
+  .comp-val-prev { font-size: 11px; color: #8896b3; }
+  .comp-badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 7px; text-align: center; white-space: nowrap; }
+  .comp-badge-good    { background: #f0fff4; color: #276749; }
+  .comp-badge-bad     { background: #fff5f5; color: #c53030; }
+  .comp-badge-neutral { background: #f8f9fa; color: #adb5bd; }
+  @media(max-width:700px){
+    .comp-row { grid-template-columns: 90px 1fr 70px 60px; gap:10px; }
+  }
 
   /* ── Main grid ── */
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
@@ -299,6 +406,28 @@
     .date-range-form  { flex-wrap: wrap; }
     .date-input       { max-width: 100%; }
   }
+
+  /* ── Spinner d'import ── */
+  .import-spinner-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,16,64,.85); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center; flex-direction: column; gap: 28px;
+  }
+  .import-spinner-overlay.show { display: flex; }
+  .spin-ring {
+    width: 60px; height: 60px;
+    border: 5px solid rgba(255,199,44,.2);
+    border-top-color: #FFC72C;
+    border-radius: 50%;
+    animation: spinRing .8s linear infinite;
+  }
+  @keyframes spinRing { to { transform: rotate(360deg); } }
+  .spin-title { font-family: 'Bebas Neue', sans-serif; font-size: 30px; color: #fff; letter-spacing: 2px; text-align: center; }
+  .spin-sub   { font-size: 13px; color: rgba(255,255,255,.55); text-align: center; max-width: 300px; line-height: 1.7; }
+  .spin-dots::after {
+    content: ''; animation: spinDots 1.4s steps(4,end) infinite;
+  }
+  @keyframes spinDots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} 100%{content:''} }
 </style>
 {% endblock %}
 
@@ -354,8 +483,36 @@
         <div class="hero-kpi-lbl">Incidents en cours</div>
       </div>
     </div>
+    <div class="hero-kpi hero-kpi-period">
+      <div class="hero-kpi-ico">⏱️</div>
+      <div>
+        <div class="hero-kpi-num" style="color:#FFC72C;">{{ period_outage_h }}h</div>
+        <div class="hero-kpi-lbl">Outage total période</div>
+      </div>
+    </div>
+    <div class="hero-kpi hero-kpi-period">
+      <div class="hero-kpi-ico">📐</div>
+      <div>
+        <div class="hero-kpi-num" style="color:#FFC72C;font-size:20px;">{{ period_mttr_hms }}</div>
+        <div class="hero-kpi-lbl">MTTR moyen période</div>
+      </div>
+    </div>
   </div>
 </div>
+
+<!-- ── Alerte incidents non résolus ── -->
+{% if month_unresolved > 0 %}
+<div class="alert-unresolved">
+  <div class="alert-unresolved-left">
+    <div class="alert-unresolved-ico">⚠️</div>
+    <div>
+      <div class="alert-unresolved-title">{{ month_unresolved }} incident{{ month_unresolved|pluralize }} non résolu{{ month_unresolved|pluralize }} en cours</div>
+      <div class="alert-unresolved-sub">Mois de {{ month_label }} — nécessite une action</div>
+    </div>
+  </div>
+  <a href="{% url 'statistiques' %}?platform=mobile" class="alert-unresolved-link">Voir les statistiques →</a>
+</div>
+{% endif %}
 
 <!-- ── Sélecteur de période unifié ── -->
 <div class="period-bar-wrap">
@@ -376,8 +533,92 @@
       <span class="date-arrow">→</span>
       <input type="datetime-local" name="date_to" class="date-input {% if period == 'custom' %}active{% endif %}"
              value="{{ date_to }}" title="Date et heure de fin">
+      <label title="Remplace les données existantes par les données fraîches de l'API"
+             style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#003087;cursor:pointer;white-space:nowrap;">
+        <input type="checkbox" name="force_refresh" value="1"
+               {% if force_refresh %}checked{% endif %}
+               style="accent-color:#003087;width:14px;height:14px;cursor:pointer;">
+        Forcer la MAJ
+      </label>
       <button type="submit" class="date-apply-btn">Appliquer</button>
     </form>
+  </div>
+</div>
+
+<!-- ── Fraîcheur des données ── -->
+{% if data_date_from and data_date_to %}
+<div class="freshness-bar">
+  <div class="freshness-dot"></div>
+  Données du <strong>{{ data_date_from|date:"d/m/Y" }}</strong> au <strong>{{ data_date_to|date:"d/m/Y" }}</strong>
+  {% if data_last_update %}
+  &nbsp;·&nbsp; Dernière MAJ : <strong>{{ data_last_update|date:"d/m/Y" }}</strong> à <strong>{{ data_last_update|date:"H:i" }}</strong>
+  {% endif %}
+  {% if period_unresolved > 0 %}
+  &nbsp;·&nbsp; <span style="color:#e53e3e;font-weight:700;">{{ period_unresolved }} non résolu{{ period_unresolved|pluralize }} sur la période</span>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- ── Résumé multi-plateformes ── -->
+<div class="platform-cards">
+  {% for pf in platform_cards %}
+  <a href="{% url 'statistiques' %}?platform={{ pf.platform }}"
+     class="platform-card" style="--pf-color:{{ pf.color }};">
+    <div class="platform-card-header">
+      <span class="platform-card-icon">{{ pf.icon }}</span>
+      <span class="platform-card-label">{{ pf.label }}</span>
+    </div>
+    <div class="platform-card-total">{{ pf.total }}</div>
+    <div class="platform-card-sub">
+      incidents ce mois{% if pf.last_date %} · données au {{ pf.last_date|date:"d/m" }}{% endif %}
+    </div>
+    {% if pf.total == 0 %}
+      <div class="platform-card-empty">— Aucune donnée</div>
+    {% elif pf.unresolved > 0 %}
+      <div class="platform-card-badge">⚠ {{ pf.unresolved }} non résolu{{ pf.unresolved|pluralize }}</div>
+    {% else %}
+      <div class="platform-card-ok">✓ Tout résolu</div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- ── Comparaison M vs M-1 ── -->
+<div class="card" style="margin-bottom:20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+    <div class="sec-title" style="margin-bottom:0;flex:1;">📊 Mois en cours vs Mois précédent</div>
+    <div class="comp-legend">
+      <span><span class="comp-legend-dot" style="background:#003087;"></span>{{ month_label }}</span>
+      <span><span class="comp-legend-dot" style="background:#c8d4ee;"></span>{{ prev_month_label }}</span>
+    </div>
+  </div>
+  <div class="comp-grid">
+    {% for row in comparison_rows %}
+    <div class="comp-row">
+      <div class="comp-label">{{ row.label }}</div>
+      <div class="comp-bars">
+        <div class="comp-bar-wrap">
+          <div class="comp-bar-cur"  style="width:{{ row.cur_bar }}%"></div>
+        </div>
+        <div class="comp-bar-wrap">
+          <div class="comp-bar-prev" style="width:{{ row.prev_bar }}%"></div>
+        </div>
+      </div>
+      <div class="comp-values">
+        <span class="comp-val-cur">{{ row.cur }}{{ row.unit }}</span>
+        <span class="comp-val-prev">{{ row.prev }}{{ row.unit }}</span>
+      </div>
+      <div>
+        {% if row.trend_str == '—' %}
+          <span class="comp-badge comp-badge-neutral">—</span>
+        {% elif row.trend_good %}
+          <span class="comp-badge comp-badge-good">{{ row.trend_str }}</span>
+        {% else %}
+          <span class="comp-badge comp-badge-bad">{{ row.trend_str }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
 </div>
 
@@ -476,6 +717,26 @@
       <div class="empty">Aucun rapport pour cette période.</div>
       {% endif %}
     </div>
+
+    <!-- ── Top 3 escalades dominants ── -->
+    {% if top3_escalades %}
+    <div class="card">
+      <div class="sec-title">🏆 Top 3 — Causes dominantes</div>
+      {% for row in top3_escalades %}
+      <div class="top3-item">
+        <span class="top3-rank r{{ forloop.counter }}">{{ forloop.counter }}</span>
+        <span class="top3-name" title="{{ row.escalade }}">{{ row.escalade }}</span>
+        <div class="top3-bar-wrap">
+          <div class="top3-bar-fill" style="width:{% widthratio row.inc_count top3_max 100 %}%"></div>
+        </div>
+        <span class="top3-count">{{ row.inc_count }}</span>
+      </div>
+      {% endfor %}
+      <div style="margin-top:10px;font-size:11px;color:#adb5bd;text-align:right;">
+        Nombre d'incidents · période sélectionnée
+      </div>
+    </div>
+    {% endif %}
 
     <!-- ══ SYNTHÈSE PAR ESCALADE ══ -->
     <div class="card" id="syntheseCard">
@@ -589,9 +850,97 @@
   </div>
 
 </div>
+
+<!-- ── Spinner d'import ── -->
+<div class="import-spinner-overlay" id="importSpinner">
+  <div class="spin-ring"></div>
+  <div style="text-align:center;">
+    <div class="spin-title" id="spinTitle">Chargement en cours</div>
+    <div class="spin-sub" id="spinSub">
+      Récupération des données<span class="spin-dots"></span>
+    </div>
+    <div style="margin-top:16px;font-size:11px;color:rgba(255,199,44,.5);letter-spacing:1px;text-transform:uppercase;">
+      ISOC Automation · YAS
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
+<script>
+/* ── Persistance de la période sélectionnée (localStorage) ── */
+(function () {
+  var KEY = 'home_period_v1';
+  var params = new URLSearchParams(window.location.search);
+  var hasPreset = params.has('period');
+  var hasCustom = params.has('date_from') && params.has('date_to');
+
+  /* ── Restauration au chargement si aucun paramètre dans l'URL ── */
+  if (!hasPreset && !hasCustom) {
+    try {
+      var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (saved && saved.type === 'preset' && saved.value) {
+        window.location.replace('?period=' + encodeURIComponent(saved.value));
+        return;
+      }
+      if (saved && saved.type === 'custom' && saved.date_from && saved.date_to) {
+        window.location.replace(
+          '?date_from=' + encodeURIComponent(saved.date_from) +
+          '&date_to='   + encodeURIComponent(saved.date_to)
+        );
+        return;
+      }
+    } catch (e) {}
+  }
+
+  /* ── Sauvegarde de la période courante ── */
+  try {
+    if (hasCustom) {
+      localStorage.setItem(KEY, JSON.stringify({
+        type: 'custom',
+        date_from: params.get('date_from'),
+        date_to:   params.get('date_to'),
+      }));
+    } else if (hasPreset) {
+      localStorage.setItem(KEY, JSON.stringify({
+        type:  'preset',
+        value: params.get('period'),
+      }));
+    }
+  } catch (e) {}
+
+  /* ── Sauvegarde à la sélection du dropdown ── */
+  var sel = document.querySelector('.period-select');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      if (!this.value) return;
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ type: 'preset', value: this.value }));
+      } catch (e) {}
+    });
+  }
+
+  /* ── Sauvegarde à la soumission du formulaire dates ── */
+  var form = document.querySelector('.date-range-form');
+  if (form) {
+    form.addEventListener('submit', function () {
+      var df = form.querySelector('[name="date_from"]');
+      var dt = form.querySelector('[name="date_to"]');
+      if (df && dt && df.value && dt.value) {
+        try {
+          localStorage.setItem(KEY, JSON.stringify({
+            type:      'custom',
+            date_from: df.value,
+            date_to:   dt.value,
+          }));
+        } catch (e) {}
+      }
+    });
+  }
+})();
+</script>
+
 <script src="{% static 'reports/leaflet/leaflet.js' %}"></script>
 <script src="{% static 'reports/togo_geo.js' %}"></script>
 <script>
@@ -830,6 +1179,51 @@
     var mapEl = document.getElementById('togo-map');
     new ResizeObserver(function(){ map.invalidateSize(); }).observe(mapEl);
   }
+})();
+</script>
+
+<script>
+/* ── Spinner d'import ── */
+(function () {
+  var overlay  = document.getElementById('importSpinner');
+  var titleEl  = document.getElementById('spinTitle');
+  var subEl    = document.getElementById('spinSub');
+  if (!overlay) return;
+
+  function show(title, sub) {
+    if (title) titleEl.textContent = title;
+    if (sub)   subEl.innerHTML = sub + '<span class="spin-dots"></span>';
+    overlay.classList.add('show');
+  }
+
+  /* Dropdown de période prédéfinie */
+  var sel = document.querySelector('.period-select');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      if (this.value) show('Chargement', 'Récupération des données');
+    });
+  }
+
+  /* Formulaire de dates personnalisées */
+  var form = document.querySelector('.date-range-form');
+  if (form) {
+    form.addEventListener('submit', function () {
+      var df = form.querySelector('[name="date_from"]');
+      var dt = form.querySelector('[name="date_to"]');
+      var fr = form.querySelector('[name="force_refresh"]');
+      if (df && dt && df.value && dt.value) {
+        var forceMsg = (fr && fr.checked)
+          ? 'Mise à jour forcée depuis l\'API'
+          : 'Import API si les données sont absentes';
+        show('Chargement en cours', forceMsg);
+      }
+    });
+  }
+
+  /* Masquer le spinner si l'utilisateur revient en arrière */
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) overlay.classList.remove('show');
+  });
 })();
 </script>
 {% endblock %}
