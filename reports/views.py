@@ -827,6 +827,24 @@ def process_report(request, pk):
     else:
         report.site_duration_json = {}
 
+    # ── site_top_cause_json : cause la plus fréquente par site ────────────────
+    _cause_col = next((c for c in ('Root Cause', 'Cause') if c in df_export.columns), None)
+    if _site_dur_col and _cause_col:
+        _sc: dict = {}
+        for _, _row in df_export.iterrows():
+            _s = str(_row.get(_site_dur_col, '')).strip()
+            _c = str(_row.get(_cause_col, '')).strip()
+            if _s and _s != 'nan' and _c and _c != 'nan':
+                if _s not in _sc:
+                    _sc[_s] = {}
+                _sc[_s][_c] = _sc[_s].get(_c, 0) + 1
+        report.site_top_cause_json = {
+            _s: max(_causes, key=_causes.get)
+            for _s, _causes in _sc.items() if _causes
+        }
+    else:
+        report.site_top_cause_json = {}
+
     report.detailed_file.name = os.path.relpath(output_path, settings.MEDIA_ROOT)
     if os.path.exists(synthesis_path):
         report.synthesis_file.name = os.path.relpath(synthesis_path, settings.MEDIA_ROOT)
@@ -2911,27 +2929,17 @@ def statistiques(request):
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
     max_deg        = degraded_top10[0][1] if degraded_top10 else 1
 
-    # ── Top cause (escalade) par site ─────────────────────────────────────
-    from .models import Incident as _Inc
+    # ── Top cause par site (depuis site_top_cause_json stocké au traitement) ──
     from collections import Counter as _Counter
-    _all_chart_sites = list(
-        {s['name'] for s in sites_chart} | {k for k, _ in degraded_top10}
-    )
-    _report_months = list(reports.values_list('date_rapport', flat=True).distinct())
-    _site_top_cause: dict = {}
-    if _all_chart_sites and _report_months:
-        _site_counters: dict = defaultdict(_Counter)
-        for _sn, _esc in (
-            _Inc.objects
-            .filter(mois_rapport__in=_report_months, site_name__in=_all_chart_sites)
-            .exclude(cause='')
-            .values_list('site_name', 'cause')
-        ):
-            _site_counters[_sn][_esc] += 1
-        _site_top_cause = {
-            _sn: _cntr.most_common(1)[0][0]
-            for _sn, _cntr in _site_counters.items() if _cntr
-        }
+    _site_cause_counters: dict = defaultdict(_Counter)
+    for r in reports:
+        for _sn, _c in (r.site_top_cause_json or {}).items():
+            if _c:
+                _site_cause_counters[_sn][_c] += 1
+    _site_top_cause = {
+        _sn: _cntr.most_common(1)[0][0]
+        for _sn, _cntr in _site_cause_counters.items() if _cntr
+    }
     for _s in sites_chart:
         _s['top_cause'] = _site_top_cause.get(_s['name'], '')
 
