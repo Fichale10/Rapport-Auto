@@ -49,7 +49,7 @@
 
   /* ── KPI row dans le hero ── */
   .hero-kpi-row {
-    display: grid; grid-template-columns: repeat(3,1fr); gap: 12px;
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 12px;
     margin-top: 28px; padding-top: 20px;
     border-top: 1px solid rgba(255,255,255,.12); position: relative; z-index: 1;
   }
@@ -135,23 +135,34 @@
   @media(max-width:1100px){ .platform-cards { grid-template-columns: repeat(2,1fr); } }
   @media(max-width:600px) { .platform-cards { grid-template-columns: 1fr 1fr; gap:10px; } }
 
-  /* ── Top 3 escalades ── */
-  .top3-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 0; border-bottom: 1px solid #f0f4ff;
+  /* ── Section plateformes — accordéon ── */
+  .pf-section { margin-bottom: 20px; }
+  .pf-section .platform-cards { margin-bottom: 0; }
+  .pf-toggle-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; background: none; border: none; padding: 0 2px 10px 2px;
+    cursor: pointer; text-align: left;
   }
-  .top3-item:last-child { border-bottom: none; padding-bottom: 4px; }
-  .top3-rank {
-    font-family: 'Bebas Neue', sans-serif; font-size: 22px;
-    width: 22px; text-align: center; flex-shrink: 0; line-height: 1;
+  .pf-toggle-btn:hover .pf-toggle-label { color: #003087; }
+  .pf-toggle-btn:hover .pf-chevron { color: #003087; }
+  .pf-toggle-label {
+    font-size: 12px; font-weight: 700; color: #8896b3;
+    text-transform: uppercase; letter-spacing: .6px;
   }
-  .top3-rank.r1 { color: #FFC72C; }
-  .top3-rank.r2 { color: #adb5bd; }
-  .top3-rank.r3 { color: #cd7f32; }
-  .top3-name { font-size: 12px; font-weight: 700; color: #111; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .top3-bar-wrap { width: 110px; background: #eef2ff; border-radius: 5px; height: 9px; flex-shrink: 0; }
-  .top3-bar-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg,#003087,#0050c8); }
-  .top3-count { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: #003087; width: 36px; text-align: right; flex-shrink: 0; }
+  .pf-chevron {
+    width: 16px; height: 16px; color: #8896b3;
+    transition: transform .28s ease, color .15s; flex-shrink: 0;
+  }
+  .pf-section.collapsed .pf-chevron { transform: rotate(-90deg); }
+  .pf-section-body {
+    display: grid; grid-template-rows: 1fr; overflow: hidden;
+    transition: grid-template-rows .28s ease;
+  }
+  .pf-section.collapsed .pf-section-body { grid-template-rows: 0fr; }
+  .pf-section-body > .platform-cards { min-height: 0; }
+  .pf-section-body > .comp-grid { min-height: 0; margin-top: 18px; }
+  #compToggle { background: none; border: none; cursor: pointer; display: flex; align-items: center; padding: 2px; }
+  #compToggle:hover .pf-chevron { color: #003087; }
 
   /* ── Comparaison M vs M-1 ── */
   .comp-legend { display: flex; gap: 18px; font-size: 12px; font-weight: 600; color: #6b7a99; }
@@ -483,20 +494,6 @@
         <div class="hero-kpi-lbl">Incidents en cours</div>
       </div>
     </div>
-    <div class="hero-kpi hero-kpi-period">
-      <div class="hero-kpi-ico">⏱️</div>
-      <div>
-        <div class="hero-kpi-num" style="color:#FFC72C;">{{ period_outage_h }}h</div>
-        <div class="hero-kpi-lbl">Outage total période</div>
-      </div>
-    </div>
-    <div class="hero-kpi hero-kpi-period">
-      <div class="hero-kpi-ico">📐</div>
-      <div>
-        <div class="hero-kpi-num" style="color:#FFC72C;font-size:20px;">{{ period_mttr_hms }}</div>
-        <div class="hero-kpi-lbl">MTTR moyen période</div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -560,65 +557,80 @@
 {% endif %}
 
 <!-- ── Résumé multi-plateformes ── -->
-<div class="platform-cards">
-  {% for pf in platform_cards %}
-  <a href="{% url 'statistiques' %}?platform={{ pf.platform }}"
-     class="platform-card" style="--pf-color:{{ pf.color }};">
-    <div class="platform-card-header">
-      <span class="platform-card-icon">{{ pf.icon }}</span>
-      <span class="platform-card-label">{{ pf.label }}</span>
+<div class="pf-section" id="pfSection">
+  <button type="button" class="pf-toggle-btn" id="pfToggle" aria-expanded="true">
+    <span class="pf-toggle-label">Résumé par plateforme</span>
+    <svg class="pf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+  <div class="pf-section-body">
+    <div class="platform-cards">
+      {% for pf in platform_cards %}
+      <a href="{% url 'statistiques' %}?platform={{ pf.platform }}"
+         class="platform-card" style="--pf-color:{{ pf.color }};">
+        <div class="platform-card-header">
+          <span class="platform-card-icon">{{ pf.icon }}</span>
+          <span class="platform-card-label">{{ pf.label }}</span>
+        </div>
+        <div class="platform-card-total">{{ pf.total }}</div>
+        <div class="platform-card-sub">
+          incidents ce mois{% if pf.last_date %} · données au {{ pf.last_date|date:"d/m" }}{% endif %}
+        </div>
+        {% if pf.total == 0 %}
+          <div class="platform-card-empty">— Aucune donnée</div>
+        {% elif pf.unresolved > 0 %}
+          <div class="platform-card-badge">⚠ {{ pf.unresolved }} non résolu{{ pf.unresolved|pluralize }}</div>
+        {% else %}
+          <div class="platform-card-ok">✓ Tout résolu</div>
+        {% endif %}
+      </a>
+      {% endfor %}
     </div>
-    <div class="platform-card-total">{{ pf.total }}</div>
-    <div class="platform-card-sub">
-      incidents ce mois{% if pf.last_date %} · données au {{ pf.last_date|date:"d/m" }}{% endif %}
-    </div>
-    {% if pf.total == 0 %}
-      <div class="platform-card-empty">— Aucune donnée</div>
-    {% elif pf.unresolved > 0 %}
-      <div class="platform-card-badge">⚠ {{ pf.unresolved }} non résolu{{ pf.unresolved|pluralize }}</div>
-    {% else %}
-      <div class="platform-card-ok">✓ Tout résolu</div>
-    {% endif %}
-  </a>
-  {% endfor %}
+  </div>
 </div>
 
 <!-- ── Comparaison M vs M-1 ── -->
-<div class="card" style="margin-bottom:20px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+<div class="card pf-section" id="compSection" style="margin-bottom:20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
     <div class="sec-title" style="margin-bottom:0;flex:1;">📊 Mois en cours vs Mois précédent</div>
-    <div class="comp-legend">
-      <span><span class="comp-legend-dot" style="background:#003087;"></span>{{ month_label }}</span>
-      <span><span class="comp-legend-dot" style="background:#c8d4ee;"></span>{{ prev_month_label }}</span>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="comp-legend">
+        <span><span class="comp-legend-dot" style="background:#003087;"></span>{{ month_label }}</span>
+        <span><span class="comp-legend-dot" style="background:#c8d4ee;"></span>{{ prev_month_label }}</span>
+      </div>
+      <button type="button" id="compToggle" aria-expanded="true">
+        <svg class="pf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
     </div>
   </div>
-  <div class="comp-grid">
-    {% for row in comparison_rows %}
-    <div class="comp-row">
-      <div class="comp-label">{{ row.label }}</div>
-      <div class="comp-bars">
-        <div class="comp-bar-wrap">
-          <div class="comp-bar-cur"  style="width:{{ row.cur_bar }}%"></div>
+  <div class="pf-section-body">
+    <div class="comp-grid">
+      {% for row in comparison_rows %}
+      <div class="comp-row">
+        <div class="comp-label">{{ row.label }}</div>
+        <div class="comp-bars">
+          <div class="comp-bar-wrap">
+            <div class="comp-bar-cur"  style="width:{{ row.cur_bar }}%"></div>
+          </div>
+          <div class="comp-bar-wrap">
+            <div class="comp-bar-prev" style="width:{{ row.prev_bar }}%"></div>
+          </div>
         </div>
-        <div class="comp-bar-wrap">
-          <div class="comp-bar-prev" style="width:{{ row.prev_bar }}%"></div>
+        <div class="comp-values">
+          <span class="comp-val-cur">{{ row.cur }}{{ row.unit }}</span>
+          <span class="comp-val-prev">{{ row.prev }}{{ row.unit }}</span>
+        </div>
+        <div>
+          {% if row.trend_str == '—' %}
+            <span class="comp-badge comp-badge-neutral">—</span>
+          {% elif row.trend_good %}
+            <span class="comp-badge comp-badge-good">{{ row.trend_str }}</span>
+          {% else %}
+            <span class="comp-badge comp-badge-bad">{{ row.trend_str }}</span>
+          {% endif %}
         </div>
       </div>
-      <div class="comp-values">
-        <span class="comp-val-cur">{{ row.cur }}{{ row.unit }}</span>
-        <span class="comp-val-prev">{{ row.prev }}{{ row.unit }}</span>
-      </div>
-      <div>
-        {% if row.trend_str == '—' %}
-          <span class="comp-badge comp-badge-neutral">—</span>
-        {% elif row.trend_good %}
-          <span class="comp-badge comp-badge-good">{{ row.trend_str }}</span>
-        {% else %}
-          <span class="comp-badge comp-badge-bad">{{ row.trend_str }}</span>
-        {% endif %}
-      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
 </div>
 
@@ -718,25 +730,6 @@
       {% endif %}
     </div>
 
-    <!-- ── Top 3 escalades dominants ── -->
-    {% if top3_escalades %}
-    <div class="card">
-      <div class="sec-title">🏆 Top 3 — Causes dominantes</div>
-      {% for row in top3_escalades %}
-      <div class="top3-item">
-        <span class="top3-rank r{{ forloop.counter }}">{{ forloop.counter }}</span>
-        <span class="top3-name" title="{{ row.escalade }}">{{ row.escalade }}</span>
-        <div class="top3-bar-wrap">
-          <div class="top3-bar-fill" style="width:{% widthratio row.inc_count top3_max 100 %}%"></div>
-        </div>
-        <span class="top3-count">{{ row.inc_count }}</span>
-      </div>
-      {% endfor %}
-      <div style="margin-top:10px;font-size:11px;color:#adb5bd;text-align:right;">
-        Nombre d'incidents · période sélectionnée
-      </div>
-    </div>
-    {% endif %}
 
     <!-- ══ SYNTHÈSE PAR ESCALADE ══ -->
     <div class="card" id="syntheseCard">
@@ -1224,6 +1217,26 @@
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) overlay.classList.remove('show');
   });
+})();
+
+/* ── Accordéons (plateformes + comparaison) ── */
+(function(){
+  function initAccordion(secId, btnId, storageKey) {
+    var sec = document.getElementById(secId);
+    var btn = document.getElementById(btnId);
+    if (!sec || !btn) return;
+    var open = localStorage.getItem(storageKey) !== 'false';
+    if (!open) sec.classList.add('collapsed');
+    btn.setAttribute('aria-expanded', String(open));
+    btn.addEventListener('click', function(){
+      var nowOpen = !sec.classList.contains('collapsed');
+      sec.classList.toggle('collapsed', nowOpen);
+      btn.setAttribute('aria-expanded', String(!nowOpen));
+      try { localStorage.setItem(storageKey, String(!nowOpen)); } catch(e){}
+    });
+  }
+  initAccordion('pfSection',   'pfToggle',   'pf_open');
+  initAccordion('compSection', 'compToggle', 'comp_open');
 })();
 </script>
 {% endblock %}
