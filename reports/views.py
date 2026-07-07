@@ -2889,17 +2889,35 @@ def statistiques(request):
                     _d_from = _d_to = None
 
                 if _d_from and _d_to:
-                    # Filtrer par date_rapport (date réelle des données, pas d'import)
-                    reports = base_qs.filter(
-                        date_rapport__gte=_d_from,
-                        date_rapport__lte=_d_to,
-                    )
+                    # Priorité 1 : rapport avec correspondance exacte sur la période
+                    _exact = base_qs.filter(
+                        date_rapport=_d_from,
+                        date_fin=_d_to,
+                    ).order_by('-uploaded_at').first()
+                    if _exact:
+                        reports = base_qs.filter(pk=_exact.pk)
+                    else:
+                        # Priorité 2 : rapport couvrant toute la période (date_rapport <= d_from
+                        # ET date_fin >= d_to) — évite d'additionner des rapports qui se chevauchent
+                        _covering = base_qs.filter(
+                            date_rapport__lte=_d_from,
+                            date_fin__gte=_d_to,
+                        ).order_by('-uploaded_at').first()
+                        if _covering:
+                            reports = base_qs.filter(pk=_covering.pk)
+                        else:
+                            # Priorité 3 : agrégation de rapports non-chevauchants
+                            # (ex : rapports journaliers sans rapport mensuel)
+                            reports = base_qs.filter(
+                                date_rapport__gte=_d_from,
+                                date_rapport__lte=_d_to,
+                            )
+
                     # Données absentes : vérifier ImportCoverage avant d'appeler l'API
                     if not reports.exists():
                         _network = {'mobile': 'mobile', 'fixe': 'fixe',
                                     'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
                         if _has_coverage(_network, _d_from, _d_to):
-                            # Couverture connue mais aucun rapport sur cette plage → vraiment vide
                             pass
                         else:
                             _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
