@@ -720,8 +720,22 @@ def process_report(request, pk):
         df_export, df_dedup, df_synthese = process_file(
             input_path, date_debut_str, date_fin=date_fin_str,
         )
+    except KeyError as e:
+        col = str(e).strip("'\"")
+        return JsonResponse({
+            'error': f"Colonne introuvable dans le fichier : '{col}'",
+            'hint': (
+                "<strong>Ce fichier ne semble pas être un export brut netXcare.</strong><br>"
+                "Le système attend un fichier de données brutes contenant les colonnes "
+                "<em>Alarm text</em>, <em>Site Name</em>, <em>Alarm Time</em>, <em>Duration</em>, etc.<br><br>"
+                "Vérifiez que vous n'avez pas uploadé un fichier de synthèse ou d'export déjà traité."
+            ),
+        }, status=400)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({
+            'error': str(e),
+            'hint': "Une erreur inattendue s'est produite. Vérifiez le format et le contenu du fichier.",
+        }, status=500)
 
     df_export.to_excel(output_path, index=False)
     synthesis_path = output_path.replace('.xlsx', '_Synthese.xlsx')

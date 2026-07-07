@@ -195,6 +195,81 @@
     margin-top: 8px;
   }
   .cancel-link:hover { color: #e53e3e; }
+
+  /* ── Écran d'erreur ── */
+  .error-wrap {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    max-width: 540px;
+    width: 100%;
+  }
+  .error-icon { font-size: 52px; margin-bottom: 16px; }
+  .error-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    color: #c53030;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .error-subtitle {
+    font-size: 13px;
+    color: #718096;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  .error-box {
+    width: 100%;
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-radius: 12px;
+    padding: 18px 22px;
+    text-align: left;
+    margin-bottom: 24px;
+  }
+  .error-box-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #c53030;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 8px;
+  }
+  .error-box-msg {
+    font-size: 13px;
+    color: #742a2a;
+    font-family: monospace;
+    word-break: break-word;
+    white-space: pre-wrap;
+    line-height: 1.6;
+  }
+  .error-hint {
+    width: 100%;
+    background: #ebf8ff;
+    border: 1px solid #bee3f8;
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: #2c5282;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  .error-hint strong { color: #1a365d; }
+  .error-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .btn-retry {
+    background: var(--yas-blue); color: #fff;
+    border: none; border-radius: 8px;
+    padding: 10px 22px; font-size: 13px; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+  }
+  .btn-retry:hover { background: #001f5e; }
+  .btn-delete {
+    background: #fff5f5; color: #c53030;
+    border: 1px solid #feb2b2; border-radius: 8px;
+    padding: 10px 22px; font-size: 13px; font-weight: 700;
+    cursor: pointer; text-decoration: none;
+  }
+  .btn-delete:hover { background: #fed7d7; }
 </style>
 {% endblock %}
 
@@ -247,6 +322,24 @@
   <a href="{% url 'upload' %}" class="cancel-link">✕ Annuler et recommencer</a>
 </div>
 
+<!-- ── Écran d'erreur (caché par défaut) ── -->
+<div class="processing-wrap" id="errorWrap" style="display:none;">
+  <div class="error-wrap" id="errorInner">
+    <div class="error-icon">⚠️</div>
+    <div class="error-title">Traitement échoué</div>
+    <div class="error-subtitle">Le fichier n'a pas pu être traité. Détail de l'erreur :</div>
+    <div class="error-box">
+      <div class="error-box-label">Erreur</div>
+      <div class="error-box-msg" id="errorMsg">—</div>
+    </div>
+    <div class="error-hint" id="errorHint"></div>
+    <div class="error-actions">
+      <a href="{% url 'upload' %}" class="btn-retry">Uploader un autre fichier</a>
+      <a href="#" class="btn-delete" id="btnDeleteReport">Supprimer ce rapport</a>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() {
   var pk = "{{ report.pk }}";
@@ -282,6 +375,28 @@
     }
   }
 
+  // Affiche l'écran d'erreur
+  function showError(msg, hint) {
+    clearInterval(stepInterval);
+    document.querySelector('.processing-wrap').style.display = 'none';
+    var ew = document.getElementById('errorWrap');
+    ew.style.display = 'flex';
+    document.getElementById('errorMsg').textContent = msg || 'Erreur inconnue.';
+    var hintEl = document.getElementById('errorHint');
+    hintEl.innerHTML = hint || '';
+    hintEl.style.display = hint ? 'block' : 'none';
+    // Bouton suppression
+    document.getElementById('btnDeleteReport').addEventListener('click', function(e) {
+      e.preventDefault();
+      if (!confirm('Supprimer ce rapport de la base de données ?')) return;
+      var csrf = document.cookie.match(/csrftoken=([^;]+)/);
+      csrf = csrf ? csrf[1] : '';
+      fetch('/reports/delete/' + pk + '/', { method: 'POST', headers: { 'X-CSRFToken': csrf } })
+        .then(function() { window.location.href = '/upload/'; })
+        .catch(function() { window.location.href = '/upload/'; });
+    });
+  }
+
   // Lance le traitement via POST
   function startProcessing() {
     var csrfToken = document.cookie.match(/csrftoken=([^;]+)/);
@@ -294,10 +409,14 @@
         'Content-Type': 'application/json',
       },
     })
-    .then(function(res) { return res.json(); })
-    .then(function(data) {
+    .then(function(res) {
+      return res.json().then(function(data) {
+        return { ok: res.ok, data: data };
+      });
+    })
+    .then(function(result) {
+      var data = result.data;
       if (data.done) {
-        // Marque toutes les étapes comme done
         steps.forEach(function(s) {
           s.el.className = 'step-item done';
           s.el.querySelector('.step-dot').textContent = '✓';
@@ -306,12 +425,11 @@
         if (pctLabel)  pctLabel.textContent  = '100%';
         if (fill) { fill.style.animation = 'none'; fill.style.width = '100%'; }
         setTimeout(function() { window.location.href = data.redirect; }, 600);
-      } else if (data.error) {
-        window.location.href = "/upload/?error=1";
+      } else {
+        showError(data.error || 'Le traitement a échoué.', data.hint || '');
       }
     })
     .catch(function() {
-      // Fallback: polling si le POST échoue
       pollStatus();
     });
   }
