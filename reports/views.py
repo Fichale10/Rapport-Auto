@@ -2726,14 +2726,51 @@ def statistiques(request):
 
     _import_logger = logging.getLogger('reports.api_import')
 
+    def _has_coverage(network, d_from, d_to):
+        """Vérifie si ImportCoverage contient un succès couvrant toute la plage."""
+        from .models import Platform, ImportCoverage as _IC
+        try:
+            _plat = Platform.objects.get(key=network)
+            return _IC.objects.filter(
+                platform=_plat,
+                status=_IC.STATUS_SUCCESS,
+                date_from__lte=d_from,
+                date_to__gte=d_to,
+            ).exists()
+        except Exception:
+            return False
+
+    def _record_coverage(network, d_from, d_to, records, status='success', notes=''):
+        """Enregistre ou met à jour la couverture dans ImportCoverage."""
+        from .models import Platform, ImportCoverage as _IC
+        try:
+            _plat = Platform.objects.get(key=network)
+            _IC.objects.update_or_create(
+                platform=_plat,
+                date_from=d_from,
+                date_to=d_to,
+                defaults={
+                    'status':        status,
+                    'records_count': records,
+                    'triggered_by':  request.user if request.user.is_authenticated else None,
+                    'source':        'api',
+                    'notes':         notes,
+                },
+            )
+        except Exception as _e:
+            _import_logger.warning("ImportCoverage write failed: %s", _e)
+
     def _auto_fetch_platform(network, date_from_str, date_to_str):
         """
         Importe via l'API netXcare et retourne un queryset des rapports créés.
         Segmente automatiquement par mois calendaire si la période dépasse 31 jours.
+        Enregistre le résultat dans ImportCoverage.
         Retourne None en cas d'erreur bloquante.
         """
         from .api_import import run_import_months as _run_import_months
         from datetime import date as _d
+        _d_from = _d.fromisoformat(date_from_str)
+        _d_to   = _d.fromisoformat(date_to_str)
         try:
             _res = _run_import_months(
                 date_from_str, date_to_str,
@@ -2747,21 +2784,23 @@ def statistiques(request):
                 messages.warning(request,
                     f"Aucune donnée retournée par l'API pour {network.upper()} "
                     f"({date_from_str} → {date_to_str}).")
+                _record_coverage(network, _d_from, _d_to, 0, status='partial',
+                                 notes='API returned no data')
                 return None
-            # Retourner tous les rapports de ce réseau créés pour la plage demandée
-            _prefix  = f"API_{network.upper()}_"
-            _d_from  = _d.fromisoformat(date_from_str)
-            _d_to    = _d.fromisoformat(date_to_str)
-            return UploadedReport.objects.filter(
+            _prefix = f"API_{network.upper()}_"
+            _qs = UploadedReport.objects.filter(
                 original_filename__startswith=_prefix,
                 processed=True,
                 date_rapport__gte=_d_from,
                 date_rapport__lte=_d_to,
             ).order_by('date_rapport')
+            _record_coverage(network, _d_from, _d_to, _qs.count(), status='success')
+            return _qs
         except Exception as _exc:
             _import_logger.exception("Auto-fetch %s failed: %s", network, _exc)
             messages.error(request,
                 f"Erreur lors de l'import {network.upper()} : {type(_exc).__name__}: {_exc}")
+            _record_coverage(network, _d_from, _d_to, 0, status='error', notes=str(_exc))
             return None
 
     _NON_MOBILE_PLATFORMS = ('fixe', 'transmission', 'core')
@@ -2774,15 +2813,23 @@ def statistiques(request):
             'day','3days','week','2weeks','month','quarter','half','year','all','custom'):
         single_report = base_qs.first()
         # Pour les plateformes non-mobile : si aucune donnée locale,
-        # auto-fetch les 30 derniers jours depuis l'API
+        # vérifier ImportCoverage avant de solliciter l'API
         if single_report is None and platform in _NON_MOBILE_PLATFORMS:
             _today    = date.today()
             _from_str = (_today - timedelta(days=30)).isoformat()
             _to_str   = _today.isoformat()
             _net_map  = {'fixe': 'fixe', 'transmission': 'transmission', 'core': 'core'}
-            _qs = _auto_fetch_platform(_net_map[platform], _from_str, _to_str)
-            if _qs is not None and _qs.exists():
-                single_report = _qs.order_by('-uploaded_at').first()
+            _network  = _net_map[platform]
+            _d_from   = _today - timedelta(days=30)
+            if _has_coverage(_network, _d_from, _today):
+                # Données déjà en base — pas d'appel API
+                single_report = base_qs.filter(
+                    date_rapport__gte=_d_from, date_rapport__lte=_today,
+                ).first()
+            else:
+                _qs = _auto_fetch_platform(_network, _from_str, _to_str)
+                if _qs is not None and _qs.exists():
+                    single_report = _qs.order_by('-date_rapport').first()
         reports = base_qs.filter(pk=single_report.pk) if single_report else base_qs.none()
         period_filter = 'latest'
     else:
@@ -2807,27 +2854,33 @@ def statistiques(request):
             date_from = request.GET.get('date_from', '')
             date_to   = request.GET.get('date_to', '')
             if date_from and date_to:
+                _df_date = date_from[:10]
+                _dt_date = date_to[:10]
                 try:
-                    from django.utils import timezone as _tz
-                    dt_from = _tz.make_aware(_dt.datetime.fromisoformat(date_from))
-                    dt_to   = _tz.make_aware(_dt.datetime.fromisoformat(date_to))
-                    reports = base_qs.filter(uploaded_at__gte=dt_from, uploaded_at__lte=dt_to)
+                    _d_from = date.fromisoformat(_df_date)
+                    _d_to   = date.fromisoformat(_dt_date)
                 except (ValueError, TypeError):
-                    reports = base_qs
+                    _d_from = _d_to = None
 
-                # Aucune donnée locale → fetch automatique depuis l'API netXcare
-                # Segmenté par mois si la période > 31 jours
-                if not reports.exists():
-                    _net_map2 = {
-                        'mobile': 'mobile', 'fixe': 'fixe',
-                        'transmission': 'transmission', 'core': 'core',
-                    }
-                    _network = _net_map2.get(platform, 'mobile')
-                    _df_date = date_from[:10]
-                    _dt_date = date_to[:10]
-                    _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
-                    if _qs is not None and _qs.exists():
-                        reports = _qs
+                if _d_from and _d_to:
+                    # Filtrer par date_rapport (date réelle des données, pas d'import)
+                    reports = base_qs.filter(
+                        date_rapport__gte=_d_from,
+                        date_rapport__lte=_d_to,
+                    )
+                    # Données absentes : vérifier ImportCoverage avant d'appeler l'API
+                    if not reports.exists():
+                        _network = {'mobile': 'mobile', 'fixe': 'fixe',
+                                    'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
+                        if _has_coverage(_network, _d_from, _d_to):
+                            # Couverture connue mais aucun rapport sur cette plage → vraiment vide
+                            pass
+                        else:
+                            _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
+                            if _qs is not None and _qs.exists():
+                                reports = _qs
+                else:
+                    reports = base_qs
             else:
                 reports = base_qs
         else:

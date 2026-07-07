@@ -3,6 +3,51 @@ from django.db import models
 from django.contrib.auth.models import User
 
 
+class Platform(models.Model):
+    key    = models.CharField(max_length=30, unique=True)   # 'mobile', 'fixe', …
+    label  = models.CharField(max_length=100)
+    prefix = models.CharField(max_length=50, blank=True)    # 'API_MOBILE_'
+    icon   = models.CharField(max_length=10, default='📡')
+    color  = models.CharField(max_length=20, default='#003087')
+
+    class Meta:
+        ordering = ['key']
+
+    def __str__(self):
+        return f"{self.icon} {self.label}"
+
+
+class ImportCoverage(models.Model):
+    STATUS_SUCCESS = 'success'
+    STATUS_PARTIAL = 'partial'
+    STATUS_ERROR   = 'error'
+    STATUS_CHOICES = [
+        (STATUS_SUCCESS, 'Succès'),
+        (STATUS_PARTIAL, 'Partiel'),
+        (STATUS_ERROR,   'Erreur'),
+    ]
+
+    platform      = models.ForeignKey(Platform, on_delete=models.CASCADE, related_name='coverages')
+    date_from     = models.DateField()
+    date_to       = models.DateField()
+    status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_SUCCESS)
+    records_count = models.IntegerField(default=0)
+    triggered_by  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    fetched_at    = models.DateTimeField(auto_now_add=True)
+    source        = models.CharField(max_length=20, default='api')   # 'api' | 'manual'
+    notes         = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['-fetched_at']
+        indexes = [
+            models.Index(fields=['platform', 'date_from', 'date_to']),
+            models.Index(fields=['platform', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.platform.key} [{self.date_from} → {self.date_to}] {self.status}"
+
+
 class UploadedReport(models.Model):
     PERIOD_DAY   = 'day'
     PERIOD_WEEK  = 'week'
