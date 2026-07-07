@@ -1763,10 +1763,10 @@ def export_statistiques(request):
     # Disponibilité
     import datetime as _dt
     if period_filter == 'custom':
-        date_from  = request.GET.get('date_from')
-        date_to    = request.GET.get('date_to')
-        cutoff     = date.fromisoformat(date_from) if date_from else None
-        cutoff_end = date.fromisoformat(date_to)   if date_to   else None
+        date_from  = request.GET.get('date_from', '')
+        date_to    = request.GET.get('date_to', '')
+        cutoff     = date.fromisoformat(date_from[:10]) if date_from else None
+        cutoff_end = date.fromisoformat(date_to[:10])   if date_to   else None
         semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(base_qs, cutoff_date=cutoff, cutoff_end=cutoff_end)
     elif report_pk:
         first_r    = reports.first()
