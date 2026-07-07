@@ -69,7 +69,17 @@
 
   .bar-list { display:flex; flex-direction:column; gap:12px; }
   .bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
-  .bar-name { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:65%; }
+  .bar-meta-left { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+  .bar-rank {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%; flex-shrink:0;
+    font-family:'Bebas Neue',sans-serif; font-size:12px; line-height:1;
+    background:#eef2fb; color:#8896b3;
+  }
+  .bar-rank.r1 { background:linear-gradient(135deg,#FFD700,#FFA500); color:#5a3800; box-shadow:0 2px 6px rgba(255,180,0,.35); }
+  .bar-rank.r2 { background:linear-gradient(135deg,#d4dce8,#b0bec5); color:#37474f; box-shadow:0 2px 6px rgba(176,190,197,.4); }
+  .bar-rank.r3 { background:linear-gradient(135deg,#e8b97a,#c97b3a); color:#fff; box-shadow:0 2px 6px rgba(180,100,40,.3); }
+  .bar-name { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .site-cause-row { display:flex; align-items:center; gap:4px; margin-top:3px; margin-bottom:6px; }
   .site-cause-text { font-size:0.67rem; color:#6b7280; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:95%; }
   .bar-val  { font-size:13px; font-weight:700; color:#003087; }
@@ -793,7 +803,10 @@
         <div class="bar-list">
           {% for e in escalades_chart %}
           <div>
-            <div class="bar-meta"><span class="bar-name">{{ e.name }}</span><span class="bar-val">{{ e.count }} inc.</span></div>
+            <div class="bar-meta">
+              <div class="bar-meta-left"><span class="bar-rank r{{ forloop.counter }}">{{ forloop.counter }}</span><span class="bar-name">{{ e.name }}</span></div>
+              <span class="bar-val">{{ e.count }} inc.</span>
+            </div>
             <div class="bar-track"><div class="bar-fill" style="width:{{ e.pct }}%"></div></div>
           </div>
           {% endfor %}
@@ -811,7 +824,10 @@
         <div class="bar-list">
           {% for c in causes_count_chart %}
           <div>
-            <div class="bar-meta"><span class="bar-name">{{ c.name }}</span><span class="bar-val">{{ c.count }} inc.</span></div>
+            <div class="bar-meta">
+              <div class="bar-meta-left"><span class="bar-rank r{{ forloop.counter }}">{{ forloop.counter }}</span><span class="bar-name">{{ c.name }}</span></div>
+              <span class="bar-val">{{ c.count }} inc.</span>
+            </div>
             <div class="bar-track"><div class="bar-fill" style="width:{{ c.pct }}%; background:linear-gradient(90deg,#9C27B0,#ce93d8);"></div></div>
           </div>
           {% endfor %}
@@ -829,7 +845,10 @@
         <div class="bar-list">
           {% for s in sites_chart %}
           <div>
-            <div class="bar-meta"><span class="bar-name">{{ s.name }}</span><span class="bar-val">{{ s.count }}x</span></div>
+            <div class="bar-meta">
+              <div class="bar-meta-left"><span class="bar-rank r{{ forloop.counter }}">{{ forloop.counter }}</span><span class="bar-name">{{ s.name }}</span></div>
+              <span class="bar-val">{{ s.count }}x</span>
+            </div>
             <div class="bar-track"><div class="bar-fill yellow" style="width:{{ s.pct }}%"></div></div>
             {% if s.top_cause %}
             <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ s.top_cause }}">{{ s.top_cause }}</span></div>
@@ -868,7 +887,10 @@
         <div class="bar-list">
           {% for c in causes_chart %}
           <div>
-            <div class="bar-meta"><span class="bar-name">{{ c.name }}</span><span class="bar-val">{{ c.duree_h }}h</span></div>
+            <div class="bar-meta">
+              <div class="bar-meta-left"><span class="bar-rank r{{ forloop.counter }}">{{ forloop.counter }}</span><span class="bar-name">{{ c.name }}</span></div>
+              <span class="bar-val">{{ c.duree_h }}h</span>
+            </div>
             <div class="bar-track"><div class="bar-fill orange" style="width:{{ c.pct }}%"></div></div>
           </div>
           {% endfor %}
@@ -886,7 +908,10 @@
         <div class="bar-list">
           {% for d in degraded_chart %}
           <div>
-            <div class="bar-meta"><span class="bar-name">{{ d.name }}</span><span class="bar-val">{{ d.duration_h }}h</span></div>
+            <div class="bar-meta">
+              <div class="bar-meta-left"><span class="bar-rank r{{ forloop.counter }}">{{ forloop.counter }}</span><span class="bar-name">{{ d.name }}</span></div>
+              <span class="bar-val">{{ d.duration_h }}h</span>
+            </div>
             <div class="bar-track"><div class="bar-fill red" style="width:{{ d.pct }}%"></div></div>
             {% if d.top_cause %}
             <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ d.top_cause }}">{{ d.top_cause }}</span></div>

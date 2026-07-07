@@ -270,7 +270,26 @@ def run_import(
             return _pd.Series(dtype=float)
 
     dur_detail = _compute_duration_sec(df_detail)
-    dur_synth  = _compute_duration_sec(df_synth)
+
+    # Mapping escalade brut → clé normalisée (identique à ESC_MAPPING dans views.py)
+    _ESC_MAPPING = {
+        'ENERGIE':          'ENERGIE',
+        'RAN-FIELD O':      'RAN',
+        'RAN':              'RAN',
+        'TRANS FH-FIELD O': 'TRANS FH',
+        'TRANS FH':         'TRANS FH',
+        'TRANS IP':         'TRANS IP',
+    }
+
+    def _parse_hms(s):
+        """Convertit HH:MM:SS en secondes (retourne 0 si invalide)."""
+        try:
+            parts = str(s).split(':')
+            if len(parts) == 3:
+                return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
+        except (ValueError, AttributeError):
+            pass
+        return 0
 
     # Crée ou met à jour l'UploadedReport
     report = existing if (existing and overwrite) else UploadedReport()
@@ -296,42 +315,74 @@ def run_import(
     report.uploaded_at = timezone.now()
 
     # Top sites (depuis df_synth dédupliqué)
-    if "Site Name" in df_synth.columns:
-        site_counts = df_synth["Site Name"].value_counts().head(10)
+    site_col_synth = next((c for c in ("Site Name", "site_name") if c in df_synth.columns), None)
+    site_col_detail = next((c for c in ("Site Name", "site_name") if c in df_detail.columns), None)
+    if site_col_synth:
+        site_counts = df_synth[site_col_synth].value_counts().head(10)
         report.top_sites_json = [
             {"name": k, "count": int(v)} for k, v in site_counts.items()
         ]
 
-    # Top causes (avec durée recalculée)
-    if "Cause" in df_synth.columns:
-        cause_data = defaultdict(float)
-        for i, row in df_synth.iterrows():
-            cause = str(row.get("Cause", "")).strip()
-            if cause and cause not in ("nan", ""):
-                cause_data[cause] += float(dur_synth.get(i, 0) or 0)
+    # Top causes par durée — depuis df_detail (tous incidents, cohérent avec la voie upload)
+    cause_col_detail = next((c for c in ("Cause", "Root Cause") if c in df_detail.columns), None)
+    if cause_col_detail and "Duration" in df_detail.columns:
+        cause_dur: dict[str, float] = defaultdict(float)
+        for _, row in df_detail.iterrows():
+            cause = str(row.get(cause_col_detail, "")).strip()
+            dur_s = _parse_hms(str(row.get("Duration", "")))
+            if cause and cause not in ("nan", "") and dur_s > 0:
+                cause_dur[cause] += dur_s
         report.top_causes_json = [
             {"name": k, "duration_sec": v}
-            for k, v in sorted(cause_data.items(), key=lambda x: x[1], reverse=True)[:10]
+            for k, v in sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]
         ]
+
+    # site_duration_json : durée cumulée par site (depuis df_detail, tous incidents)
+    if site_col_detail and "Duration" in df_detail.columns:
+        site_dur: dict[str, float] = {}
+        for _, row in df_detail.iterrows():
+            s = str(row.get(site_col_detail, "")).strip()
+            d = _parse_hms(str(row.get("Duration", "")))
+            if s and s != "nan" and d > 0:
+                site_dur[s] = site_dur.get(s, 0) + d
+        report.site_duration_json = site_dur
+    else:
+        report.site_duration_json = {}
+
+    # site_top_cause_json : cause principale par site (depuis df_synth dédupliqué)
+    cause_col_synth = next((c for c in ("Cause", "Root Cause") if c in df_synth.columns), None)
+    if site_col_synth and cause_col_synth:
+        _sc: dict = {}
+        for _, row in df_synth.iterrows():
+            s = str(row.get(site_col_synth, "")).strip()
+            c = str(row.get(cause_col_synth, "")).strip()
+            if s and s != "nan" and c and c != "nan":
+                if s not in _sc:
+                    _sc[s] = {}
+                _sc[s][c] = _sc[s].get(c, 0) + 1
+        report.site_top_cause_json = {
+            s: max(causes, key=causes.get)
+            for s, causes in _sc.items() if causes
+        }
+    else:
+        report.site_top_cause_json = {}
 
     # Region sites
     region_col = next(
         (c for c in ("Région", "Region", "REGION", "region") if c in df_synth.columns), None
     )
-    site_col = next(
-        (c for c in ("Site Name", "site_name") if c in df_synth.columns), None
-    )
-    if region_col and site_col:
+    if region_col and site_col_synth:
         region_sites: dict[str, list[str]] = {}
         for region, grp in df_synth.groupby(region_col):
             region_sites[str(region).strip()] = (
-                grp[site_col].dropna().astype(str).unique().tolist()
+                grp[site_col_synth].dropna().astype(str).unique().tolist()
             )
         report.region_sites_json = region_sites
     else:
         report.region_sites_json = {}
 
-    # outage_journalier_json : outage par escalade et par jour (pour la section Disponibilité)
+    # outage_journalier_json : outage par escalade normalisée et par jour (pour Disponibilité)
+    # Les clés sont normalisées via _ESC_MAPPING pour correspondre à NB_SITES dans views.py
     esc_col = "Escalade" if "Escalade" in df_detail.columns else None
     if esc_col:
         outage_jour: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -340,9 +391,9 @@ def run_import(
         fin_dt = _pd.Timestamp(f"{date_fin[:10]} 23:59:00")
         cancel_times = cancel_times.fillna(fin_dt)
 
-        for i, esc in df_detail[esc_col].items():
-            esc = str(esc).strip()
-            if not esc or esc in ("nan", ""):
+        for i, esc_raw in df_detail[esc_col].items():
+            esc_key = _ESC_MAPPING.get(str(esc_raw).strip())
+            if not esc_key:
                 continue
             t_start = alarm_times.get(i)
             t_end   = cancel_times.get(i)
@@ -354,7 +405,7 @@ def run_import(
                 seg_start = max(t_start, cur)
                 seg_end   = min(t_end, cur + _pd.Timedelta(days=1) - _pd.Timedelta(seconds=1))
                 sec = max(0.0, (seg_end - seg_start).total_seconds())
-                outage_jour[esc][day_str] += sec
+                outage_jour[esc_key][day_str] += sec
                 cur += _pd.Timedelta(days=1)
 
         report.outage_journalier_json = {k: dict(v) for k, v in outage_jour.items()}

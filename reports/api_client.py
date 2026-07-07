@@ -27,11 +27,12 @@ NETWORK_DOMAINE_IDS: dict[str, int] = {
 }
 
 # Filtre additionnel sur le libellé de la plateforme (après filtre domaine_id).
-# Pour le réseau mobile, seule la plateforme SBTS (Nokia base stations) correspond
-# aux alarmes traitées dans treatement.py — les autres (RNC, MSS, LIEN …) ont
-# le même domaine_id=42 mais ne doivent pas être inclus dans les exports mobiles.
+# Liste exacte des plateformes couvertes par l'export manuel netXcare mobile.
 NETWORK_PLATFORM_NAMES: dict[str, list[str]] = {
-    "mobile": ["SBTS"],
+    "mobile": [
+        "Outils de supervision", "Cellule", "LNBTS", "BTS", "MRBTS",
+        "NRCELL", "WBTS", "NRBTS", "WCEL", "SBTS", "LNCEL", "BCF",
+    ],
 }
 
 
@@ -142,9 +143,7 @@ class TicketingApiClient:
         import logging as _logging
         log = _logging.getLogger(__name__)
 
-        # Filtrer les plateformes par réseau (mobile → domaine_id=42 → SBTS uniquement).
-        # Les tickets ENERGIE/TRANS sur SBTS sont bien inclus : la plateforme est SBTS
-        # et l'escalade est un champ séparé — filtrer par domaine mobile n'exclut pas ENERGIE.
+        # Filtrer les plateformes par réseau (domaine_id) — toutes les plateformes du domaine incluses.
         if not plateformes_id:
             plateformes_id = self.get_plateformes_ids_for_network(network)
 
