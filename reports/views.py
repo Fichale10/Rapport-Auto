@@ -2906,12 +2906,29 @@ def statistiques(request):
                         if _covering:
                             reports = base_qs.filter(pk=_covering.pk)
                         else:
-                            # Priorité 3 : agrégation de rapports non-chevauchants
-                            # (ex : rapports journaliers sans rapport mensuel)
-                            reports = base_qs.filter(
+                            # Priorité 3 : un seul rapport par mois calendaire
+                            # (le plus grande plage, à égalité le plus récent)
+                            # Évite d'additionner des rapports journaliers/partiels doublons
+                            from collections import defaultdict as _dd
+                            _candidates = list(base_qs.filter(
                                 date_rapport__gte=_d_from,
                                 date_rapport__lte=_d_to,
-                            )
+                            ).order_by('date_rapport', '-uploaded_at'))
+                            _by_month = _dd(list)
+                            for _r in _candidates:
+                                _mk = (_r.date_rapport.year, _r.date_rapport.month)
+                                _by_month[_mk].append(_r)
+                            _best_pks = []
+                            for _rlist in _by_month.values():
+                                _best = max(
+                                    _rlist,
+                                    key=lambda _r: (
+                                        (_r.date_fin - _r.date_rapport).days if _r.date_fin else 0,
+                                        _r.uploaded_at,
+                                    )
+                                )
+                                _best_pks.append(_best.pk)
+                            reports = base_qs.filter(pk__in=_best_pks)
 
                     # Données absentes : vérifier ImportCoverage avant d'appeler l'API
                     if not reports.exists():
