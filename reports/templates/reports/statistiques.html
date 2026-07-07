@@ -1214,6 +1214,9 @@
 (function(){
   var sp = document.getElementById('statSpinner');
   if (!sp) return;
+  // Déplace le spinner hors de .main-content pour éviter que le transform
+  // CSS de l'animation pageFadeIn ne casse le position:fixed
+  document.body.appendChild(sp);
   var _t = null;
 
   // Délai 350 ms : les charges rapides (données en base) n'affichent jamais le spinner
