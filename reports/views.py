@@ -1645,11 +1645,23 @@ def export_statistiques(request):
         elif period_filter == 'year':
             reports = base_qs.filter(uploaded_at__year=today.year)
         elif period_filter == 'custom':
-            date_from = request.GET.get('date_from')
-            date_to   = request.GET.get('date_to')
+            date_from = request.GET.get('date_from', '')
+            date_to   = request.GET.get('date_to', '')
             if date_from and date_to:
-                reports = base_qs.filter(uploaded_at__date__gte=date_from, uploaded_at__date__lte=date_to)
-                period_label = f'{date_from} → {date_to}'
+                # Tronquer l'éventuel suffixe horaire (ex. "2026-05-01T00:00" → "2026-05-01")
+                _df = date_from[:10]
+                _dt = date_to[:10]
+                try:
+                    from datetime import date as _d
+                    _d_from = _d.fromisoformat(_df)
+                    _d_to   = _d.fromisoformat(_dt)
+                    reports = base_qs.filter(
+                        date_rapport__gte=_d_from,
+                        date_rapport__lte=_d_to,
+                    )
+                    period_label = f'{_df} → {_dt}'
+                except (ValueError, TypeError):
+                    reports = base_qs
             else:
                 reports = base_qs
         else:
