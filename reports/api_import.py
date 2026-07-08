@@ -1,4 +1,4 @@
-"""Logique d'import API : JSON → DataFrame → process_file() → UploadedReport."""
+"""Logique d'import API : JSON → DataFrame → traitement indépendant → UploadedReport."""
 from __future__ import annotations
 
 import logging
@@ -159,6 +159,127 @@ def fetch_and_save_api(
     return report
 
 
+def _process_api_dataframe(
+    df: "pd.DataFrame",
+    date_debut: str,
+    date_fin: str,
+) -> "tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]":
+    """
+    Traitement des données API brutes : bornage dates, durée, déduplication, synthèse.
+
+    Équivalent à treatement.process_file() SANS le filtre Alarm text
+    (ce filtre est propre aux exports Excel netXcare manuels).
+
+    Retourne (df_detail, df_synth, df_synthesis) — même structure que process_file().
+    """
+    debut_jour = pd.Timestamp(f"{date_debut} 00:00:00")
+    fin_jour   = pd.Timestamp(f"{date_fin}   23:59:00")
+
+    df = df.copy()
+    df['_at'] = pd.to_datetime(df.get('Alarm Time',  pd.Series(dtype='object')),
+                               dayfirst=True, format='mixed', errors='coerce')
+    df['_ct'] = pd.to_datetime(df.get('Cancel Time', pd.Series(dtype='object')),
+                               dayfirst=True, format='mixed', errors='coerce')
+
+    # Borner les incidents qui chevauchent la période
+    cond_avant = (df['_at'] < debut_jour) & ((df['_ct'] >= debut_jour) | df['_ct'].isna())
+    df.loc[cond_avant, '_at'] = debut_jour
+
+    cond_apres = (df['_at'] <= fin_jour) & ((df['_ct'] > fin_jour) | df['_ct'].isna())
+    df.loc[cond_apres, '_ct'] = fin_jour
+
+    # Supprimer les incidents hors période
+    cond_ok = (
+        (df['_at'] >= debut_jour) & (df['_at'] <= fin_jour) &
+        (df['_ct'] >= debut_jour) & (df['_ct'] <= fin_jour)
+    )
+    df = df[cond_ok].copy()
+
+    # Calcul durée
+    delta = df['_ct'] - df['_at']
+    df['Duration_Sec'] = delta.dt.total_seconds().clip(lower=0)
+    df['Duration'] = delta.apply(
+        lambda x: (f"{int(x.total_seconds()//3600):02d}:"
+                   f"{int((x.total_seconds()%3600)//60):02d}:"
+                   f"{int(x.total_seconds()%60):02d}")
+        if pd.notnull(x) else ""
+    ).astype(str)
+
+    # Réécrire les colonnes affichées avec les valeurs bornées
+    df['Alarm Time']  = df['_at']
+    df['Cancel Time'] = df['_ct']
+    df = df.drop(columns=['_at', '_ct'])
+
+    df_complet = df.sort_values('Alarm Time').copy()
+
+    # Déduplication pour la synthèse (identique à treatement.py)
+    df_pour_synthese = df.copy()
+    if 'Site Parent' in df_pour_synthese.columns and 'Site Name' in df_pour_synthese.columns:
+        df_pour_synthese['_racine'] = (
+            df_pour_synthese['Site Parent']
+            .replace(['', 'N/A', 'nan', 'NaN'], pd.NA)
+            .fillna(df_pour_synthese['Site Name'])
+        )
+        df_pour_synthese = df_pour_synthese.drop_duplicates(
+            subset=['_racine', 'Alarm Time'], keep='first'
+        ).drop(columns=['_racine'])
+    elif 'Site Name' in df_pour_synthese.columns:
+        df_pour_synthese = df_pour_synthese.drop_duplicates(
+            subset=['Site Name', 'Alarm Time'], keep='first'
+        )
+
+    # Tableau de synthèse par escalade (identique à treatement.py)
+    ESCALADES_ORDRE = [
+        "ENERGIE", "TRANS FH-FIELD O", "RAN-FIELD O", "ENERGIE / TRANS / RAN",
+        "TRANS / RAN", "INFRA", "PROJET", "TRANS FO",
+        "TRANS FTTM", "TRANS IP", "ENVIRONNEMENT", "BSS",
+    ]
+
+    def _fmt(secs: float) -> str:
+        s = int(secs or 0)
+        return f"{s//3600}:{(s%3600)//60:02d}:{s%60:02d}"
+
+    lignes = []
+    for esc in ESCALADES_ORDRE:
+        s_esc = (df_pour_synthese[df_pour_synthese['Escalade'] == esc]
+                 if 'Escalade' in df_pour_synthese.columns else pd.DataFrame())
+        c_esc = (df_complet[df_complet['Escalade'] == esc]
+                 if 'Escalade' in df_complet.columns else pd.DataFrame())
+        count = len(s_esc)
+        if count > 0:
+            duree_s  = float(s_esc['Duration_Sec'].sum())
+            outage_s = float(c_esc['Duration_Sec'].sum())
+            mttr_s   = duree_s / count
+            if 'Status' in s_esc.columns:
+                non_res = int((s_esc['Status'].astype(str).str.upper() == 'OUVERT').sum())
+            else:
+                non_res = 0
+            statut = f"{non_res} Non resolu" if non_res > 0 else "Résolu"
+        else:
+            duree_s = outage_s = mttr_s = 0.0
+            statut = "N/A"
+        lignes.append({
+            "Escalade": esc, "Inc count": count,
+            "DUREE":  _fmt(duree_s), "MTTR": _fmt(mttr_s),
+            "OUTAGE": _fmt(outage_s), "Status": statut,
+        })
+
+    df_synthesis = pd.DataFrame(lignes)
+    total_count  = len(df_pour_synthese)
+    total_duree  = float(df_pour_synthese['Duration_Sec'].sum()) if len(df_pour_synthese) else 0.0
+    total_outage = float(df_complet['Duration_Sec'].sum()) if len(df_complet) else 0.0
+    total_mttr   = total_duree / total_count if total_count else 0.0
+    df_synthesis = pd.concat([df_synthesis, pd.DataFrame([{
+        "Escalade": "TOTAL", "Inc count": total_count,
+        "DUREE":  _fmt(total_duree), "MTTR": _fmt(total_mttr),
+        "OUTAGE": _fmt(total_outage), "Status": "",
+    }])], ignore_index=True)
+
+    df_detail = df_complet.drop(columns=['Duration_Sec'])
+    df_synth  = df_pour_synthese.drop(columns=['Duration_Sec'], errors='ignore')
+    return df_detail, df_synth, df_synthesis
+
+
 def run_import(
     date_debut: str,
     date_fin: str,
@@ -171,7 +292,6 @@ def run_import(
 
     Retourne un dict { 'created': int, 'skipped': int, 'errors': list[str] }.
     """
-    from treatement import process_file  # import local pour éviter les circulaires
 
     api_url = settings.TICKETING_API_URL
     api_user = settings.TICKETING_API_USERNAME
@@ -243,12 +363,10 @@ def run_import(
     if network == "transmission":
         return _run_import_transmission(df, date_debut, date_fin, label, user, result, existing, overwrite)
 
-    # Garde une copie avec Duration_Sec AVANT que process_file la supprime
-    # (process_file retourne df_detail/df_synth sans Duration_Sec)
     try:
-        df_detail, df_synth, df_synthesis = process_file(df, date_debut[:10], date_fin[:10])
+        df_detail, df_synth, df_synthesis = _process_api_dataframe(df, date_debut[:10], date_fin[:10])
     except Exception as exc:
-        msg = f"Erreur process_file pour {label}: {exc}"
+        msg = f"Erreur _process_api_dataframe pour {label}: {exc}"
         logger.exception(msg)
         result["errors"].append(msg)
         return result
