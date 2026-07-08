@@ -1715,62 +1715,78 @@ def export_statistiques(request):
             site_data[s['name']] += s['count']
     sites_top10 = sorted(site_data.items(), key=lambda x: x[1], reverse=True)[:10]
 
+    # Cause principale par site (depuis site_top_cause_json)
+    from collections import Counter as _Counter
+    _site_cause_ctr: dict = defaultdict(_Counter)
+    for r in reports:
+        for _sn, _c in (r.site_top_cause_json or {}).items():
+            if _c:
+                _site_cause_ctr[_sn][_c] += 1
+    site_top_cause_exp = {
+        _sn: _cntr.most_common(1)[0][0]
+        for _sn, _cntr in _site_cause_ctr.items() if _cntr
+    }
+
     outage_data = [
         (k, round(v['outage_sec']/3600, 1),
          round(v['outage_sec']/total_outage_sec*100) if total_outage_sec else 0)
         for k, v in escalades_sorted if v['outage_sec'] > 0
     ]
 
-    # Causes durée
+    # Causes durée — N/A relégué en dernier
     cause_dur_data = defaultdict(float)
     for r in reports:
         for c in (r.top_causes_json or []):
-            cause_dur_data[c['name']] += c['duration_sec']
+            if c['name'] and str(c['name']).strip().upper() not in ('N/A', 'NA', 'NONE', ''):
+                cause_dur_data[c['name']] += c['duration_sec']
     causes_dur_top10 = sorted(cause_dur_data.items(), key=lambda x: x[1], reverse=True)[:10]
     max_cause_dur    = causes_dur_top10[0][1] if causes_dur_top10 else 1
 
-    # Causes nombre
+    # Causes nombre — depuis site_top_cause_json (nb de sites par cause)
+    # + fallback lecture fichier Excel détaillé si disponible
     cause_nb_data = defaultdict(int)
     for r in reports:
-        if not r.detailed_file:
-            continue
-        file_name = r.detailed_file.name or ''
-        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
-            continue
-        try:
-            import pandas as pd
-            df = pd.read_excel(r.detailed_file.path)
-            cause_col2 = next((c for c in df.columns if c.strip() in ('Root Cause', 'Cause')), None)
-            if cause_col2:
-                for val in df[cause_col2].dropna().astype(str):
-                    val = val.strip()
-                    if val and val != 'nan':
-                        cause_nb_data[val] += 1
-        except Exception:
-            continue
+        # Priorité 1 : depuis site_top_cause_json
+        for _sn, _c in (r.site_top_cause_json or {}).items():
+            if _c and str(_c).strip().upper() not in ('N/A', 'NA', 'NONE', ''):
+                cause_nb_data[_c] += 1
+        # Priorité 2 : lecture fichier détaillé si présent
+        if r.detailed_file:
+            file_name = r.detailed_file.name or ''
+            try:
+                import pandas as pd
+                df = pd.read_excel(r.detailed_file.path)
+                cause_col2 = next((c for c in df.columns if c.strip() in ('Root Cause', 'Cause')), None)
+                if cause_col2:
+                    for val in df[cause_col2].dropna().astype(str):
+                        val = val.strip()
+                        if val and val.upper() not in ('NAN', 'N/A', 'NA', 'NONE'):
+                            cause_nb_data[val] += 1
+            except Exception:
+                pass
     causes_nb_top10 = sorted(cause_nb_data.items(), key=lambda x: x[1], reverse=True)[:10]
     max_cause_nb    = causes_nb_top10[0][1] if causes_nb_top10 else 1
 
-    # Sites dégradés
+    # Sites dégradés — depuis site_duration_json (pré-calculé à l'import)
     site_duration = defaultdict(float)
     for r in reports:
-        if not r.detailed_file:
-            continue
-        file_name = r.detailed_file.name or ''
-        if not (('results/' in file_name or 'results\\' in file_name) and file_name.endswith('_detailed.xlsx')):
-            continue
-        try:
-            import pandas as pd
-            df = pd.read_excel(r.detailed_file.path)
-            site_col = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
-            if site_col and 'Duration' in df.columns:
-                for _, row in df.iterrows():
-                    site = str(row[site_col]).strip()
-                    dur  = parse_hms(row['Duration'])
-                    if site and site != 'nan':
-                        site_duration[site] += dur
-        except Exception:
-            continue
+        if r.site_duration_json:
+            for site, dur in r.site_duration_json.items():
+                site_duration[site] += dur
+        elif r.detailed_file:
+            # Fallback pour anciens rapports sans site_duration_json
+            try:
+                import pandas as pd
+                df = pd.read_excel(r.detailed_file.path)
+                site_col = next((c for c in df.columns if c.strip().lower() == 'site name'), None)
+                if site_col and 'Duration' in df.columns:
+                    for _, row in df.iterrows():
+                        site = str(row[site_col]).strip()
+                        dur  = parse_hms(row['Duration'])
+                        if site and site != 'nan':
+                            site_duration[site] += dur
+            except Exception:
+                pass
     degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
     max_degraded   = degraded_top10[0][1] if degraded_top10 else 1
 
@@ -1925,7 +1941,7 @@ def export_statistiques(request):
     ws0.row_dimensions[10].height = 20
 
     sheets_info = [
-        ('📊 Escalades',     'Classement par type d\'escalade',           'Incidents, Outage, Durée, %',   str(len(escalades_sorted))),
+        ('📊 Escalades',     'Classement par type d\'escalade',           'Incidents, Outage, Durée, %',   str(len([e for e,v in escalades_sorted if v['count']>0]))),
         ('📡 Sites',         'Récurrence des sites en panne',             'Top 10 occurrences',            '10'),
         ('🥧 Outage Métier', 'Répartition outage par métier + camembert', 'Heures, Pourcentages',          str(len(outage_data))),
         ('🔧 Causes Durée',  'Causes triées par durée d\'outage',         'Top 10 causes + graphique',     str(len(causes_dur_top10))),
@@ -1955,7 +1971,8 @@ def export_statistiques(request):
         ws1.cell(row=4, column=c, value=h)
     style_hdr(ws1, 4, 6)
 
-    for i, (esc, v) in enumerate(escalades_sorted):
+    escalades_active = [(esc, v) for esc, v in escalades_sorted if v['count'] > 0]
+    for i, (esc, v) in enumerate(escalades_active):
         r = 5 + i
         pct_out = round(v['outage_sec']/total_outage_sec*100, 1) if total_outage_sec else 0
         pct_inc = round(v['count']/total_incidents*100, 1) if total_incidents else 0
@@ -1963,7 +1980,7 @@ def export_statistiques(request):
             ws1.cell(row=r, column=c, value=val)
         style_row(ws1, r, 6, alt=(i%2==1))
 
-    tr1 = 5 + len(escalades_sorted)
+    tr1 = 5 + len(escalades_active)
     for c, v in enumerate(['TOTAL', total_incidents, round(total_outage_sec/3600,1), round(total_duree_sec/3600,1), '100%','100%'], 1):
         ws1.cell(row=tr1, column=c, value=v)
     style_total(ws1, tr1, 6)
@@ -1971,8 +1988,8 @@ def export_statistiques(request):
     bc1 = BarChart()
     bc1.type = 'bar'; bc1.title = 'Incidents par Escalade'; bc1.style = 10
     bc1.width = 20; bc1.height = 14
-    d1 = Reference(ws1, min_col=2, min_row=4, max_row=4+len(escalades_sorted))
-    l1 = Reference(ws1, min_col=1, min_row=5, max_row=4+len(escalades_sorted))
+    d1 = Reference(ws1, min_col=2, min_row=4, max_row=4+len(escalades_active))
+    l1 = Reference(ws1, min_col=1, min_row=5, max_row=4+len(escalades_active))
     bc1.add_data(d1, titles_from_data=True); bc1.set_categories(l1)
     bc1.series[0].graphicalProperties.solidFill = YAS_BLUE
     ws1.add_chart(bc1, 'H4')
@@ -1981,13 +1998,14 @@ def export_statistiques(request):
     ws2 = wb.create_sheet('📡 Sites')
     ws2.sheet_view.showGridLines = False
     ws2.column_dimensions['A'].width = 34
-    ws2.column_dimensions['B'].width = 16
+    ws2.column_dimensions['B'].width = 14
     ws2.column_dimensions['C'].width = 20
+    ws2.column_dimensions['D'].width = 30
 
-    add_banner(ws2, 'Récurrence des Sites (Top 10)', ncols=3)
-    for c, h in enumerate(['Site','Occurrences','Barre visuelle'], 1):
+    add_banner(ws2, 'Récurrence des Sites (Top 10)', ncols=4)
+    for c, h in enumerate(['Site','Occurrences','Barre visuelle','Cause principale'], 1):
         ws2.cell(row=4, column=c, value=h)
-    style_hdr(ws2, 4, 3)
+    style_hdr(ws2, 4, 4)
 
     max_site = sites_top10[0][1] if sites_top10 else 1
     for i, (site, cnt) in enumerate(sites_top10):
@@ -1998,9 +2016,13 @@ def export_statistiques(request):
         ws2.cell(row=r, column=2, value=cnt)
         c3 = ws2.cell(row=r, column=3, value=bar)
         c3.font = Font(name='Courier New', size=9, color=YAS_BLUE)
+        ws2.cell(row=r, column=4, value=site_top_cause_exp.get(site, '—'))
         style_row(ws2, r, 2, alt=(i%2==1))
-        ws2.cell(row=r, column=3).fill   = a_fill() if i%2==1 else w_fill()
-        ws2.cell(row=r, column=3).border = border
+        for col in (3, 4):
+            ws2.cell(row=r, column=col).fill   = a_fill() if i%2==1 else w_fill()
+            ws2.cell(row=r, column=col).border = border
+            ws2.cell(row=r, column=col).alignment = l_align()
+            ws2.cell(row=r, column=col).font = Font(name='Calibri', size=10)
 
     bc2 = BarChart()
     bc2.type = 'bar'; bc2.title = 'Récurrence des Sites'; bc2.style = 10
@@ -2009,7 +2031,7 @@ def export_statistiques(request):
     l2 = Reference(ws2, min_col=1, min_row=5, max_row=4+len(sites_top10))
     bc2.add_data(d2, titles_from_data=True); bc2.set_categories(l2)
     bc2.series[0].graphicalProperties.solidFill = YAS_YELLOW
-    ws2.add_chart(bc2, 'E4')
+    ws2.add_chart(bc2, 'F4')
 
     # ── ONGLET 3 : OUTAGE MÉTIER ─────────────────────────────────────────
     ws3 = wb.create_sheet('🥧 Outage Métier')
@@ -2119,13 +2141,13 @@ def export_statistiques(request):
     # ── ONGLET 6 : SITES DÉGRADÉS ────────────────────────────────────────
     ws6 = wb.create_sheet('🔴 Dégradés')
     ws6.sheet_view.showGridLines = False
-    for col, w in enumerate([34,16,14], 1):
+    for col, w in enumerate([34,16,14,30], 1):
         ws6.column_dimensions[get_column_letter(col)].width = w
 
-    add_banner(ws6, 'Sites les Plus Dégradés (Top 10)', ncols=3)
-    for c, h in enumerate(['Site','Durée totale (h)','Criticité'], 1):
+    add_banner(ws6, 'Sites les Plus Dégradés (Top 10)', ncols=4)
+    for c, h in enumerate(['Site','Durée totale (h)','Criticité','Cause principale'], 1):
         ws6.cell(row=4, column=c, value=h)
-    style_hdr(ws6, 4, 3)
+    style_hdr(ws6, 4, 4)
 
     for i, (site, dur_sec) in enumerate(degraded_top10):
         r = 5 + i
@@ -2137,11 +2159,12 @@ def export_statistiques(request):
         ws6.cell(row=r, column=1, value=site)
         ws6.cell(row=r, column=2, value=dur_h)
         ws6.cell(row=r, column=3, value=crit)
-        for col in range(1, 4):
+        ws6.cell(row=r, column=4, value=site_top_cause_exp.get(site, '—'))
+        for col in range(1, 5):
             cell = ws6.cell(row=r, column=col)
             cell.font      = Font(name='Calibri', size=10)
             cell.fill      = PatternFill('solid', fgColor=bg)
-            cell.alignment = l_align() if col == 1 else c_align()
+            cell.alignment = l_align() if col in (1, 4) else c_align()
             cell.border    = border
         ws6.row_dimensions[r].height = 20
 
@@ -2154,7 +2177,7 @@ def export_statistiques(request):
         l6 = Reference(ws6, min_col=1, min_row=5, max_row=4+n6)
         bc6.add_data(d6, titles_from_data=True); bc6.set_categories(l6)
         bc6.series[0].graphicalProperties.solidFill = 'E53E3E'
-        ws6.add_chart(bc6, 'E4')
+        ws6.add_chart(bc6, 'F4')
 
     # ── ONGLET 7 : DISPONIBILITÉ ─────────────────────────────────────────
     if semaine_labels_exp:
