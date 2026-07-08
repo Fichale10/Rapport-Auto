@@ -1809,12 +1809,14 @@ def export_statistiques(request):
         cutoff  = (date.today() - _dt.timedelta(days=nb_days)) if nb_days else None
         semaine_labels_exp, dispo_table_exp, _ = _calc_disponibilite(base_qs, cutoff_date=cutoff)
 
-    # ── Styles ───────────────────────────────────────────────────────────
+    # ── Palette ──────────────────────────────────────────────────────────
     YAS_BLUE    = '003087'
+    YAS_NAVY    = '001A4D'
     YAS_YELLOW  = 'FFC72C'
-    LIGHT_BLUE  = 'E8F0FF'
-    LIGHT_GRAY  = 'F8FAFF'
-    MID_GRAY    = 'E8EDF5'
+    ACCENT_BLUE = '0044CC'
+    LIGHT_BLUE  = 'EBF3FF'   # alternance visible
+    HEADER_BG   = 'EBF3FF'   # sous-titre banner
+    MID_GRAY    = 'C8D4E8'
     WHITE       = 'FFFFFF'
     ORANGE      = 'E05A2B'
     PURPLE      = '7B1FA2'
@@ -1822,65 +1824,85 @@ def export_statistiques(request):
     YELLOW_WARN = 'FFF8E1'
     RED_BAD     = 'FFEBEE'
 
-    thin   = Side(style='thin', color=MID_GRAY)
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    # Bordures
+    thin_gray  = Side(style='thin',   color=MID_GRAY)
+    thick_blue = Side(style='medium', color=ACCENT_BLUE)
+    border     = Border(left=thin_gray, right=thin_gray, top=thin_gray, bottom=thin_gray)
+    hdr_border = Border(left=thin_gray, right=thin_gray, top=thin_gray, bottom=thick_blue)
+
+    # Formats numériques
+    FMT_H    = '0.0"h"'
+    FMT_INT  = '#,##0'
+    FMT_PCT  = '0.0"%"'
+    FMT_DISPO = '0.0000"%"'
 
     def h_font(sz=11):  return Font(name='Calibri', bold=True, color=WHITE, size=sz)
     def h_fill():       return PatternFill('solid', fgColor=YAS_BLUE)
-    def s_fill():       return PatternFill('solid', fgColor=LIGHT_BLUE)
-    def a_fill():       return PatternFill('solid', fgColor=LIGHT_GRAY)
+    def s_fill():       return PatternFill('solid', fgColor=HEADER_BG)
+    def a_fill():       return PatternFill('solid', fgColor=LIGHT_BLUE)
     def w_fill():       return PatternFill('solid', fgColor=WHITE)
     def c_align():      return Alignment(horizontal='center', vertical='center', wrap_text=False)
     def l_align():      return Alignment(horizontal='left',   vertical='center', wrap_text=False)
+    def r_align():      return Alignment(horizontal='right',  vertical='center', wrap_text=False)
 
-    def style_hdr(ws, row, ncols, height=24):
+    def style_hdr(ws, row, ncols, height=26):
         for c in range(1, ncols+1):
             cell = ws.cell(row=row, column=c)
-            cell.font = h_font(); cell.fill = h_fill()
-            cell.alignment = c_align(); cell.border = border
+            cell.font      = Font(name='Calibri', bold=True, color=WHITE, size=11)
+            cell.fill      = h_fill()
+            cell.alignment = c_align()
+            cell.border    = hdr_border
         ws.row_dimensions[row].height = height
 
-    def style_row(ws, row, ncols, alt=False, bold=False, color='1A1A2E', bg=None):
+    def style_row(ws, row, ncols, alt=False, bold=False, color='1A1A2E', bg=None, num_cols=None):
+        """num_cols: set of column indexes (1-based) to apply right-align + number format."""
         for c in range(1, ncols+1):
             cell = ws.cell(row=row, column=c)
             cell.font      = Font(name='Calibri', size=10, bold=bold, color=color)
             cell.fill      = PatternFill('solid', fgColor=bg) if bg else (a_fill() if alt else w_fill())
             cell.alignment = l_align() if c == 1 else c_align()
             cell.border    = border
-        ws.row_dimensions[row].height = 20
+        ws.row_dimensions[row].height = 21
 
     def style_total(ws, row, ncols):
         for c in range(1, ncols+1):
             cell = ws.cell(row=row, column=c)
-            cell.font = Font(name='Calibri', bold=True, size=11, color=WHITE)
-            cell.fill = h_fill()
+            cell.font      = Font(name='Calibri', bold=True, size=11, color=WHITE)
+            cell.fill      = PatternFill('solid', fgColor=YAS_NAVY)
             cell.alignment = l_align() if c == 1 else c_align()
-            cell.border = border
-        ws.row_dimensions[row].height = 22
+            cell.border    = Border(left=thin_gray, right=thin_gray,
+                                    top=thick_blue, bottom=thin_gray)
+        ws.row_dimensions[row].height = 23
 
     def add_banner(ws, title, ncols=6):
+        # Ligne 1 : titre navy fond plein
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
         c = ws['A1']
-        c.value = f'  📊  YAS NOC — {title}'
-        c.font  = Font(name='Calibri', bold=True, size=14, color=YAS_BLUE)
-        c.alignment = l_align(); c.fill = s_fill()
-        ws.row_dimensions[1].height = 30
+        c.value     = f'  YAS NOC  ·  {title}'
+        c.font      = Font(name='Calibri', bold=True, size=15, color=WHITE)
+        c.alignment = l_align()
+        c.fill      = PatternFill('solid', fgColor=YAS_NAVY)
+        ws.row_dimensions[1].height = 34
+        # Ligne 2 : sous-titre bleu clair
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
         c = ws['A2']
-        c.value = f'  Période : {period_label}  |  Généré le {date.today().strftime("%d/%m/%Y")}'
-        c.font  = Font(name='Calibri', size=10, color='666666', italic=True)
+        c.value     = f'  Période : {period_label}   ·   Généré le {date.today().strftime("%d/%m/%Y")}'
+        c.font      = Font(name='Calibri', size=10, color=ACCENT_BLUE, italic=False, bold=False)
         c.alignment = l_align()
-        c.fill = PatternFill('solid', fgColor='F0F4FF')
-        ws.row_dimensions[2].height = 18
-        ws.row_dimensions[3].height = 8
+        c.fill      = PatternFill('solid', fgColor=HEADER_BG)
+        ws.row_dimensions[2].height = 20
+        # Ligne 3 : séparateur vide
+        ws.row_dimensions[3].height = 6
 
     def add_section(ws, row, title, ncols, color=YAS_BLUE):
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ncols)
         c = ws.cell(row=row, column=1, value=f'  {title}')
-        c.font = Font(name='Calibri', bold=True, size=11, color=WHITE)
-        c.fill = PatternFill('solid', fgColor=color)
-        c.alignment = l_align(); c.border = border
-        ws.row_dimensions[row].height = 20
+        c.font      = Font(name='Calibri', bold=True, size=11, color=WHITE)
+        c.fill      = PatternFill('solid', fgColor=color)
+        c.alignment = l_align()
+        c.border    = Border(left=thin_gray, right=thin_gray,
+                             top=thin_gray, bottom=thick_blue)
+        ws.row_dimensions[row].height = 22
 
     SLICE_COLORS = ['003087','E05A2B','FF9800','2196F3','FFC72C','4CAF50','9C27B0','00BCD4','8BC34A','FF5722']
     ESC_COLORS   = {'ENERGIE':'003087','RAN':'4CAF50','TRANS FH':'FFC72C','TRANS IP':'2196F3'}
@@ -1971,18 +1993,26 @@ def export_statistiques(request):
         ws1.cell(row=4, column=c, value=h)
     style_hdr(ws1, 4, 6)
 
+    ws1.freeze_panes = 'A5'
     escalades_active = [(esc, v) for esc, v in escalades_sorted if v['count'] > 0]
     for i, (esc, v) in enumerate(escalades_active):
         r = 5 + i
         pct_out = round(v['outage_sec']/total_outage_sec*100, 1) if total_outage_sec else 0
         pct_inc = round(v['count']/total_incidents*100, 1) if total_incidents else 0
-        for c, val in enumerate([esc, v['count'], round(v['outage_sec']/3600,1), round(v['duree_sec']/3600,1), f'{pct_out}%', f'{pct_inc}%'], 1):
-            ws1.cell(row=r, column=c, value=val)
+        vals = [esc, v['count'], round(v['outage_sec']/3600,1), round(v['duree_sec']/3600,1), pct_out, pct_inc]
+        fmts = [None, FMT_INT, FMT_H, FMT_H, FMT_PCT, FMT_PCT]
+        for c, (val, fmt) in enumerate(zip(vals, fmts), 1):
+            cell = ws1.cell(row=r, column=c, value=val)
+            if fmt: cell.number_format = fmt
         style_row(ws1, r, 6, alt=(i%2==1))
 
     tr1 = 5 + len(escalades_active)
-    for c, v in enumerate(['TOTAL', total_incidents, round(total_outage_sec/3600,1), round(total_duree_sec/3600,1), '100%','100%'], 1):
-        ws1.cell(row=tr1, column=c, value=v)
+    for c, (val, fmt) in enumerate(zip(
+        ['TOTAL', total_incidents, round(total_outage_sec/3600,1), round(total_duree_sec/3600,1), 100.0, 100.0],
+        [None, FMT_INT, FMT_H, FMT_H, FMT_PCT, FMT_PCT]
+    ), 1):
+        cell = ws1.cell(row=tr1, column=c, value=val)
+        if fmt: cell.number_format = fmt
     style_total(ws1, tr1, 6)
 
     bc1 = BarChart()
@@ -2006,6 +2036,7 @@ def export_statistiques(request):
     for c, h in enumerate(['Site','Occurrences','Barre visuelle','Cause principale'], 1):
         ws2.cell(row=4, column=c, value=h)
     style_hdr(ws2, 4, 4)
+    ws2.freeze_panes = 'A5'
 
     max_site = sites_top10[0][1] if sites_top10 else 1
     for i, (site, cnt) in enumerate(sites_top10):
@@ -2013,16 +2044,17 @@ def export_statistiques(request):
         pct = round(cnt/max_site*100)
         bar = '█' * (pct//5) + '░' * (20 - pct//5)
         ws2.cell(row=r, column=1, value=site)
-        ws2.cell(row=r, column=2, value=cnt)
+        c2 = ws2.cell(row=r, column=2, value=cnt)
+        c2.number_format = FMT_INT
         c3 = ws2.cell(row=r, column=3, value=bar)
-        c3.font = Font(name='Courier New', size=9, color=YAS_BLUE)
+        c3.font = Font(name='Courier New', size=9, color=ACCENT_BLUE)
         ws2.cell(row=r, column=4, value=site_top_cause_exp.get(site, '—'))
         style_row(ws2, r, 2, alt=(i%2==1))
         for col in (3, 4):
-            ws2.cell(row=r, column=col).fill   = a_fill() if i%2==1 else w_fill()
-            ws2.cell(row=r, column=col).border = border
+            ws2.cell(row=r, column=col).fill      = a_fill() if i%2==1 else w_fill()
+            ws2.cell(row=r, column=col).border    = border
             ws2.cell(row=r, column=col).alignment = l_align()
-            ws2.cell(row=r, column=col).font = Font(name='Calibri', size=10)
+            ws2.cell(row=r, column=col).font      = Font(name='Calibri', size=10, color='1A1A2E')
 
     bc2 = BarChart()
     bc2.type = 'bar'; bc2.title = 'Récurrence des Sites'; bc2.style = 10
@@ -2044,16 +2076,21 @@ def export_statistiques(request):
         ws3.cell(row=4, column=c, value=h)
     style_hdr(ws3, 4, 3)
 
+    ws3.freeze_panes = 'A5'
     for i, (name, h, pct) in enumerate(outage_data):
         r = 5 + i
         ws3.cell(row=r, column=1, value=name)
-        ws3.cell(row=r, column=2, value=h)
-        ws3.cell(row=r, column=3, value=f'{pct}%')
+        c2 = ws3.cell(row=r, column=2, value=h);   c2.number_format = FMT_H
+        c3 = ws3.cell(row=r, column=3, value=pct); c3.number_format = FMT_PCT
         style_row(ws3, r, 3, alt=(i%2==1))
 
     tr3 = 5 + len(outage_data)
-    for c, v in enumerate(['TOTAL', round(total_outage_sec/3600,1), '100%'], 1):
-        ws3.cell(row=tr3, column=c, value=v)
+    for c, (val, fmt) in enumerate(zip(
+        ['TOTAL', round(total_outage_sec/3600,1), 100.0],
+        [None, FMT_H, FMT_PCT]
+    ), 1):
+        cell = ws3.cell(row=tr3, column=c, value=val)
+        if fmt: cell.number_format = fmt
     style_total(ws3, tr3, 3)
 
     if outage_data:
@@ -2087,13 +2124,14 @@ def export_statistiques(request):
         ws4.cell(row=5, column=c, value=h)
     style_hdr(ws4, 5, 3)
 
+    ws4.freeze_panes = 'A6'
     for i, (cause, dur_sec) in enumerate(causes_dur_top10):
         r = 6 + i
         dur_h = round(dur_sec/3600, 1)
         pct   = round(dur_sec/max_cause_dur*100, 1)
         ws4.cell(row=r, column=1, value=cause)
-        ws4.cell(row=r, column=2, value=dur_h)
-        ws4.cell(row=r, column=3, value=f'{pct}%')
+        c2 = ws4.cell(row=r, column=2, value=dur_h); c2.number_format = FMT_H
+        c3 = ws4.cell(row=r, column=3, value=pct);  c3.number_format = FMT_PCT
         style_row(ws4, r, 3, alt=(i%2==1))
 
     if causes_dur_top10:
@@ -2119,12 +2157,13 @@ def export_statistiques(request):
         ws5.cell(row=5, column=c, value=h)
     style_hdr(ws5, 5, 3)
 
+    ws5.freeze_panes = 'A6'
     for i, (cause, nb) in enumerate(causes_nb_top10):
         r = 6 + i
         pct = round(nb/max_cause_nb*100, 1)
         ws5.cell(row=r, column=1, value=cause)
-        ws5.cell(row=r, column=2, value=nb)
-        ws5.cell(row=r, column=3, value=f'{pct}%')
+        c2 = ws5.cell(row=r, column=2, value=nb);  c2.number_format = FMT_INT
+        c3 = ws5.cell(row=r, column=3, value=pct); c3.number_format = FMT_PCT
         style_row(ws5, r, 3, alt=(i%2==1))
 
     if causes_nb_top10:
@@ -2148,6 +2187,7 @@ def export_statistiques(request):
     for c, h in enumerate(['Site','Durée totale (h)','Criticité','Cause principale'], 1):
         ws6.cell(row=4, column=c, value=h)
     style_hdr(ws6, 4, 4)
+    ws6.freeze_panes = 'A5'
 
     for i, (site, dur_sec) in enumerate(degraded_top10):
         r = 5 + i
@@ -2157,16 +2197,17 @@ def export_statistiques(request):
         elif pct >= 0.5: crit, bg = '🟠 Élevé',    'FFF3E0'
         else:            crit, bg = '🟡 Modéré',   'FFFDE7'
         ws6.cell(row=r, column=1, value=site)
-        ws6.cell(row=r, column=2, value=dur_h)
+        c2 = ws6.cell(row=r, column=2, value=dur_h); c2.number_format = FMT_H
         ws6.cell(row=r, column=3, value=crit)
         ws6.cell(row=r, column=4, value=site_top_cause_exp.get(site, '—'))
         for col in range(1, 5):
             cell = ws6.cell(row=r, column=col)
-            cell.font      = Font(name='Calibri', size=10)
+            cell.font      = Font(name='Calibri', size=10,
+                                  bold=(col == 2), color='1A1A2E')
             cell.fill      = PatternFill('solid', fgColor=bg)
             cell.alignment = l_align() if col in (1, 4) else c_align()
             cell.border    = border
-        ws6.row_dimensions[r].height = 20
+        ws6.row_dimensions[r].height = 21
 
     if degraded_top10:
         bc6 = BarChart()
@@ -2198,6 +2239,7 @@ def export_statistiques(request):
         ws7.cell(row=5, column=n_weeks+2, value='Min (%)')
         ws7.cell(row=5, column=n_weeks+3, value='Moy (%)')
         style_hdr(ws7, 5, all_cols7)
+        ws7.freeze_panes = 'B6'
 
         all_dispo_vals = []
         for i, esc in enumerate(DISPO_ESCS):
