@@ -80,8 +80,14 @@
   .bar-rank.r2 { background:linear-gradient(135deg,#d4dce8,#b0bec5); color:#37474f; box-shadow:0 2px 6px rgba(176,190,197,.4); }
   .bar-rank.r3 { background:linear-gradient(135deg,#e8b97a,#c97b3a); color:#fff; box-shadow:0 2px 6px rgba(180,100,40,.3); }
   .bar-name { font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-  .site-cause-row { display:flex; align-items:center; gap:4px; margin-top:3px; margin-bottom:6px; }
-  .site-cause-text { font-size:0.67rem; color:#6b7280; font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:95%; }
+  .site-cause-row { display:flex; align-items:center; gap:5px; margin-top:5px; margin-bottom:7px; }
+  .site-cause-text {
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:0.68rem; font-weight:600; color:#003087;
+    background:rgba(0,48,135,.08); border:1px solid rgba(0,48,135,.15);
+    border-radius:20px; padding:2px 9px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+  }
   .bar-val  { font-size:13px; font-weight:700; color:#003087; }
   .bar-track { height:8px; background:#f0f4ff; border-radius:4px; overflow:hidden; }
   .bar-fill        { height:100%; border-radius:4px; background:linear-gradient(90deg,#003087,#0047cc); }
@@ -851,7 +857,7 @@
             </div>
             <div class="bar-track"><div class="bar-fill yellow" style="width:{{ s.pct }}%"></div></div>
             {% if s.top_cause %}
-            <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ s.top_cause }}">{{ s.top_cause }}</span></div>
+            <div class="site-cause-row"><span class="site-cause-text" title="{{ s.top_cause }}">⚡ {{ s.top_cause }}</span></div>
             {% endif %}
           </div>
           {% endfor %}
@@ -914,7 +920,7 @@
             </div>
             <div class="bar-track"><div class="bar-fill red" style="width:{{ d.pct }}%"></div></div>
             {% if d.top_cause %}
-            <div class="site-cause-row"><span style="font-size:.7rem;">⚡</span><span class="site-cause-text" title="{{ d.top_cause }}">{{ d.top_cause }}</span></div>
+            <div class="site-cause-row"><span class="site-cause-text" title="{{ d.top_cause }}">⚡ {{ d.top_cause }}</span></div>
             {% endif %}
           </div>
           {% endfor %}
