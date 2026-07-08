@@ -569,6 +569,7 @@
   // ── Modal suppression ────────────────────────────────────────────────────
   var currentPk = null;
   var modal = document.getElementById('deleteModal');
+  if (modal) document.body.appendChild(modal);
 
   window.openDeleteModal = function(pk, filename) {
     currentPk = pk;

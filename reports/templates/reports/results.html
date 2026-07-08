@@ -281,6 +281,7 @@
 <script>
 (function(){
   var modal = document.getElementById('deleteModal');
+  if (modal) document.body.appendChild(modal);
 
   window.openDeleteModal = function() { modal.classList.add('show'); };
   window.closeDeleteModal = function() { modal.classList.remove('show'); };
