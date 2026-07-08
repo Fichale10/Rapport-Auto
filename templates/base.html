@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}ReportXCare — Yas{% endblock %}</title>
+  <script>
+    /* Applique le thème AVANT le rendu pour éviter le flash blanc */
+    (function(){
+      var t;
+      try { t = localStorage.getItem('rxc-theme'); } catch(e) {}
+      document.documentElement.setAttribute('data-theme', t || 'dark');
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="{% static 'reports/favicon.svg' %}">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -19,7 +27,15 @@
       --radius: 18px;
       --muted: #6b7a99;
     }
-    body { font-family: 'DM Sans', sans-serif; background: #f2f5fb; color: #111; min-height: 100vh; }
+    body {
+      font-family: 'DM Sans', sans-serif; color: #111; min-height: 100vh;
+      background:
+        radial-gradient(1200px 550px at 88% -12%, rgba(0,48,135,0.13), transparent 62%),
+        radial-gradient(950px 480px at -8% 108%, rgba(255,199,44,0.10), transparent 58%),
+        radial-gradient(700px 400px at 50% 55%, rgba(0,48,135,0.05), transparent 65%),
+        linear-gradient(158deg, #e6ecf7 0%, #dce5f3 45%, #d0dcee 100%);
+      background-attachment: fixed;
+    }
 
     /* ── NAVBAR ── */
     .navbar {
@@ -145,7 +161,7 @@
     .notif-footer-admin:hover { background: #fff0c0; color: #7a5a00; }
 
     /* ── TOPBAR / BREADCRUMB ── */
-    .topbar { background: #fff; border-bottom: 1px solid #eaeff8; }
+    .topbar { background: rgba(255,255,255,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid rgba(0,48,135,0.10); }
     .topbar-inner { max-width: 2560px; margin: 0 auto; padding: 9px 40px; display:flex; align-items:center; gap:7px; }
     .bc-link { color: var(--muted); font-size:12.5px; font-weight:600; text-decoration:none; transition:color .15s; display:flex; align-items:center; gap:5px; }
     .bc-link:hover { color: var(--yas-blue); }
@@ -263,6 +279,113 @@
     }
   </style>
   {% block extra_css %}{% endblock %}
+  <style id="dark-theme-css">
+    /* ═══════════ THÈME SOMBRE (style ISOC — supervision) ═══════════ */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --yas-light: #111a2e;
+      --muted: #8b9cb8;
+      --border: 1px solid #1c2942;
+      --shadow-sm: 0 1px 6px rgba(0,0,0,.35);
+      --shadow-md: 0 2px 20px rgba(0,0,0,.42);
+      --shadow-lg: 0 8px 36px rgba(0,0,0,.6);
+    }
+    html[data-theme="dark"] body { background: #0a0f1c; color: #d7e1f2; }
+
+    /* ── Navbar / topbar ── */
+    html[data-theme="dark"] .navbar {
+      background: linear-gradient(90deg,#0a1120 0%,#0c1526 60%,#0d1728 100%);
+      box-shadow: 0 2px 24px rgba(0,0,0,.55);
+      border-bottom: 2.5px solid rgba(255,199,44,.35);
+    }
+    html[data-theme="dark"] .topbar { background: #0d1524; border-bottom: 1px solid #1c2942; }
+    html[data-theme="dark"] .bc-link { color: #8b9cb8; }
+    html[data-theme="dark"] .bc-link:hover { color: #fff; }
+    html[data-theme="dark"] .bc-sep { color: #2c3c5e; }
+    html[data-theme="dark"] .bc-current { color: var(--yas-yellow); }
+    html[data-theme="dark"] .notif-badge { border-color: #0c1526; }
+
+    /* ── Dropdowns (user + notifications) ── */
+    html[data-theme="dark"] .user-dropdown,
+    html[data-theme="dark"] .notif-dropdown { background: #101828; border-color: #24365a; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+    html[data-theme="dark"] .user-drop-item { color: #c7d3e8; }
+    html[data-theme="dark"] .user-drop-item:hover { background: #17233c; color: #fff; }
+    html[data-theme="dark"] .user-drop-admin { color: #ffd45e; }
+    html[data-theme="dark"] .user-drop-admin:hover { background: rgba(255,199,44,.12); color: #ffc72c; }
+    html[data-theme="dark"] .user-drop-divider { background: #1c2942; }
+    html[data-theme="dark"] .user-drop-logout { color: #ff6b6b; }
+    html[data-theme="dark"] .user-drop-logout:hover { background: rgba(229,62,62,.12); color: #ff8787; }
+    html[data-theme="dark"] .notif-item { border-bottom-color: #17233c; }
+    html[data-theme="dark"] .notif-item:hover { background: #17233c; }
+    html[data-theme="dark"] .notif-item-file { color: #e8eefc; }
+    html[data-theme="dark"] .notif-item-count { background: rgba(229,62,62,.15); }
+    html[data-theme="dark"] .notif-footer { background: #0d1524; border-top-color: #1c2942; }
+    html[data-theme="dark"] .notif-footer a { color: #7fb0ff; }
+
+    /* ── Bordures génériques ── */
+    html[data-theme="dark"] .main-content :is(div, section, table, th, td, input, select, textarea, a, hr) { border-color: #1e2c4a; }
+
+    /* ── Panneaux / cartes ── */
+    html[data-theme="dark"] .main-content :is(
+      .card, [class*="-card"], .kpi, [class*="kpi-"], .hero,
+      .table-wrap, .r-header, [class*="-box"], .site-row,
+      [class*="-panel"], .esc-table, .stat-table, [class*="upload-zone"]
+    ) {
+      background-color: #0f1728;
+      border-color: #1d2b47;
+      color: #d7e1f2;
+      box-shadow: 0 2px 16px rgba(0,0,0,.35);
+    }
+
+    /* ── Textes ── */
+    html[data-theme="dark"] .main-content :is(h1,h2,h3,h4,h5,h6) { color: #eef3fc; }
+    html[data-theme="dark"] .main-content :is(
+      [class*="title"], [class*="label"], [class*="-name"], [class*="head"],
+      [class*="desc"], [class*="-sub"], [class*="-meta"], [class*="-info"], p, label
+    ) { color: #c7d3e8; }
+    html[data-theme="dark"] .main-content :is([class*="-val"], [class*="-num"], [class*="value"]) { color: #ffffff; }
+    html[data-theme="dark"] .main-content :is(small, [class*="muted"], [class*="hint"], [class*="-date"], [class*="caption"]) { color: #8b9cb8; }
+    html[data-theme="dark"] .main-content a:not([class]) { color: #7fb0ff; }
+
+    /* ── Tableaux ── */
+    html[data-theme="dark"] .main-content table { background: transparent; color: #d7e1f2; }
+    html[data-theme="dark"] .main-content th { background: #101d33; color: #9fb3d4; border-color: #1d2b47; }
+    html[data-theme="dark"] .main-content td { background: transparent; color: #d7e1f2; border-color: #16233c; }
+    html[data-theme="dark"] .main-content tr:nth-child(even) td { background: #0d1524; }
+    html[data-theme="dark"] .main-content tbody tr:hover td { background: #13203a; }
+
+    /* ── Formulaires ── */
+    html[data-theme="dark"] :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+      background-color: #0d1524; color: #dce6f5; border-color: #24365a;
+    }
+    html[data-theme="dark"] :is(input, select, textarea):focus { border-color: #3b82f6; outline: none; }
+    html[data-theme="dark"] ::placeholder { color: #5d6f8f; }
+    html[data-theme="dark"] select option { background: #0d1524; color: #dce6f5; }
+
+    /* ── Boutons neutres (le jaune .btn-primary reste inchangé) ── */
+    html[data-theme="dark"] .main-content :is(.btn-cancel, [class*="period-btn"], [class*="tab-btn"], [class*="filter-btn"], [class*="toggle-btn"]) {
+      background: #101c31; color: #c7d3e8; border-color: #26395e;
+    }
+    html[data-theme="dark"] .main-content .btn-primary { background: var(--yas-yellow); color: #0a0f1c; }
+
+    /* ── Messages flash ── */
+    html[data-theme="dark"] .message.success { background: rgba(34,197,94,.1); border-color: #22c55e; color: #6ee7a0; }
+    html[data-theme="dark"] .message.error   { background: rgba(255,199,44,.08); border-color: var(--yas-yellow); color: #ffd45e; }
+
+    /* ── Carte Leaflet (fond sombre comme la maquette) ── */
+    html[data-theme="dark"] .leaflet-container { background: #0a0f1c; }
+    html[data-theme="dark"] .leaflet-tile {
+      filter: brightness(.6) invert(1) contrast(3.2) hue-rotate(200deg) saturate(.35) brightness(.65);
+    }
+    html[data-theme="dark"] .leaflet-overlay-pane path[fill="#eaf0f8"] { fill: #0a0f1c; }
+    html[data-theme="dark"] :is(.leaflet-control-zoom a, .leaflet-control-attribution) { background: #101828; color: #c7d3e8; border-color: #24365a; }
+
+    /* ── Scrollbars ── */
+    html[data-theme="dark"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+    html[data-theme="dark"] ::-webkit-scrollbar-track { background: #0a0f1c; }
+    html[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #24365a; border-radius: 5px; }
+    html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #33487a; }
+  </style>
 </head>
 <body>
 
@@ -284,6 +407,8 @@
     </div>
 
     <div class="nav-user">
+      <!-- 🌓 Thème clair / sombre -->
+      <div class="notif-btn" id="themeBtn" title="Basculer le thème">🌙</div>
       {% if user.is_authenticated %}
 
         <!-- 🔔 Notifications -->
@@ -480,6 +605,23 @@
   du site) afin d'assister le technicien sur le site qu'il consulte.
 {% endcomment %}
 {% endif %}
+
+<script>
+(function(){
+  var btn = document.getElementById('themeBtn');
+  if (!btn) return;
+  function icon() {
+    btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+  }
+  icon();
+  btn.addEventListener('click', function(){
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('rxc-theme', next); } catch(e) {}
+    icon();
+  });
+})();
+</script>
 
 {% block extra_js %}{% endblock %}
 </body>
