@@ -811,7 +811,7 @@ def process_report(request, pk):
     else:
         report.region_sites_json = {}
 
-    cause_col = next((c for c in ('Root Cause', 'Cause') if c in df_export.columns), None)
+    cause_col = next((c for c in ('Cause', 'Root Cause') if c in df_export.columns), None)
     if cause_col and 'Duration' in df_export.columns:
         cause_duration = defaultdict(float)
         for _, row in df_export.iterrows():
@@ -843,7 +843,8 @@ def process_report(request, pk):
 
     # ── site_top_cause_json : cause la plus fréquente par site ──────────────
     # Utilise df_dedup (même source que top_sites_json) pour que les noms correspondent
-    _cause_col_dedup = next((c for c in ('Root Cause', 'Cause') if c in df_dedup.columns), None)
+    # Priorité : 'Cause' puis 'Root Cause' (identique à la voie API)
+    _cause_col_dedup = next((c for c in ('Cause', 'Root Cause') if c in df_dedup.columns), None)
     if site_col and _cause_col_dedup:
         _sc: dict = {}
         for _, _row in df_dedup.iterrows():
@@ -866,29 +867,32 @@ def process_report(request, pk):
 
     report.processed = True
 
+    # outage_journalier_json : distribué jour par jour sur la durée réelle de l'incident
+    # (identique à la voie API — évite d'attribuer tout l'outage au jour d'alarme)
     outage_j = defaultdict(lambda: defaultdict(float))
 
-    if 'Alarm Time' in df_export.columns and 'Escalade' in df_export.columns and 'Duration' in df_export.columns:
-        for _, row in df_export.iterrows():
-            alarm_time = row.get('Alarm Time')
-            escalade   = str(row.get('Escalade', '')).strip()
-            duration   = row.get('Duration', '')
+    if 'Alarm Time' in df_export.columns and 'Cancel Time' in df_export.columns and 'Escalade' in df_export.columns:
+        _alarm_ts  = pd.to_datetime(df_export['Alarm Time'],  dayfirst=True, format='mixed', errors='coerce')
+        _cancel_ts = pd.to_datetime(df_export['Cancel Time'], dayfirst=True, format='mixed', errors='coerce')
+        _fin_ts    = pd.Timestamp(f"{date_fin_str or date_debut_str} 23:59:00")
+        _cancel_ts = _cancel_ts.fillna(_fin_ts)
 
-            esc_key = ESC_MAPPING.get(escalade)
+        for i, row in df_export.iterrows():
+            esc_key = ESC_MAPPING.get(str(row.get('Escalade', '')).strip())
             if not esc_key:
                 continue
-
-            try:
-                if hasattr(alarm_time, 'date'):
-                    day = alarm_time.date().isoformat()
-                else:
-                    day = pd.to_datetime(alarm_time).date().isoformat()
-            except Exception:
+            t_start = _alarm_ts.get(i)
+            t_end   = _cancel_ts.get(i)
+            if pd.isna(t_start) or pd.isna(t_end) or t_end <= t_start:
                 continue
-
-            dur_sec = _parse_duration(str(duration))
-            if dur_sec > 0:
-                outage_j[esc_key][day] += dur_sec
+            cur = t_start.normalize()
+            while cur <= t_end:
+                seg_start = max(t_start, cur)
+                seg_end   = min(t_end, cur + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
+                sec = max(0.0, (seg_end - seg_start).total_seconds())
+                if sec > 0:
+                    outage_j[esc_key][cur.strftime('%Y-%m-%d')] += sec
+                cur += pd.Timedelta(days=1)
 
     report.outage_journalier_json = {
         esc: dict(jours)
