@@ -1182,6 +1182,8 @@
   var titleEl  = document.getElementById('spinTitle');
   var subEl    = document.getElementById('spinSub');
   if (!overlay) return;
+  // Déplace hors de .main-content pour éviter que transform CSS casse position:fixed
+  document.body.appendChild(overlay);
 
   function show(title, sub) {
     if (title) titleEl.textContent = title;
