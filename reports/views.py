@@ -1814,8 +1814,8 @@ def export_statistiques(request):
     def s_fill():       return PatternFill('solid', fgColor=LIGHT_BLUE)
     def a_fill():       return PatternFill('solid', fgColor=LIGHT_GRAY)
     def w_fill():       return PatternFill('solid', fgColor=WHITE)
-    def c_align():      return Alignment(horizontal='center', vertical='center', wrap_text=True)
-    def l_align():      return Alignment(horizontal='left',   vertical='center', wrap_text=True)
+    def c_align():      return Alignment(horizontal='center', vertical='center', wrap_text=False)
+    def l_align():      return Alignment(horizontal='left',   vertical='center', wrap_text=False)
 
     def style_hdr(ws, row, ncols, height=24):
         for c in range(1, ncols+1):
