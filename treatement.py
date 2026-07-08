@@ -1,35 +1,30 @@
 import pandas as pd
+import sys
 
-def process_file(input_file, date_rapport, date_fin=None):
-    """Traite le fichier Excel pour une plage de dates.
-
-    Args:
-        input_file: chemin vers le fichier Excel source.
-        date_rapport: date de début (str YYYY-MM-DD ou date).
-        date_fin: date de fin inclusive (str YYYY-MM-DD ou date).
-                  Si None, la plage porte uniquement sur date_rapport (rapport journalier).
-    """
-    # Charger le fichier Excel (ou accepter un DataFrame déjà chargé)
-    if isinstance(input_file, pd.DataFrame):
-        df = input_file.copy()
-    else:
-        print(f"Chargement du fichier: {input_file}")
-        df = pd.read_excel(input_file)
+def process_file(input_file, output_file, date_rapport):
+    # Charger le fichier Excel
+    print(f"Chargement du fichier: {input_file}")
+    df = pd.read_excel(input_file)
     
-    # Aucun filtre sur Alarm text : on conserve tous les types d'alarmes
-    df_filtre = df.copy()
+    # Filtrage des alarmes à garder dans alarmes texte
+    alarmes_a_garder = [
+        "BTS O&M LINK FAILURE / WCDMA BASE STATION OUT OF USE",
+        "WCDMA BASE STATION OUT OF USE"
+    ]
     
-    # Plage de dates : début = 00:00:00 du premier jour, fin = 23:59:00 du dernier jour
-    debut_jour = pd.to_datetime(f"{date_rapport} 00:00:00")
-    if date_fin is None:
-        fin_jour = pd.to_datetime(f"{date_rapport} 23:59:00")
-    else:
-        fin_jour = pd.to_datetime(f"{date_fin} 23:59:00")
+    print("Filtrage des données dans la colonne 'Alarm text'...")
+    # On s'assure que la colonne ne contient pas des espaces au début/fin au moment de la comparaison (optionnel mais recommandé)
+    df_filtre = df[df['Alarm text'].astype(str).str.strip().isin(alarmes_a_garder)].copy()
+    
+    # Traitement des dates pour le rapport du jour spécifié
+    date_jour = date_rapport
+    debut_jour = pd.to_datetime(f"{date_jour} 00:00:00")
+    fin_jour = pd.to_datetime(f"{date_jour} 23:59:00")
 
     # Utiliser dayfirst=True pour parser le format jj-mm-aaaa HH:MM:SS
     # On garde les colonnes originales intactes pour l'affichage final, on crée des colonnes temporaires pour le calcul
-    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, format='mixed', errors='coerce')
-    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, format='mixed', errors='coerce')
+    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, errors='coerce')
+    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
 
     # Remplir les Cancel Time NaT (toujours ouvert) par une date dans le futur éloignée pour simplifier la logique
     # ou on peut traiter les NaT en utilisant la fonction mask
@@ -42,170 +37,52 @@ def process_file(input_file, date_rapport, date_fin=None):
     cond_apres_ou_ouvert = (df_filtre['Alarm Time Tmp'] <= fin_jour) & ((df_filtre['Cancel Time Tmp'] > fin_jour) | df_filtre['Cancel Time Tmp'].isna())
     df_filtre.loc[cond_apres_ou_ouvert, 'Cancel Time Tmp'] = fin_jour
     
-    # 3. Supprimer tout ce qui ne s'est pas passé le JOUR J (les lignes doivent maintenant avoir Alarm Time et Cancel Time le JOUR J)
-    # C'est à dire, exclure ceux qui se sont terminés avant le JOUR J, ou qui ont commencé après le JOUR J
+    # 3. Supprimer tout ce qui ne s'est pas passé le 14 (les lignes doivent maintenant avoir Alarm Time et Cancel Time le 14)
+    # C'est à dire, exclure ceux qui se sont terminés avant le 14, ou qui ont commencé après le 14
     cond_garder = (df_filtre['Alarm Time Tmp'] >= debut_jour) & (df_filtre['Alarm Time Tmp'] <= fin_jour) & (df_filtre['Cancel Time Tmp'] >= debut_jour) & (df_filtre['Cancel Time Tmp'] <= fin_jour)
     df_filtre = df_filtre[cond_garder].copy()
     
     # Calcul de la durée dans la colonne "Duration" en utilisant les heures temporaires (bornées à la journée)
-    duree_timedelta = df_filtre['Cancel Time Tmp'] - df_filtre['Alarm Time Tmp']
-    df_filtre['Duration_Sec'] = duree_timedelta.dt.total_seconds()
+    df_filtre['Duration'] = df_filtre['Cancel Time Tmp'] - df_filtre['Alarm Time Tmp']
+    
+    # Remplacer les valeurs originales par les valeurs bornées pour correspondre au fichier attendu
+    df_filtre['Alarm Time'] = df_filtre['Alarm Time Tmp'].dt.strftime('%d-%m-%Y %H:%M:%S')
+    
+    # Pour Cancel Time, garder vide si c'était NaT à l'origine, sinon mettre la valeur bornée
+    cancel_isna_orig = df['Cancel Time'].isna()
+    # Mettre à jour avec le format string, et remplacer par NaN (ou vide) si besoin
+    # Attention: df_filtre['Cancel Time'] = df_filtre['Cancel Time Tmp'].dt.strftime('%d-%m-%Y %H:%M:%S')
+    # Les NaT n'ont pas été remplacés par des dates futures dans les colonnes Tmp dans ce script,
+    # c'était fait en condition. La ligne 32 le fait de façon conditionnelle.
+    # Appliquons le formatage en chaîne de caractères pour forcer Excel à afficher l'heure
+    df_filtre['Alarm Time'] = df_filtre['Alarm Time Tmp'].dt.strftime('%d/%m/%Y %H:%M:%S')
+    df_filtre['Cancel Time'] = df_filtre['Cancel Time Tmp'].dt.strftime('%d/%m/%Y %H:%M:%S')
+    
+    # Remplacer les valeurs NaT formatées (qui deviennent NaN ou 'NaT') par des chaînes vides
+    df_filtre['Cancel Time'] = df_filtre['Cancel Time'].fillna('').replace('NaT', '')
     
     # Formatage de la durée en HH:MM:SS
-    # .astype(str) forces string dtype even when the series is empty (avoids Timedelta from .sum())
-    df_filtre['Duration'] = duree_timedelta.apply(
+    df_filtre['Duration'] = df_filtre['Duration'].apply(
         lambda x: f"{int(x.total_seconds() // 3600):02d}:{int((x.total_seconds() % 3600) // 60):02d}:{int(x.total_seconds() % 60):02d}" if pd.notnull(x) else ""
-    ).astype(str)
-
-    # === NOUVEAUTÉ / DEMANDE : Mettre à jour l'affichage des colonnes Alarm & Cancel Time
-    # Les pannes qui ont commencé avant le jour J ou finissent après sont affichées 
-    # avec la borne 00:00:00 et 23:59:00 respectivement.
-    # On écrase les colonnes originales avec nos calculs temporaires "bornés"
-    df_filtre['Alarm Time'] = df_filtre['Alarm Time Tmp']
-    df_filtre['Cancel Time'] = df_filtre['Cancel Time Tmp']
-
+    )
+    
     # Supprimer les colonnes temporaires pour garder le fichier propre
     df_filtre = df_filtre.drop(columns=['Alarm Time Tmp', 'Cancel Time Tmp'])
+    
+    # Supprimer l'ancienne colonne 'DURATION' si elle existe pour éviter un doublon
     if 'DURATION' in df_filtre.columns:
         df_filtre = df_filtre.drop(columns=['DURATION'])
-
-    # Sauvegarder TOUTES les alarmes pour l'export complet (Avant dédoublonnage)
-    df_complet = df_filtre.sort_values('Alarm Time').copy()
     
-    # === NOUVEAUTÉ : SUPPRESSION DES DOUBLONS (UNIQUEMENT POUR LA SYNTHÈSE) ===
-    # On dédoublonne uniquement pour calculer le tableau de synthèse.
-    # Un doublon est un événement qui a la MÊME heure (Alarm Time) ET le MÊME site racine.
-    # Pour déterminer le site racine, on regarde en priorité le "Site Parent".
-    # - Si le "Site Parent" est renseigné, c'est lui la racine.
-    # - Si le "Site Parent" est N/A ou vide, on prend le "Site Name".
-    # Deux pannes à la même heure sur le même "site racine" sont considérées comme un doublon.
-
-    df_pour_synthese = df_filtre.copy()
+    # Formater les dates pour l'exportation selon le format demandé (optionnel)
+    # df_filtre['DURATION'] peut être formaté en HH:MM:SS ou laissé en timedelta
     
-    # Créer une colonne temporaire 'Site Racine' pour la déduplication
-    if 'Site Parent' in df_pour_synthese.columns and 'Site Name' in df_pour_synthese.columns:
-        # On remplit 'Site Racine' avec 'Site Parent'
-        # Si 'Site Parent' est nul/vide/na/N/A, on comble par le 'Site Name'
-        df_pour_synthese['Site Racine'] = df_pour_synthese['Site Parent'].replace(['', 'N/A', 'nan', 'NaN'], pd.NA)
-        df_pour_synthese['Site Racine'] = df_pour_synthese['Site Racine'].fillna(df_pour_synthese['Site Name'])
-        
-        # Supprimer les doublons basés sur la racine ET l'heure
-        df_pour_synthese = df_pour_synthese.drop_duplicates(subset=['Site Racine', 'Alarm Time'], keep='first')
-        
-        # Nettoyer la colonne temporaire
-        df_pour_synthese = df_pour_synthese.drop(columns=['Site Racine'])
-    else:
-        # Fallback si les colonnes spécifiques n'existent pas
-        df_pour_synthese = df_pour_synthese.drop_duplicates(subset=['Site Parent', 'Site Name', 'Alarm Time'], keep='first')
-    
-    # --- CREATION DU TABLEAU DE SYNTHESE (ESCALADE) ---
-    rapport_lignes = []
-    escalades_ordre = [
-        "ENERGIE","TRANS FH-FIELD O","RAN-FIELD O", "ENERGIE / TRANS / RAN", 
-        "TRANS / RAN", "INFRA", "PROJET", "TRANS FO", 
-        "TRANS FTTM", "TRANS IP", "ENVIRONNEMENT", "BSS",
-    ]
-    
-    for esc in escalades_ordre:
-        # Données SANS doublons pour cette escalade
-        df_esc_synth = df_pour_synthese[df_pour_synthese['Escalade'] == esc] if 'Escalade' in df_pour_synthese.columns else pd.DataFrame()
-        # Données AVEC doublons (Fichier complet) pour cette escalade
-        df_esc_comp = df_complet[df_complet['Escalade'] == esc] if 'Escalade' in df_complet.columns else pd.DataFrame()
-        
-        count = len(df_esc_synth)
-        
-        if count > 0:
-            # DUREE dedupliquée
-            duree_totale_sec = df_esc_synth['Duration_Sec'].sum()
-            # MTTR de la durée dédupliquée
-            mttr_sec = duree_totale_sec / count
-            # OUTAGE est le temps global (AVEC les doublons de la vue complète)
-            outage_sec = df_esc_comp['Duration_Sec'].sum()
-            
-            # Compter ceux qui sont "OUVERT"
-            if 'Status' in df_esc_synth.columns:
-                non_resolu = len(df_esc_synth[df_esc_synth['Status'].astype(str).str.upper() == 'OUVERT'])
-            else:
-                non_resolu = len(df_esc_synth[df_esc_synth['Cancel Time'].isna()])
-                
-            if non_resolu > 0:
-                statut_text = f"{non_resolu} Non resolu"
-            else:
-                statut_text = "Résolu"
-        else:
-            duree_totale_sec = 0
-            mttr_sec = 0
-            outage_sec = 0
-            statut_text = "N/A"
-            
-        # Formatage Secondes -> HH:MM:SS
-        def format_sec(secs):
-            if pd.isna(secs): return "0:00:00"
-            return f"{(secs // 3600)}:{int((secs % 3600) // 60):02d}:{int(secs % 60):02d}"
-            
-        rapport_lignes.append({
-            "Escalade": esc,
-            "Inc count": count,
-            "DUREE": format_sec(duree_totale_sec),
-            "MTTR": format_sec(mttr_sec),
-            "OUTAGE": format_sec(outage_sec),
-            "Status": statut_text
-        })
-        
-    df_synthese = pd.DataFrame(rapport_lignes)
-    
-    # Ligne de TOTAL
-    total_count = df_synthese['Inc count'].sum()
-    
-    if 'Duration_Sec' in df_complet.columns:
-        # Somme pure des calculs des lignes (Données sans doublons)
-        total_duree = df_pour_synthese[df_pour_synthese['Escalade'].isin(escalades_ordre)]['Duration_Sec'].sum() if 'Escalade' in df_pour_synthese.columns else 0
-        # OUTAGE = Le grand total du fichier complet
-        total_outage = df_complet['Duration_Sec'].sum()
-    else:
-        total_duree = 0
-        total_outage = 0
-        
-    total_mttr = total_duree / total_count if total_count > 0 else 0
-    
-    total_row = pd.DataFrame([{
-        "Escalade": "TOTAL",
-        "Inc count": total_count,
-        "DUREE": format_sec(total_duree),
-        "MTTR": format_sec(total_mttr),
-        "OUTAGE": format_sec(total_outage),
-        "Status": ""
-    }])
-    df_synthese = pd.concat([df_synthese, total_row], ignore_index=True)
-    
-    # Exporter le résultat détaillé COMPLET (sans dédoublonnage)
-    # L'utilisateur a demandé d'afficher ce fichier là dans l'aperçu
-    df_export = df_complet.drop(columns=['Duration_Sec']) # Nettoyer avant export
-    
-    # Nettoyer également df_pour_synthese des colonnes temporaires si nécessaire pour l'affichage
-    if 'Duration_Sec' in df_pour_synthese.columns:
-        df_pour_synthese_clean = df_pour_synthese.drop(columns=['Duration_Sec'])
-    else:
-        df_pour_synthese_clean = df_pour_synthese.copy()
-    
-    return df_export, df_pour_synthese_clean, df_synthese
-
-def obtenir_donnees_propres():
-    # En environnement Power BI, le chemin de base peut être différent. 
-    # Mieux vaut utiliser des chemins absolus vers votre fichier Excel
-    chemin_projet = r"C:\Users\user\OneDrive\Desktop\Projet_rapport_reseau_mobile"
-    fichier_entree = f"{chemin_projet}\\TAGBA_Tchédré Saturnin.xlsx"
-    date_a_traiter = "2026-03-14"
-    fichier_sortie = f"{chemin_projet}\\Nouveau_Fichier_Traiter.xlsx" 
-    
-    return process_file(fichier_entree, date_a_traiter)
+    # Exporter le résultat
+    print(f"Sauvegarde du fichier traité: {output_file}")
+    df_filtre.to_excel(output_file, index=False)
+    print(f"Fichier traité avec succès. Lignes retenues: {len(df_filtre)} sur {len(df)}")
 
 if __name__ == "__main__":
     fichier_entree = "TAGBA_Tchédré Saturnin.xlsx"
     fichier_sortie = "Nouveau_Fichier_Traiter.xlsx"
     date_a_traiter = "2026-03-14" # Remplacez cette date par celle du jour que vous voulez traiter
-    df_export_out, _, df_synthese_out = process_file(fichier_entree, date_a_traiter)
-    df_export_out.to_excel(fichier_sortie, index=False)
-    fichier_synthese = fichier_sortie.replace(".xlsx", "_Synthese.xlsx")
-    df_synthese_out.to_excel(fichier_synthese, index=False)
-    print("Fichiers créés avec succès.")
+    process_file(fichier_entree, fichier_sortie, date_a_traiter)
