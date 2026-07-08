@@ -12,17 +12,16 @@ def process_file(input_file, date_rapport, date_fin=None):
     Returns:
         (df_export, df_dedup, df_synthese)
     """
-    # Charger le fichier Excel (ou accepter un DataFrame déjà chargé)
-    if isinstance(input_file, pd.DataFrame):
-        df = input_file.copy()
-    else:
-        print(f"Chargement du fichier: {input_file}")
-        df = pd.read_excel(input_file)
+    # Charger le fichier Excel
+    print(f"Chargement du fichier: {input_file}")
+    df = pd.read_excel(input_file)
     
     # Filtrage des alarmes à garder dans la colonne 'Alarm text'
     alarmes_a_garder = [
         "BTS O&M LINK FAILURE / WCDMA BASE STATION OUT OF USE",
         "WCDMA BASE STATION OUT OF USE",
+        "BTS O&M LINK FAILURE",
+        "ALL RFMS MISSING",
     ]
     
     print("Filtrage des données dans la colonne 'Alarm text'...")
@@ -38,8 +37,8 @@ def process_file(input_file, date_rapport, date_fin=None):
 
     # Utiliser dayfirst=True pour parser le format jj-mm-aaaa HH:MM:SS
     # On garde les colonnes originales intactes pour l'affichage final, on crée des colonnes temporaires pour le calcul
-    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, format='mixed', errors='coerce')
-    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, format='mixed', errors='coerce')
+    df_filtre['Alarm Time Tmp'] = pd.to_datetime(df_filtre['Alarm Time'], dayfirst=True, errors='coerce')
+    df_filtre['Cancel Time Tmp'] = pd.to_datetime(df_filtre['Cancel Time'], dayfirst=True, errors='coerce')
 
     # Remplir les Cancel Time NaT (toujours ouvert) par une date dans le futur éloignée pour simplifier la logique
     # ou on peut traiter les NaT en utilisant la fonction mask
