@@ -253,11 +253,37 @@ def _period_label(report):
     return f"Du {start.strftime('%d/%m/%Y')} au {end.strftime('%d/%m/%Y')}"
 
 
+def _exclude_duplicate_periods(qs):
+    """Garde un seul rapport par (réseau, date_rapport, date_fin) — le plus récent.
+
+    Évite le double comptage sur la page d'accueil quand un rapport Excel
+    manuel ET un rapport API existent pour la même journée/période.
+    """
+    seen = set()
+    dup_ids = []
+    for pk, fname, d_rap, d_fin in qs.order_by('-uploaded_at').values_list(
+            'id', 'original_filename', 'date_rapport', 'date_fin'):
+        name = (fname or '').upper()
+        if name.startswith('API_') and len(name.split('_')) > 1:
+            network = name.split('_')[1]
+        else:
+            network = 'MOBILE'  # export Excel netXcare = réseau mobile
+        key = (network, d_rap, d_fin)
+        if key in seen:
+            dup_ids.append(pk)
+        else:
+            seen.add(key)
+    return qs.exclude(pk__in=dup_ids) if dup_ids else qs
+
+
 def home(request):
     if request.user.is_superuser:
         all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
     else:
         all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
+
+    # Un seul rapport par période et par réseau (Excel manuel vs API du même jour)
+    all_reports = _exclude_duplicate_periods(all_reports)
 
     total_reports    = all_reports.count()
     total_unresolved = sum(r.unresolved_count for r in all_reports if r.unresolved_count)
