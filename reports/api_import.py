@@ -79,14 +79,14 @@ def fetch_and_save_api(
     client.login(api_user, api_pass)
     logger.info("API login OK — fetch %s → %s (réseau: %s)", date_debut, date_fin, network)
 
-    # Élargir la plage d'un jour de chaque côté pour capturer les tickets
-    # créés ET fermés pendant la journée (l'API semble filtrer les tickets
-    # "ouverts avant date_debut", pas les tickets actifs pendant la journée).
+    # Élargir la plage : -7 jours avant (pour capter les pannes multi-jours
+    # commencées avant la période et encore actives) et +1 jour après
+    # (tickets créés et fermés pendant la journée).
     _d_start = _dt.date.fromisoformat(date_debut[:10])
     _d_end   = _dt.date.fromisoformat(date_fin[:10])
-    api_date_debut = (_d_start - _dt.timedelta(days=1)).isoformat()
+    api_date_debut = (_d_start - _dt.timedelta(days=7)).isoformat()
     api_date_fin   = (_d_end   + _dt.timedelta(days=1)).isoformat()
-    logger.info("Plage API élargie : %s → %s (pour capter tickets intraday)", api_date_debut, api_date_fin)
+    logger.info("Plage API élargie : %s → %s (pour capter tickets intraday et multi-jours)", api_date_debut, api_date_fin)
 
     rows = client.export_data(api_date_debut, api_date_fin, network=network)
     if not rows:
@@ -98,17 +98,20 @@ def fetch_and_save_api(
     df = json_to_dataframe(rows)
     logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
 
-    # Pré-filtrer : ne garder que les tickets dont l'Alarm Time est dans la période.
-    # L'API retourne tous les tickets OUVERT quelle que soit leur date d'ouverture ;
-    # on filtre par Alarm Time (identique à l'export netXcare).
+    # Pré-filtrer : garder les tickets ACTIFS pendant la période (comme l'export
+    # netXcare) : Alarm Time <= fin ET (Cancel Time >= début OU ticket encore ouvert).
+    # Les pannes commencées avant la période mais toujours actives sont conservées ;
+    # treatement.process_file les borne ensuite à 00:00:00 / 23:59:00.
     debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
     fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
     if "Alarm Time" in df.columns:
         at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
-        mask = (at >= debut_dt) & (at <= fin_dt)
+        ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
+                            dayfirst=True, format="mixed", errors="coerce")
+        mask = at.notna() & (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
         avant = len(df)
         df = df[mask].copy()
-        logger.info("Pré-filtre Alarm Time : %d → %d lignes (-%d tickets hors période)",
+        logger.info("Pré-filtre tickets actifs : %d → %d lignes (-%d tickets hors période)",
                     avant, len(df), avant - len(df))
 
     # Sauvegarde en Excel dans media/uploads/
@@ -212,7 +215,7 @@ def run_import(
     # "ouverts avant date_debut", pas les tickets actifs pendant la journée).
     d_start = date.fromisoformat(date_debut[:10])
     d_end   = date.fromisoformat(date_fin[:10])
-    api_date_debut = (d_start - timedelta(days=1)).isoformat()
+    api_date_debut = (d_start - timedelta(days=7)).isoformat()
     api_date_fin   = (d_end   + timedelta(days=1)).isoformat()
     logger.info("Plage API élargie : %s → %s (rapport: %s → %s)", api_date_debut, api_date_fin, date_debut, date_fin)
 
@@ -224,15 +227,17 @@ def run_import(
     df = json_to_dataframe(rows)
     logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
 
-    # Pré-filtrer par Alarm Time dans la période (idem fetch_and_save_api).
+    # Pré-filtrer : tickets ACTIFS pendant la période (idem fetch_and_save_api).
     debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
     fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
     if "Alarm Time" in df.columns:
-        at   = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
-        mask = (at >= debut_dt) & (at <= fin_dt)
+        at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
+        ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
+                            dayfirst=True, format="mixed", errors="coerce")
+        mask = at.notna() & (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
         avant = len(df)
         df = df[mask].copy()
-        logger.info("Pré-filtre Alarm Time : %d → %d lignes (-%d tickets hors période)",
+        logger.info("Pré-filtre tickets actifs : %d → %d lignes (-%d tickets hors période)",
                     avant, len(df), avant - len(df))
 
     # Détermine le label de fichier (inclut le réseau)
