@@ -98,21 +98,17 @@ def fetch_and_save_api(
     df = json_to_dataframe(rows)
     logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
 
-    # Pré-filtrer avant sauvegarde : ne garder que les tickets qui chevauchent
-    # la période cible [date_debut 00:00 … date_fin 23:59].
-    # Cela élimine les tickets fermés AVANT date_debut (Jan 8-9 révolus) et ceux
-    # ouverts APRÈS date_fin — qui seraient de toute façon supprimés par treatement.py
-    # mais alourdissent inutilement le fichier (surtout pour un import mensuel).
+    # Pré-filtrer : ne garder que les tickets dont l'Alarm Time est dans la période.
+    # L'API retourne tous les tickets OUVERT quelle que soit leur date d'ouverture ;
+    # on filtre par Alarm Time (identique à l'export netXcare).
     debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
-    fin_dt   = pd.Timestamp(f"{date_fin[:10]}  23:59:59")
+    fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
     if "Alarm Time" in df.columns:
         at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
-        ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
-                            dayfirst=True, format="mixed", errors="coerce")
-        mask = (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
+        mask = (at >= debut_dt) & (at <= fin_dt)
         avant = len(df)
         df = df[mask].copy()
-        logger.info("Pré-filtre date : %d → %d lignes (-%d tickets hors période)",
+        logger.info("Pré-filtre Alarm Time : %d → %d lignes (-%d tickets hors période)",
                     avant, len(df), avant - len(df))
 
     # Sauvegarde en Excel dans media/uploads/
@@ -181,19 +177,16 @@ def _process_api_dataframe(
     df['_ct'] = pd.to_datetime(df.get('Cancel Time', pd.Series(dtype='object')),
                                dayfirst=True, format='mixed', errors='coerce')
 
-    # Borner les incidents qui chevauchent la période
-    cond_avant = (df['_at'] < debut_jour) & ((df['_ct'] >= debut_jour) | df['_ct'].isna())
-    df.loc[cond_avant, '_at'] = debut_jour
+    # 1. Garder uniquement les tickets dont l'Alarm Time est dans la période.
+    #    L'API retourne tous les tickets OUVERT (même datant de mois/années) ;
+    #    filtrer par Alarm Time évite de comptabiliser de vieux tickets non résolus
+    #    dans un rapport pour lequel ils n'ont pas de données nouvelles.
+    cond_at = (df['_at'] >= debut_jour) & (df['_at'] <= fin_jour)
+    df = df[cond_at].copy()
 
-    cond_apres = (df['_at'] <= fin_jour) & ((df['_ct'] > fin_jour) | df['_ct'].isna())
-    df.loc[cond_apres, '_ct'] = fin_jour
-
-    # Supprimer les incidents hors période
-    cond_ok = (
-        (df['_at'] >= debut_jour) & (df['_at'] <= fin_jour) &
-        (df['_ct'] >= debut_jour) & (df['_ct'] <= fin_jour)
-    )
-    df = df[cond_ok].copy()
+    # 2. Borner Cancel Time à fin_jour pour les tickets multi-jours ou encore ouverts.
+    cond_ct_depasse = df['_ct'].isna() | (df['_ct'] > fin_jour)
+    df.loc[cond_ct_depasse, '_ct'] = fin_jour
 
     # Calcul durée
     delta = df['_ct'] - df['_at']
@@ -327,17 +320,15 @@ def run_import(
     df = json_to_dataframe(rows)
     logger.info("API retourne %d lignes brutes (plage élargie %s → %s)", len(df), api_date_debut, api_date_fin)
 
-    # Pré-filtrer : ne garder que les tickets qui chevauchent [date_debut … date_fin]
+    # Pré-filtrer par Alarm Time dans la période (idem fetch_and_save_api).
     debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
-    fin_dt   = pd.Timestamp(f"{date_fin[:10]}  23:59:59")
+    fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
     if "Alarm Time" in df.columns:
         at   = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
-        ct   = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
-                              dayfirst=True, format="mixed", errors="coerce")
-        mask = (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
+        mask = (at >= debut_dt) & (at <= fin_dt)
         avant = len(df)
         df = df[mask].copy()
-        logger.info("Pré-filtre date : %d → %d lignes (-%d tickets hors période)",
+        logger.info("Pré-filtre Alarm Time : %d → %d lignes (-%d tickets hors période)",
                     avant, len(df), avant - len(df))
 
     # Détermine le label de fichier (inclut le réseau)
