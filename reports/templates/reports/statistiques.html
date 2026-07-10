@@ -378,9 +378,15 @@
   <a href="{% url 'export_statistiques' %}?report={{ single_report.pk }}" class="btn-export-xl" style="flex-shrink:0;">
     📥 Exporter Excel
   </a>
+  <a href="{% url 'export_statistiques_pptx' %}?report={{ single_report.pk }}" class="btn-export-xl" style="flex-shrink:0;background:linear-gradient(135deg,#C7511F,#E05A2B);">
+    📊 Exporter PowerPoint
+  </a>
   {% else %}
   <a href="{% url 'export_statistiques' %}?period={{ period_filter }}&date_from={{ date_from_val }}&date_to={{ date_to_val }}" class="btn-export-xl" style="flex-shrink:0;">
     📥 Exporter Excel
+  </a>
+  <a href="{% url 'export_statistiques_pptx' %}?period={{ period_filter }}&date_from={{ date_from_val }}&date_to={{ date_to_val }}" class="btn-export-xl" style="flex-shrink:0;background:linear-gradient(135deg,#C7511F,#E05A2B);">
+    📊 Exporter PowerPoint
   </a>
   {% endif %}
 </form>

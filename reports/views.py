@@ -2349,6 +2349,173 @@ def export_statistiques(request):
     return response
 
 
+@gestionnaire_required
+def export_statistiques_pptx(request):
+    """Export PowerPoint des statistiques réseau mobile."""
+    from collections import defaultdict, Counter as _Counter
+    from django.http import HttpResponse
+    import datetime as _dt
+
+    if request.user.is_superuser:
+        base_qs = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
+    else:
+        base_qs = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
+
+    report_pk     = request.GET.get('report')
+    period_filter = request.GET.get('period', 'latest')
+
+    if report_pk:
+        reports      = base_qs.filter(pk=report_pk)
+        period_label = 'Rapport sélectionné'
+    elif period_filter == 'latest' or period_filter not in (
+            'day','3days','week','2weeks','month','quarter','half','year','all','custom'):
+        first   = base_qs.first()
+        reports = base_qs.filter(pk=first.pk) if first else base_qs.none()
+        period_label = 'Dernier rapport'
+    else:
+        today  = date.today()
+        labels = {'day':"Aujourd'hui",'3days':'3 jours','week':'Semaine',
+                  '2weeks':'2 semaines','month':'Mois','quarter':'3 mois',
+                  'half':'6 mois','year':'Année','all':'Tout','custom':'Personnalisé'}
+        period_label = labels.get(period_filter, period_filter)
+        if period_filter == 'day':
+            reports = base_qs.filter(uploaded_at__date=today)
+        elif period_filter == '3days':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=3))
+        elif period_filter == 'week':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=7))
+        elif period_filter == '2weeks':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=14))
+        elif period_filter == 'month':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=30))
+        elif period_filter == 'quarter':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=90))
+        elif period_filter == 'half':
+            reports = base_qs.filter(uploaded_at__date__gte=today - _dt.timedelta(days=180))
+        elif period_filter == 'year':
+            reports = base_qs.filter(uploaded_at__year=today.year)
+        elif period_filter == 'custom':
+            date_from = request.GET.get('date_from', '')
+            date_to   = request.GET.get('date_to', '')
+            if date_from and date_to:
+                _df, _dt2 = date_from[:10], date_to[:10]
+                try:
+                    reports = base_qs.filter(
+                        date_rapport__gte=date.fromisoformat(_df),
+                        date_rapport__lte=date.fromisoformat(_dt2),
+                    )
+                    period_label = f'{_df} → {_dt2}'
+                except (ValueError, TypeError):
+                    reports = base_qs
+            else:
+                reports = base_qs
+        else:
+            reports = base_qs
+
+    def parse_hms(s):
+        try:
+            p = str(s).split(':')
+            if len(p) == 3:
+                return int(float(p[0]))*3600 + int(float(p[1]))*60 + int(float(p[2]))
+        except Exception:
+            pass
+        return 0
+
+    # Synthèse par escalade
+    escalade_data = defaultdict(lambda: {'count': 0, 'outage_sec': 0, 'duree_sec': 0})
+    for r in reports:
+        for row in (r.synthesis_json or []):
+            esc = row.get('Escalade', '')
+            if esc == 'TOTAL' or not esc:
+                continue
+            escalade_data[esc]['count']      += row.get('Inc count', 0)
+            escalade_data[esc]['outage_sec'] += parse_hms(row.get('OUTAGE', '0:00:00'))
+            escalade_data[esc]['duree_sec']  += parse_hms(row.get('DUREE',  '0:00:00'))
+
+    escalades_sorted   = sorted(escalade_data.items(), key=lambda x: x[1]['count'], reverse=True)
+    total_outage_sec   = sum(v['outage_sec'] for v in escalade_data.values())
+    total_incidents    = sum(v['count'] for v in escalade_data.values())
+    total_duree_sec    = sum(v['duree_sec'] for v in escalade_data.values())
+
+    # Top sites par nombre
+    site_data = defaultdict(int)
+    for r in reports:
+        for s in (r.top_sites_json or []):
+            site_data[s['name']] += s['count']
+    sites_top10 = sorted(site_data.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # Cause principale par site
+    _site_cause_ctr = defaultdict(_Counter)
+    for r in reports:
+        for sn, c in (r.site_top_cause_json or {}).items():
+            if c:
+                _site_cause_ctr[sn][c] += 1
+    site_top_cause = {sn: ctr.most_common(1)[0][0] for sn, ctr in _site_cause_ctr.items() if ctr}
+
+    # Sites les plus dégradés par durée
+    site_duration = defaultdict(float)
+    for r in reports:
+        if r.site_duration_json:
+            for site, dur in r.site_duration_json.items():
+                site_duration[site] += dur
+    degraded_top10 = sorted(site_duration.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # Top causes par durée
+    cause_dur = defaultdict(float)
+    for r in reports:
+        for c in (r.top_causes_json or []):
+            nm = c['name']
+            if nm and str(nm).strip().upper() not in ('N/A', 'NA', 'NONE', ''):
+                cause_dur[nm] += c['duration_sec']
+    causes_dur_top10 = sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # Disponibilité
+    period_days_map = {'day':1,'3days':3,'week':7,'2weeks':14,'month':30,
+                       'quarter':90,'half':180,'year':365}
+    if period_filter == 'custom':
+        df0 = request.GET.get('date_from', '')
+        dt0 = request.GET.get('date_to', '')
+        cutoff     = date.fromisoformat(df0[:10]) if df0 else None
+        cutoff_end = date.fromisoformat(dt0[:10]) if dt0 else None
+        semaine_labels, dispo_table, _ = _calc_disponibilite(
+            base_qs, cutoff_date=cutoff, cutoff_end=cutoff_end)
+    elif report_pk:
+        first_r    = reports.first()
+        cutoff     = first_r.date_rapport if first_r else None
+        cutoff_end = (first_r.date_fin or first_r.date_rapport) if first_r else None
+        semaine_labels, dispo_table, _ = _calc_disponibilite(
+            reports, cutoff_date=cutoff, cutoff_end=cutoff_end)
+    else:
+        nb_days = period_days_map.get(period_filter)
+        cutoff  = (date.today() - _dt.timedelta(days=nb_days)) if nb_days else None
+        semaine_labels, dispo_table, _ = _calc_disponibilite(base_qs, cutoff_date=cutoff)
+
+    from .pptx_report import generate_statistiques_pptx
+    buf = generate_statistiques_pptx(
+        escalades_sorted   = escalades_sorted,
+        total_incidents    = total_incidents,
+        total_outage_sec   = total_outage_sec,
+        total_duree_sec    = total_duree_sec,
+        degraded_top10     = degraded_top10,
+        site_top_cause     = site_top_cause,
+        sites_top10        = sites_top10,
+        causes_dur_top10   = causes_dur_top10,
+        dispo_table        = dispo_table,
+        semaine_labels     = semaine_labels,
+        period_label       = period_label,
+        generated_on       = date.today().strftime('%d/%m/%Y'),
+    )
+
+    safe_period = period_label.replace(' ', '_').replace('/', '-').replace('→', 'to')[:40]
+    filename    = f"Statistiques_YAS_{date.today().strftime('%Y%m%d')}_{safe_period}.pptx"
+    response    = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 def _calc_disponibilite(reports, cutoff_date=None, cutoff_end=None):
     import datetime as _dt
     from collections import defaultdict
