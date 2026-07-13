@@ -7663,6 +7663,7 @@ def site_down_view(request):
         'dernieres':       dernieres,
         'network_enabled': bool(getattr(settings, 'SITE_DOWN_NETWORK_BASES', [])),
         'interval_hours':  getattr(settings, 'SITE_DOWN_INTERVAL_HOURS', 0),
+        'stats':           sd.stats_mensuelles(request.GET.get('mois') or None),
     }
     return render(request, 'reports/site_down.html', ctx)
 

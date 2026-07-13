@@ -1081,3 +1081,144 @@ def run_auto():
         summary['messages'].append(
             f"Actualisation : {refresh['refreshed']} fichier(s), {refresh['errors']} erreur(s)")
     return summary
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Statistiques pour la page web
+# ──────────────────────────────────────────────────────────────────────────────
+def _max_jours_consecutifs(jours):
+    """Longueur de la plus longue série de jours consécutifs."""
+    if not jours:
+        return 0
+    tri = sorted(jours)
+    best = run = 1
+    for prev, cur in zip(tri, tri[1:]):
+        run = run + 1 if cur == prev + 1 else 1
+        best = max(best, run)
+    return best
+
+
+def stats_mensuelles(mois_annee=None):
+    """Statistiques du module pour un mois donné (défaut : dernier mois avec données).
+
+    Returns:
+        dict pour le template, ou None si aucune donnée en base.
+    """
+    from collections import defaultdict
+
+    from django.db.models import Count, Sum
+    from django.db.models.functions import TruncMonth
+    from django.utils import timezone as tz
+
+    from .models import Site, SiteDownAlarm
+
+    par_mois = (SiteDownAlarm.objects
+                .annotate(m=TruncMonth('alarm_time'))
+                .values('m').annotate(nb=Count('id')).order_by('-m'))
+    if not par_mois:
+        return None
+
+    mois_disponibles = [e['m'].strftime('%Y-%m') for e in par_mois]
+    if not mois_annee or mois_annee not in mois_disponibles:
+        mois_annee = mois_disponibles[0]
+    annee, mois = map(int, mois_annee.split('-'))
+
+    qs = SiteDownAlarm.objects.filter(alarm_time__year=annee, alarm_time__month=mois)
+
+    total  = qs.count()
+    agg    = qs.aggregate(dur=Sum('duration_min'))
+    dur_totale = agg['dur'] or 0
+    nb_sites   = qs.values('site_name').distinct().count()
+
+    # Évolution vs mois précédent
+    prev = datetime(annee, mois, 1) - pd.Timedelta(days=1)
+    total_prev = SiteDownAlarm.objects.filter(
+        alarm_time__year=prev.year, alarm_time__month=prev.month).count()
+    evolution_pct = round((total - total_prev) / total_prev * 100) if total_prev else None
+
+    # Top 10 récidivistes
+    top = list(qs.values('site_name', 'region')
+                 .annotate(nb=Count('id'), dur=Sum('duration_min'))
+                 .order_by('-nb')[:10])
+    max_nb = top[0]['nb'] if top else 1
+    top_sites = [{
+        'site':    e['site_name'],
+        'region':  e['region'] or '—',
+        'nb':      e['nb'],
+        'dur_fmt': _fmt_duree(e['dur'] or 0),
+        'pct':     round(e['nb'] / max_nb * 100),
+    } for e in top]
+
+    # Sites chroniques : ≥ 3 jours consécutifs avec coupure
+    jours_par_site = defaultdict(set)
+    for site, at in qs.values_list('site_name', 'alarm_time'):
+        jours_par_site[site].add(tz.localtime(at).day if tz.is_aware(at) else at.day)
+    chroniques = sorted(
+        ({'site': s, 'jours': _max_jours_consecutifs(j)}
+         for s, j in jours_par_site.items() if _max_jours_consecutifs(j) >= 3),
+        key=lambda x: -x['jours'])[:10]
+
+    # Répartition par région (avec taux d'impact du parc)
+    sites_par_region = dict(
+        Site.objects.exclude(region='').values_list('region')
+        .annotate(n=Count('id')).values_list('region', 'n'))
+    regions = []
+    for e in (qs.exclude(region='').values('region')
+                .annotate(nb=Count('id'), dur=Sum('duration_min'),
+                          sites=Count('site_name', distinct=True))
+                .order_by('-nb')):
+        parc = sites_par_region.get(e['region'], 0)
+        regions.append({
+            'region':  e['region'],
+            'nb':      e['nb'],
+            'dur_fmt': _fmt_duree(e['dur'] or 0),
+            'sites':   e['sites'],
+            'parc':    parc,
+            'pct_parc': round(e['sites'] / parc * 100) if parc else None,
+        })
+
+    # Répartition par escalade + taux de qualification
+    escalades = [{
+        'escalade': e['escalade'],
+        'nb':       e['nb'],
+        'dur_fmt':  _fmt_duree(e['dur'] or 0),
+        'dur_moy':  _fmt_duree((e['dur'] or 0) / e['nb']) if e['nb'] else '—',
+    } for e in (qs.exclude(escalade='').values('escalade')
+                  .annotate(nb=Count('id'), dur=Sum('duration_min'))
+                  .order_by('-nb'))]
+    nb_qualifiees = sum(e['nb'] for e in escalades)
+    taux_qualif = round(nb_qualifiees / total * 100) if total else 0
+
+    # Tendance 6 derniers mois
+    tendance = list(reversed(par_mois[:6]))
+    max_mois = max(e['nb'] for e in tendance) if tendance else 1
+    evolution_mois = [{
+        'label': f"{MOIS_ABREGES[e['m'].month]} {e['m'].year % 100:02d}",
+        'nb':    e['nb'],
+        'px':    max(round(e['nb'] / max_mois * 48), 3),
+        'actif': e['m'].strftime('%Y-%m') == mois_annee,
+    } for e in tendance]
+
+    _, mois_num = mois_annee.split('-')
+    return {
+        'mois_annee':       mois_annee,
+        'mois_label':       f"{NOMS_MOIS_COMPLETS.get(mois_num, mois_num)} {annee}",
+        'mois_disponibles': mois_disponibles,
+        'total':            total,
+        'nb_sites':         nb_sites,
+        'dur_totale_fmt':   _fmt_duree(dur_totale),
+        'dur_moyenne_fmt':  _fmt_duree(dur_totale / total) if total else '—',
+        'evolution_pct':    evolution_pct,
+        'top_sites':        top_sites,
+        'chroniques':       chroniques,
+        'regions':          regions,
+        'escalades':        escalades,
+        'taux_qualif':      taux_qualif,
+        'evolution_mois':   evolution_mois,
+    }
+
+
+MOIS_ABREGES = {
+    1: 'Jan', 2: 'Fév', 3: 'Mar', 4: 'Avr', 5: 'Mai', 6: 'Juin',
+    7: 'Juil', 8: 'Août', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Déc',
+}
