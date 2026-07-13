@@ -284,12 +284,10 @@ def charger_causes_escalades_rapport(file_or_path, filename=''):
 
 def ajouter_cause_escalade(df, mapping):
     causes, escalades = [], []
-    for _, row in df.iterrows():
+    for name, at in zip(df['Name'], df['Alarm Time']):
         cause = escalade = ''
-        at = row['Alarm Time']
         if pd.notna(at):
-            key = (str(row['Name']).strip(),
-                   at.to_pydatetime().replace(second=0, microsecond=0))
+            key = (str(name).strip(), at.to_pydatetime().replace(second=0, microsecond=0))
             entry = mapping.get(key)
             if entry:
                 cause, escalade = entry['Cause'], entry['Escalade']
@@ -321,7 +319,8 @@ def traiter_fichier(file_path):
     """
     ext = file_path.lower().rsplit('.', 1)[-1]
     if ext in ('xlsx', 'xls'):
-        df_raw = pd.read_excel(file_path, header=None)
+        # Détection de la ligne d'en-tête sur les 10 premières lignes seulement
+        df_raw = pd.read_excel(file_path, header=None, nrows=10)
         header_row = 0
         for i, row in df_raw.iterrows():
             vals = ' '.join(str(v).strip().lower() for v in row.tolist())
@@ -407,8 +406,7 @@ def _duree_reelle_par_site_jour(df_site):
     """Durée réelle (min) par jour pour un site : découpe par minuit puis
     fusionne les plages chevauchantes pour éviter le double comptage."""
     plages_par_jour = {}
-    for _, row in df_site.iterrows():
-        alarm_dt, cancel_dt = row['Alarm Time'], row['Cancel Time']
+    for alarm_dt, cancel_dt in zip(df_site['Alarm Time'], df_site['Cancel Time']):
         if pd.isna(alarm_dt) or pd.isna(cancel_dt) or cancel_dt <= alarm_dt:
             continue
         current = alarm_dt
@@ -447,18 +445,20 @@ def creer_feuille_cumul(df_consolide, mois_annee, regions_map=None):
     df['Cancel Time'] = pd.to_datetime(df['Cancel Time'], errors='coerce')
     df = df.sort_values('Alarm Time')
 
-    rows_nb = [
-        {'Name': row['Name'], 'jour': row['Alarm Time'].day,
-         'is_wcdma': ALARM_FILTER in str(row['Alarm Text']).strip().upper()}
-        for _, row in df.iterrows() if pd.notna(row['Alarm Time'])
-    ]
-    df_nb = pd.DataFrame(rows_nb, columns=['Name', 'jour', 'is_wcdma'])
+    mask = df['Alarm Time'].notna()
+    df_nb = pd.DataFrame({
+        'Name':     df.loc[mask, 'Name'],
+        'jour':     df.loc[mask, 'Alarm Time'].dt.day,
+        'is_wcdma': df.loc[mask, 'Alarm Text'].astype(str).str.strip().str.upper()
+                      .str.contains(ALARM_FILTER, regex=False),
+    })
     df_wcdma = df_nb[df_nb['is_wcdma']] if len(df_nb) else df_nb
 
     all_sites = df['Name'].unique()
+    groupes = dict(tuple(df.groupby('Name', sort=False)))
     durees_par_site, all_jours_set = {}, set()
     for site in all_sites:
-        d = _duree_reelle_par_site_jour(df[df['Name'] == site])
+        d = _duree_reelle_par_site_jour(groupes[site])
         durees_par_site[site] = d
         all_jours_set.update(d.keys())
     all_jours = sorted(all_jours_set)
@@ -500,7 +500,7 @@ def creer_feuille_cumul(df_consolide, mois_annee, regions_map=None):
     for site in all_sites:
         t_count = int(pivot_count.loc[site].sum()) if site in pivot_count.index else 0
         t_duree = int(round(pivot_duree.loc[site].sum())) if site in pivot_duree.index else 0
-        site_data = df[df['Name'] == site].sort_values('Alarm Time')
+        site_data = groupes[site]
         derniere_cause    = _clean_str(site_data.iloc[-1]['Cause'])    if len(site_data) else ''
         derniere_escalade = _clean_str(site_data.iloc[-1]['Escalade']) if len(site_data) else ''
         total_nb.append(t_count or None)
@@ -521,18 +521,28 @@ def creer_feuille_cumul(df_consolide, mois_annee, regions_map=None):
 # ──────────────────────────────────────────────────────────────────────────────
 # Formatage Excel
 # ──────────────────────────────────────────────────────────────────────────────
+# Styles partagés (créés une seule fois — la création par cellule est coûteuse)
+_FONT_HEADER   = Font(name='Arial', bold=True, color=NOIR_TEXTE, size=10)
+_FILL_HEADER   = PatternFill('solid', start_color=JAUNE_HEADER)
+_ALIGN_HEADER  = Alignment(horizontal='center', vertical='center', wrap_text=True)
+_FONT_DATA     = Font(name='Arial', size=9)
+_FILL_PAIRE    = PatternFill('solid', start_color=GRIS_LIGNE_PAIRE)
+_FILL_IMPAIRE  = PatternFill('solid', start_color='FFFFFF')
+_ALIGN_LEFT    = Alignment(horizontal='left',   vertical='center')
+_ALIGN_CENTER  = Alignment(horizontal='center', vertical='center')
+
+
 def _style_header(cell):
-    cell.font      = Font(name='Arial', bold=True, color=NOIR_TEXTE, size=10)
-    cell.fill      = PatternFill('solid', start_color=JAUNE_HEADER)
-    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    cell.font      = _FONT_HEADER
+    cell.fill      = _FILL_HEADER
+    cell.alignment = _ALIGN_HEADER
     cell.border    = BORDER_THIN
 
 
 def _style_cell(cell, row_index, align='left'):
-    bg             = GRIS_LIGNE_PAIRE if row_index % 2 == 0 else 'FFFFFF'
-    cell.font      = Font(name='Arial', size=9)
-    cell.fill      = PatternFill('solid', start_color=bg)
-    cell.alignment = Alignment(horizontal=align, vertical='center')
+    cell.font      = _FONT_DATA
+    cell.fill      = _FILL_PAIRE if row_index % 2 == 0 else _FILL_IMPAIRE
+    cell.alignment = _ALIGN_LEFT if align == 'left' else _ALIGN_CENTER
     cell.border    = BORDER_THIN
 
 
@@ -541,15 +551,24 @@ def formater_feuille(ws, df, sheet_name):
                    'Duration': 14, 'Cause': 25, 'Escalade': 18}
                   if sheet_name == 'Données' else {})
 
-    for col_idx in range(1, len(df.columns) + 1):
+    n_cols = len(df.columns)
+    n_rows = ws.max_row          # calculés une seule fois (coûteux par appel)
+
+    for col_idx in range(1, n_cols + 1):
         _style_header(ws.cell(row=1, column=col_idx))
     ws.row_dimensions[1].height = 30
 
-    for row_idx in range(2, ws.max_row + 1):
-        for col_idx in range(1, ws.max_column + 1):
-            col_name = df.columns[col_idx - 1] if col_idx <= len(df.columns) else ''
-            align = 'left' if (col_idx == 1 or 'Cause' in col_name or 'Escalade' in col_name) else 'center'
-            _style_cell(ws.cell(row=row_idx, column=col_idx), row_idx, align=align)
+    # Alignement précalculé par colonne ; le zébrage et les bordures sont
+    # assurés par le style de tableau Excel (bien plus rapide que cellule à cellule)
+    aligns = [
+        _ALIGN_LEFT if (i == 0 or 'Cause' in c or 'Escalade' in c) else _ALIGN_CENTER
+        for i, c in enumerate(df.columns)
+    ]
+    for row in ws.iter_rows(min_row=2, max_row=n_rows, max_col=n_cols):
+        for cell, align in zip(row, aligns):
+            cell.font      = _FONT_DATA
+            cell.alignment = align
+    for row_idx in range(2, n_rows + 1):
         ws.row_dimensions[row_idx].height = 16
 
     for col_idx, col_name in enumerate(df.columns, start=1):
@@ -638,7 +657,7 @@ def colorier_totaux_cumul(ws, df):
 # Persistance ORM
 # ──────────────────────────────────────────────────────────────────────────────
 def _sauvegarder_orm(df, source_file, regions_map):
-    """Upsert des alarmes dans SiteDownAlarm (clé : site + alarm_time)."""
+    """Upsert en masse des alarmes dans SiteDownAlarm (clé : site + alarm_time)."""
     from django.utils import timezone as tz
     from .models import SiteDownAlarm
 
@@ -650,25 +669,46 @@ def _sauvegarder_orm(df, source_file, regions_map):
         dt = ts.to_pydatetime()
         return tz.make_aware(dt, current_tz) if dt.tzinfo is None else dt
 
-    created = updated = 0
-    for _, row in df.iterrows():
-        alarm_time = aware(row['Alarm Time'])
+    objs, cles = [], []
+    for name, alarm, cancel, duration, alarm_text, cause, escalade in zip(
+            df['Name'], df['Alarm Time'], df['Cancel Time'], df.get('Duration', []),
+            df.get('Alarm Text', ['']*len(df)), df.get('Cause', ['']*len(df)),
+            df.get('Escalade', ['']*len(df))):
+        alarm_time = aware(alarm)
         if alarm_time is None:
             continue
-        site = str(row['Name']).strip()
-        defaults = {
-            'cancel_time':  aware(row['Cancel Time']),
-            'duration_min': dur_to_min(row.get('Duration')) or None,
-            'alarm_text':   _clean_str(row.get('Alarm Text', ''))[:255],
-            'cause':        _clean_str(row.get('Cause', '')),
-            'escalade':     _clean_str(row.get('Escalade', ''))[:80],
-            'region':       (regions_map or {}).get(site.upper(), '')[:50],
-            'source_file':  source_file[:255],
-        }
-        _, was_created = SiteDownAlarm.objects.update_or_create(
-            site_name=site, alarm_time=alarm_time, defaults=defaults)
-        created += was_created
-        updated += (not was_created)
+        site = str(name).strip()
+        cles.append((site, alarm_time))
+        objs.append(SiteDownAlarm(
+            site_name=site,
+            alarm_time=alarm_time,
+            cancel_time=aware(cancel),
+            duration_min=dur_to_min(duration) or None,
+            alarm_text=_clean_str(alarm_text)[:255],
+            cause=_clean_str(cause),
+            escalade=_clean_str(escalade)[:80],
+            region=(regions_map or {}).get(site.upper(), '')[:50],
+            source_file=source_file[:255],
+        ))
+    if not objs:
+        return 0, 0
+
+    # Comptage créés/mis à jour avant l'upsert en masse
+    alarm_times = [c[1] for c in cles]
+    existants = set(SiteDownAlarm.objects.filter(
+        alarm_time__gte=min(alarm_times), alarm_time__lte=max(alarm_times),
+    ).values_list('site_name', 'alarm_time'))
+    updated = sum(1 for c in cles if c in existants)
+    created = len(objs) - updated
+
+    SiteDownAlarm.objects.bulk_create(
+        objs,
+        update_conflicts=True,
+        unique_fields=['site_name', 'alarm_time'],
+        update_fields=['cancel_time', 'duration_min', 'alarm_text',
+                       'cause', 'escalade', 'region', 'source_file'],
+        batch_size=1000,
+    )
     return created, updated
 
 
