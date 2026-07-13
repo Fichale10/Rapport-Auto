@@ -232,3 +232,76 @@ class Incident(models.Model):
         if end.tzinfo is not None:
             end = end.replace(tzinfo=None)
         return (end - alarm).total_seconds() >= dr2_offset
+
+
+class ChatInteraction(models.Model):
+    """Journalise chaque échange avec le chatbot ISOC_IA pour l'évaluation de l'agent.
+
+    Sert de source de données au tableau de bord d'évaluation
+    (performance, efficacité, robustesse, qualité, alignement, satisfaction…).
+    """
+    STATUS_SUCCESS = 'success'
+    STATUS_ERROR   = 'error'
+    STATUS_CHOICES = [
+        (STATUS_SUCCESS, 'Succès'),
+        (STATUS_ERROR,   'Erreur'),
+    ]
+
+    FEEDBACK_NONE = ''
+    FEEDBACK_UP   = 'up'
+    FEEDBACK_DOWN = 'down'
+    FEEDBACK_CHOICES = [
+        (FEEDBACK_NONE, '—'),
+        (FEEDBACK_UP,   '👍'),
+        (FEEDBACK_DOWN, '👎'),
+    ]
+
+    # ── Contexte de la requête ──────────────────────────────────────────────
+    created_at    = models.DateTimeField(auto_now_add=True, db_index=True)
+    user          = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                       related_name='chat_interactions')
+    session_key   = models.CharField(max_length=64, blank=True, default='')
+    site_focus    = models.CharField(max_length=150, blank=True, default='', db_index=True)
+    question      = models.TextField(blank=True, default='')
+    reply         = models.TextField(blank=True, default='')
+    model_name    = models.CharField(max_length=100, blank=True, default='')
+
+    # ── Performance / robustesse ────────────────────────────────────────────
+    status        = models.CharField(max_length=10, choices=STATUS_CHOICES,
+                                      default=STATUS_SUCCESS, db_index=True)
+    error_type    = models.CharField(max_length=40, blank=True, default='', db_index=True)
+    error_detail  = models.TextField(blank=True, default='')
+    is_refusal    = models.BooleanField(default=False)   # refus / « je ne dispose pas de… »
+
+    # ── Efficacité ──────────────────────────────────────────────────────────
+    latency_ms      = models.IntegerField(default=0)
+    prompt_tokens   = models.IntegerField(default=0)
+    completion_tokens = models.IntegerField(default=0)
+    total_tokens    = models.IntegerField(default=0)
+    context_chars   = models.IntegerField(default=0)   # taille du contexte injecté (grounding)
+    history_len     = models.IntegerField(default=0)   # nb de tours d'historique fournis
+
+    # ── Satisfaction utilisateur ────────────────────────────────────────────
+    feedback      = models.CharField(max_length=4, choices=FEEDBACK_CHOICES,
+                                      blank=True, default=FEEDBACK_NONE, db_index=True)
+    feedback_at   = models.DateTimeField(null=True, blank=True)
+
+    # ── Évaluation humaine (annotation optionnelle) ─────────────────────────
+    eval_success        = models.BooleanField(null=True, blank=True)  # tâche réussie
+    eval_faithful       = models.BooleanField(null=True, blank=True)  # fidèle au contexte
+    eval_hallucination  = models.BooleanField(null=True, blank=True)  # a inventé de l'info
+    eval_tool_ok        = models.BooleanField(null=True, blank=True)  # bon usage du contexte/outil
+    eval_needs_human    = models.BooleanField(null=True, blank=True)  # intervention humaine requise
+    eval_rating         = models.IntegerField(null=True, blank=True)  # note 1-5
+    eval_notes          = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['feedback']),
+            models.Index(fields=['site_focus']),
+        ]
+
+    def __str__(self):
+        return f"[{self.status}] {self.question[:50]} ({self.created_at:%Y-%m-%d %H:%M})"

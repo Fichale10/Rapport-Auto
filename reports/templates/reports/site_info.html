@@ -883,6 +883,52 @@
     return -span / 2 + (span * idx) / (total - 1);
   }
 
+  // ── Anti-collision : centres verticaux des nœuds par niveau ──
+  //    Sert à router les liaisons multi-niveaux dans les couloirs libres
+  //    ENTRE les nœuds, pour qu'un lien ne passe jamais SOUS un sommet
+  //    auquel il n'est pas relié.
+  var nodeYsByLevel = {};
+  data.nodes.forEach(function (n) {
+    var lv = level[n.id];
+    (nodeYsByLevel[lv] = nodeYsByLevel[lv] || []).push(ny(n.id));
+  });
+  var CLEAR = R + 12;   // distance mini entre une liaison et le centre d'un nœud
+
+  // Trouve, au niveau `lv`, l'ordonnée libre la plus proche de `yWanted`.
+  function clearLane(lv, yWanted) {
+    var centers = nodeYsByLevel[lv] || [];
+    function ok(y) {
+      return centers.every(function (yc) { return Math.abs(y - yc) >= CLEAR; });
+    }
+    if (ok(yWanted)) return yWanted;
+    var limit = Y_GAP * (maxRows + 2);
+    for (var step = 4; step <= limit; step += 4) {
+      if (ok(yWanted - step)) return yWanted - step;
+      if (ok(yWanted + step)) return yWanted + step;
+    }
+    return yWanted;
+  }
+
+  // Courbe lisse (Catmull-Rom → Bézier) passant par une liste de points.
+  function smoothPath(pts) {
+    if (pts.length < 2) return '';
+    if (pts.length === 2) {
+      var a = pts[0], b = pts[1], mx0 = (a.x + b.x) / 2;
+      return 'M' + a.x + ',' + a.y + ' C' + mx0 + ',' + a.y + ' ' + mx0 + ',' + b.y + ' ' + b.x + ',' + b.y;
+    }
+    var d = 'M' + pts[0].x + ',' + pts[0].y;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1] || pts[i];
+      var p1 = pts[i];
+      var p2 = pts[i + 1];
+      var p3 = pts[i + 2] || p2;
+      var c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+      var c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ' C' + c1x + ',' + c1y + ' ' + c2x + ',' + c2y + ' ' + p2.x + ',' + p2.y;
+    }
+    return d;
+  }
+
   // ── Arcs : orientés (flèche) seulement vers les sites terminaux ──
   data.edges.forEach(function (e) {
     if (!byId[e.source] || !byId[e.target]) return;
@@ -892,8 +938,20 @@
     var x1 = nx(e.source) + R, y1 = ny(e.source) + oy1;
     // Retrait de 6px pour loger la pointe de flèche, sinon on touche le bord
     var x2 = nx(e.target) - R - (targetIsLeaf ? 6 : 0), y2 = ny(e.target) + oy2;
-    var mx = (x1 + x2) / 2;
-    var d = 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
+
+    // ── Routage anti-chevauchement ──
+    //   Pour un lien qui saute une ou plusieurs colonnes, on insère un point
+    //   de passage dans un couloir LIBRE à chaque niveau intermédiaire, afin
+    //   de contourner les nœuds sans relation avec ce lien.
+    var Ls = level[e.source], Lt = level[e.target];
+    var pts = [{ x: x1, y: y1 }];
+    for (var lv = Ls + 1; lv <= Lt - 1; lv++) {
+      var xw = PAD + lv * X_GAP + R;
+      var yLine = y1 + (y2 - y1) * (lv - Ls) / (Lt - Ls);
+      pts.push({ x: xw, y: clearLane(lv, yLine) });
+    }
+    pts.push({ x: x2, y: y2 });
+    var d = smoothPath(pts);
     var sec = e.type === 'secondary';
 
     // ── Style selon le type de transport (TYP TRANS) du site porté ──
@@ -1193,6 +1251,11 @@
   .isoc-msg.user { align-self: flex-end; background: linear-gradient(135deg,#003087,#0047cc); color: #fff; border-bottom-right-radius: 4px; }
   .isoc-msg.bot { align-self: flex-start; background: #fff; color: #1c2340; border: 1px solid #ececf3; border-bottom-left-radius: 4px; }
   .isoc-msg.err { align-self: flex-start; background: #fff7e6; color: #8a5a00; border: 1px solid #ffe2a8; }
+  .isoc-fb { display: flex; gap: 6px; margin-top: 8px; padding-top: 6px; border-top: 1px solid #f0f0f5; }
+  .isoc-fb-btn { border: 1px solid #ececf3; background: #fafbff; border-radius: 8px; padding: 2px 8px; font-size: 13px; cursor: pointer; line-height: 1.4; transition: background .12s, transform .12s; }
+  .isoc-fb-btn:hover:not(:disabled) { background: #eef2ff; transform: translateY(-1px); }
+  .isoc-fb-btn:disabled { cursor: default; opacity: .55; }
+  .isoc-fb-btn.voted { background: #e4f6ef; border-color: #bfe6d5; opacity: 1; }
   .isoc-typing { align-self: flex-start; display: flex; gap: 4px; padding: 12px 14px; background:#fff; border:1px solid #ececf3; border-radius: 14px; }
   .isoc-typing span { width: 7px; height: 7px; border-radius: 50%; background: #003087; animation: isocBlink 1.2s infinite; }
   .isoc-typing span:nth-child(2){ animation-delay:.2s; } .isoc-typing span:nth-child(3){ animation-delay:.4s; }
@@ -1298,6 +1361,26 @@
   }
   function hideTyping(){ var t=document.getElementById('isoc-typing'); if(t) t.remove(); }
 
+  function addFeedback(botDiv, interactionId){
+    if (!interactionId) return;
+    var bar = document.createElement('div');
+    bar.className = 'isoc-fb';
+    var up = document.createElement('button');   up.type='button';   up.className='isoc-fb-btn';   up.textContent='👍';
+    var down = document.createElement('button'); down.type='button'; down.className='isoc-fb-btn'; down.textContent='👎';
+    function vote(value, btn){
+      up.disabled = true; down.disabled = true; btn.classList.add('voted');
+      fetch('{% url "chatbot_feedback" %}', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ interaction_id: interactionId, feedback: value })
+      }).catch(function(){});
+    }
+    up.addEventListener('click', function(){ vote('up', up); });
+    down.addEventListener('click', function(){ vote('down', down); });
+    bar.appendChild(up); bar.appendChild(down);
+    botDiv.appendChild(bar);
+  }
+
   function send(text){
     text = (text || input.value).trim();
     if (!text || busy) return;
@@ -1316,7 +1399,8 @@
     .then(function(res){
       hideTyping();
       if (res.ok && res.d.reply) {
-        addMsg(res.d.reply, 'bot');
+        var botDiv = addMsg(res.d.reply, 'bot');
+        addFeedback(botDiv, res.d.interaction_id);
         history.push({role:'assistant', content:res.d.reply});
       } else {
         addMsg(res.d.error || "Une erreur est survenue.", 'err');

@@ -1423,3 +1423,360 @@ def generate_transport_editable(report, generated_on='',
     buf.seek(0)
     return buf
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAPPORT FTTH RÉSEAU FIXE — DIAPOS NATIVES (MODIFIABLES)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import (XL_CHART_TYPE, XL_LEGEND_POSITION,
+                             XL_LABEL_POSITION)
+
+C_ORANGE_F = RGBColor(0xED, 0x7D, 0x31)
+C_LBLUE_F  = RGBColor(0x5B, 0x9B, 0xD5)
+
+
+def _f_header(slide, subtitle):
+    _rect(slide, 0, 0, SW, SH, C_WHITE)
+    _txt(slide, 'RAPPORT GESTION DES INCIDENTS', MARGIN, Inches(0.16),
+         Inches(9), Inches(0.45), size=21, bold=True, color=C_BLUE)
+    _txt(slide, subtitle, MARGIN, Inches(0.64), Inches(9), Inches(0.35),
+         size=14, bold=True, color=C_RED_T)
+    _t_logo(slide)
+
+
+def _f_footer(slide, report, generated_on):
+    if generated_on:
+        _txt(slide, f'Généré le {generated_on} — Yas Togo / DT / DCO — '
+             f"{report.get('period_label', '')}", MARGIN, SH - Inches(0.32),
+             Inches(11), Inches(0.25), size=8, color=C_BLUE)
+
+
+def _f_combo_secondary_line(chart):
+    """Transforme la dernière série du bar chart en courbe MTTR sur axe
+    secondaire (droite), comme le rendu PNG barres + courbe."""
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import qn, nsdecls
+    plotArea = chart._chartSpace.find(qn('c:chart')).find(qn('c:plotArea'))
+    barChart = plotArea.find(qn('c:barChart'))
+    sers = barChart.findall(qn('c:ser'))
+    if len(sers) < 2:
+        return
+    ser = sers[-1]
+    barChart.remove(ser)
+    inv = ser.find(qn('c:invertIfNegative'))
+    if inv is not None:
+        ser.remove(inv)
+    # Couleur orange de la courbe + marqueurs
+    tx = ser.find(qn('c:tx'))
+    sp = parse_xml(
+        '<c:spPr %s><a:ln w="28575"><a:solidFill><a:srgbClr val="ED7D31"/>'
+        '</a:solidFill></a:ln></c:spPr>' % nsdecls('c', 'a'))
+    tx.addnext(sp)
+    mk = parse_xml(
+        '<c:marker %s><c:symbol val="circle"/><c:size val="6"/>'
+        '<c:spPr><a:solidFill><a:srgbClr val="ED7D31"/></a:solidFill></c:spPr>'
+        '</c:marker>' % nsdecls('c', 'a'))
+    sp.addnext(mk)
+
+    cat_id, val_id = 520000001, 520000002
+    lineChart = parse_xml(
+        '<c:lineChart %s><c:grouping val="standard"/><c:varyColors val="0"/>'
+        '</c:lineChart>' % nsdecls('c'))
+    lineChart.append(ser)
+    lineChart.append(parse_xml('<c:marker %s val="1"/>' % nsdecls('c')))
+    lineChart.append(parse_xml('<c:axId %s val="%d"/>' % (nsdecls('c'), cat_id)))
+    lineChart.append(parse_xml('<c:axId %s val="%d"/>' % (nsdecls('c'), val_id)))
+    barChart.addnext(lineChart)
+
+    catAx = parse_xml(
+        '<c:catAx %s><c:axId val="%d"/>'
+        '<c:scaling><c:orientation val="minMax"/></c:scaling>'
+        '<c:delete val="1"/><c:axPos val="b"/>'
+        '<c:crossAx val="%d"/></c:catAx>' % (nsdecls('c'), cat_id, val_id))
+    valAx = parse_xml(
+        '<c:valAx %s><c:axId val="%d"/>'
+        '<c:scaling><c:orientation val="minMax"/></c:scaling>'
+        '<c:delete val="0"/><c:axPos val="r"/>'
+        '<c:numFmt formatCode="0.0&quot;h&quot;" sourceLinked="0"/>'
+        '<c:majorTickMark val="out"/><c:minorTickMark val="none"/>'
+        '<c:tickLblPos val="nextTo"/>'
+        '<c:crossAx val="%d"/><c:crosses val="max"/>'
+        '</c:valAx>' % (nsdecls('c'), val_id, cat_id))
+    plotArea.append(catAx)
+    plotArea.append(valAx)
+
+
+def _f_combo_chart(slide, l, t, w, h, cats, counts, mttr_hours):
+    """Graphique natif barres (Incidents) + courbe (MTTR h, axe secondaire)."""
+    data = CategoryChartData()
+    data.categories = cats
+    data.add_series('Incidents', counts, number_format='0')
+    data.add_series('MTTR (h)', mttr_hours, number_format='0.0"h"')
+    gframe = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, l, t, w, h, data)
+    chart = gframe.chart
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+    chart.legend.include_in_layout = False
+    plot = chart.plots[0]
+    plot.gap_width = 80
+    # Couleur navy des barres + étiquettes de données
+    bar_ser = plot.series[0]
+    bar_ser.format.fill.solid()
+    bar_ser.format.fill.fore_color.rgb = C_NAVY_T
+    plot.has_data_labels = True
+    dl = plot.data_labels
+    dl.number_format = '0'
+    dl.number_format_is_linked = False
+    dl.position = XL_LABEL_POSITION.OUTSIDE_END
+    dl.font.size = Pt(9)
+    dl.font.bold = True
+    dl.font.color.rgb = C_NAVY_T
+    try:
+        chart.value_axis.has_major_gridlines = True
+    except Exception:
+        pass
+    _f_combo_secondary_line(chart)
+    return chart
+
+
+def _f_notes_box(slide, l, t, w, title, lines):
+    """Boîte d'annotation jaune (titre rouge + puces), texte modifiable."""
+    shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, l, t, w, Inches(0.4))
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = C_YELL
+    shp.line.color.rgb = C_ORANGE_F
+    shp.line.width = Pt(1.5)
+    tf = shp.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.08)
+    tf.margin_top = Inches(0.04)
+    tf.margin_bottom = Inches(0.04)
+    first = True
+    if title:
+        p = tf.paragraphs[0]
+        r = p.add_run()
+        r.text = title
+        r.font.size = Pt(10)
+        r.font.bold = True
+        r.font.color.rgb = C_RED_T
+        first = False
+    for ln in lines:
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        r = p.add_run()
+        r.text = f'• {ln}'
+        r.font.size = Pt(8)
+        r.font.bold = True
+        r.font.color.rgb = C_NAVY_T
+    try:
+        from pptx.enum.text import MSO_AUTO_SIZE
+        tf.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+    except Exception:
+        pass
+    return shp
+
+
+def _slide_ftth_image1(prs, report, generated_on):
+    sl = _blank(prs)
+    im1 = report['image1']
+    _f_header(sl, 'Types incidents par régions')
+
+    # ── 3 boîtes de types (gauche) ────────────────────────────────────────
+    boxes = [('PON Loss', im1['pon']), ('OLT Down', im1['olt']),
+             ('CARTE Down', im1['carte'])]
+    bx, bw, bh = MARGIN, Inches(2.0), Inches(0.95)
+    gap = Inches(0.55)
+    ys = [Inches(1.6) + i * (bh + gap) for i in range(3)]
+    for (lbl, val), by in zip(boxes, ys):
+        shp = sl.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, bx, by, bw, bh)
+        shp.fill.solid()
+        shp.fill.fore_color.rgb = C_WHITE
+        shp.line.color.rgb = C_NAVY_T
+        shp.line.width = Pt(2.25)
+        tf = shp.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for i, (txt, size) in enumerate([(lbl, 13), (str(val), 16)]):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.alignment = PP_ALIGN.CENTER
+            r = p.add_run()
+            r.text = txt
+            r.font.size = Pt(size)
+            r.font.bold = True
+            r.font.color.rgb = C_NAVY_T
+
+    # ── Cercle central (total) ────────────────────────────────────────────
+    cd = Inches(1.7)
+    ct = ys[1] + bh / 2 - cd / 2
+    _t_oval(sl, Inches(3.1), ct, cd, cd, C_NAVY_T,
+            str(im1['total']), size=32, color=C_YELL)
+    _txt(sl, f"{im1['total']} incident(s) enregistré(s)", MARGIN, Inches(1.15),
+         Inches(4.5), Inches(0.35), size=12, bold=True, color=C_NAVY_T)
+
+    # ── Tableau régions (droite) ──────────────────────────────────────────
+    order = ['SAVANES', 'KARA', 'CENTRALE', 'PLATEAUX', 'MARITIME', 'LOME']
+    rc = im1['regions']
+    rows = [k for k in order if k in rc]
+    widths = [Inches(2.2), Inches(1.4), Inches(1.4), Inches(1.5), Inches(1.2)]
+    tw = sum(widths, Inches(0))
+    left = SW - MARGIN - tw
+    nrows = len(rows) + 2
+    row_h = Inches(0.42)
+    tbl = sl.shapes.add_table(nrows, 5, left, Inches(1.5), tw,
+                              row_h * nrows).table
+    tbl.first_row = False
+    tbl.horz_banding = False
+    for i, w in enumerate(widths):
+        tbl.columns[i].width = w
+    for i, hd in enumerate(['Région', 'OLT Down', 'PON Loss',
+                            'CARTE Down', 'Total']):
+        _t_cell(tbl.cell(0, i), hd, C_BLUE3, C_YELL, size=11, bold=True)
+    tot = {'OLT': 0, 'PON': 0, 'CARTE': 0, 'total': 0}
+    for ri, k in enumerate(rows, start=1):
+        cnt = rc.get(k, {})
+        label = 'Lomé' if k == 'LOME' else k.capitalize()
+        _t_cell(tbl.cell(ri, 0), label, C_NAVY_T, C_WHITE, size=10,
+                bold=True, align=PP_ALIGN.LEFT)
+        for ci, key in enumerate(['OLT', 'PON', 'CARTE', 'total'], start=1):
+            v = cnt.get(key, 0)
+            tot[key] = tot.get(key, 0) + v
+            _t_cell(tbl.cell(ri, ci), str(v),
+                    C_GCELL if ri % 2 else C_WHITE, C_NAVY_T, size=10,
+                    bold=(ci == 4))
+    _t_cell(tbl.cell(nrows - 1, 0), 'TOTAL', C_YELL, C_NAVY_T,
+            size=10, bold=True, align=PP_ALIGN.LEFT)
+    for ci, key in enumerate(['OLT', 'PON', 'CARTE', 'total'], start=1):
+        _t_cell(tbl.cell(nrows - 1, ci), str(tot[key]), C_YELL, C_NAVY_T,
+                size=10, bold=True)
+
+    _f_footer(sl, report, generated_on)
+    return sl
+
+
+def _slide_ftth_image2(prs, report, generated_on):
+    sl = _blank(prs)
+    im2 = report['image2']
+    _f_header(sl, 'Inc / Métier / MTTR')
+    _txt(sl, 'Count Inc By METIER  Vs  MTTR by METIER', MARGIN, Inches(1.05),
+         SW - 2 * MARGIN, Inches(0.3), size=13, bold=True, color=C_NAVY_T,
+         align=PP_ALIGN.CENTER)
+
+    cats = [c['label'] for c in im2['cats']]
+    counts = [c['count'] for c in im2['cats']]
+    mttrs = [round(c['mttr_sec'] / 3600.0, 2) for c in im2['cats']]
+    _f_combo_chart(sl, MARGIN, Inches(1.4), SW - 2 * MARGIN - Inches(3.4),
+                   Inches(5.5), cats, counts, mttrs)
+
+    notes = im2.get('notes') or []
+    if notes:
+        _f_notes_box(sl, SW - MARGIN - Inches(3.2), Inches(1.5), Inches(3.2),
+                     'Incidents (MTTR le plus élevé)', notes[:10])
+
+    _f_footer(sl, report, generated_on)
+    return sl
+
+
+def _slide_ftth_image3(prs, report, generated_on):
+    sl = _blank(prs)
+    im3 = report['image3']
+    _f_header(sl, 'Incidents / Régions Vs MTTR')
+    _txt(sl, 'Count Inc By Région  Vs  MTTR by REGION', MARGIN, Inches(1.05),
+         SW - 2 * MARGIN, Inches(0.3), size=13, bold=True, color=C_NAVY_T,
+         align=PP_ALIGN.CENTER)
+
+    cats = [c['label'] for c in im3['cats']]
+    counts = [c['count'] for c in im3['cats']]
+    mttrs = [round(c['mttr_sec'] / 3600.0, 2) for c in im3['cats']]
+    has_notes = bool(im3.get('notes'))
+    cw = SW - 2 * MARGIN - (Inches(3.4) if has_notes else Inches(0))
+    _f_combo_chart(sl, MARGIN, Inches(1.4), cw, Inches(5.5),
+                   cats, counts, mttrs)
+
+    y = Inches(1.5)
+    for box in (im3.get('notes') or [])[:2]:
+        shp = _f_notes_box(sl, SW - MARGIN - Inches(3.2), y, Inches(3.2),
+                           box.get('title', ''), box.get('lines', []))
+        y = shp.top + shp.height + Inches(0.25)
+
+    _f_footer(sl, report, generated_on)
+    return sl
+
+
+def _slide_ftth_image4(prs, report, generated_on):
+    sl = _blank(prs)
+    causes = report['image4']['causes'][:18]
+    _f_header(sl, 'Statistiques / causes')
+    _txt(sl, 'INCIDENTS OUVERTS PAR CAUSES RESEAUX FIXE', MARGIN, Inches(1.05),
+         SW - 2 * MARGIN, Inches(0.3), size=13, bold=True, color=C_NAVY_T,
+         align=PP_ALIGN.CENTER)
+
+    if causes:
+        # Barres horizontales : inverser pour avoir la plus grande en haut
+        data = CategoryChartData()
+        data.categories = [c['label'] for c in reversed(causes)]
+        data.add_series('Incidents', [c['count'] for c in reversed(causes)],
+                        number_format='0')
+        gframe = sl.shapes.add_chart(
+            XL_CHART_TYPE.BAR_CLUSTERED, MARGIN, Inches(1.4),
+            SW - 2 * MARGIN, Inches(5.6), data)
+        chart = gframe.chart
+        chart.has_legend = False
+        plot = chart.plots[0]
+        plot.gap_width = 60
+        plot.vary_by_categories = False
+        ser = plot.series[0]
+        # Couleurs par rang (navy / rouge / jaune ×4 / bleu clair) via points
+        n = len(causes)
+        for i in range(n):
+            rank = n - 1 - i          # 0 = plus grande barre
+            if rank == 0:
+                col = C_NAVY_T
+            elif rank == 1:
+                col = C_RED_T
+            elif rank <= 5:
+                col = C_YELL
+            else:
+                col = C_LBLUE_F
+            pt = ser.points[i]
+            pt.format.fill.solid()
+            pt.format.fill.fore_color.rgb = col
+        plot.has_data_labels = True
+        dl = plot.data_labels
+        dl.number_format = '0'
+        dl.number_format_is_linked = False
+        dl.position = XL_LABEL_POSITION.OUTSIDE_END
+        dl.font.size = Pt(8)
+        dl.font.bold = True
+        cax = chart.category_axis
+        cax.tick_labels.font.size = Pt(8)
+        cax.tick_labels.font.bold = True
+        chart.value_axis.tick_labels.font.size = Pt(8)
+
+    _f_footer(sl, report, generated_on)
+    return sl
+
+
+_FTTH_SLIDES = {
+    'image1': _slide_ftth_image1,
+    'image2': _slide_ftth_image2,
+    'image3': _slide_ftth_image3,
+    'image4': _slide_ftth_image4,
+}
+
+
+def generate_ftth_editable(report, generated_on='',
+                           images=('image1', 'image2', 'image3', 'image4')):
+    """Rapport FTTH réseau fixe en diapos natives PowerPoint : textes,
+    tableaux et graphiques restent modifiables après téléchargement."""
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    for im in images:
+        fn = _FTTH_SLIDES.get(im)
+        if fn:
+            fn(prs, report, generated_on)
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+

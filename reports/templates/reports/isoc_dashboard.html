@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Évaluation ISOC_IA — Yas NOC{% endblock %}
+{% block breadcrumb %}Évaluation ISOC_IA{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; }
+
+  .isoc-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    background: linear-gradient(120deg,#0b1f3a 0%,#003087 55%,#0044bb 100%);
+    border-radius: 20px; padding: 22px 30px; margin-bottom: 22px; flex-wrap: wrap;
+    box-shadow: 0 6px 28px rgba(0,48,135,.22); position: relative; overflow: hidden;
+  }
+  .isoc-banner::after { content:''; position:absolute; right:-50px; top:-50px;
+    width:220px; height:220px; border-radius:50%; background:rgba(255,199,44,.07); }
+  .isoc-banner-left { display:flex; align-items:center; gap:16px; position:relative; z-index:1; }
+  .isoc-banner-logo { width:52px; height:52px; border-radius:14px; background:rgba(255,199,44,.16);
+    border:1.5px solid rgba(255,199,44,.28); display:flex; align-items:center; justify-content:center; }
+  .isoc-banner-logo img { width:34px; height:34px; }
+  .isoc-banner-tag { font-size:10px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:#FFC72C; margin-bottom:3px; }
+  .isoc-banner-name { font-size:19px; font-weight:800; color:#fff; }
+  .isoc-banner-sub { font-size:12px; color:rgba(255,255,255,.6); margin-top:3px; }
+
+  .period-bar { display:flex; align-items:center; gap:8px; position:relative; z-index:1; flex-wrap:wrap; }
+  .period-btn { padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600;
+    border:1.5px solid rgba(255,255,255,.22); background:rgba(255,255,255,.06);
+    color:rgba(255,255,255,.8); text-decoration:none; transition:all .15s; }
+  .period-btn:hover { border-color:rgba(255,255,255,.5); color:#fff; }
+  .period-btn.active { background:#FFC72C; color:#003087; border-color:#FFC72C; }
+
+  .cat-title { display:flex; align-items:center; gap:10px; margin:30px 0 14px;
+    font-size:15px; font-weight:800; color:#1a2b4a; letter-spacing:.3px; }
+  .cat-num { width:26px; height:26px; border-radius:8px; background:#003087; color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; }
+
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; }
+  .kpi-card { background:#fff; border:1px solid #e8edf5; border-radius:16px; padding:18px 20px;
+    box-shadow:0 2px 10px rgba(0,48,135,.05); position:relative; }
+  .kpi-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#8a97ad; }
+  .kpi-value { font-size:28px; font-weight:800; color:#0b1f3a; margin-top:8px; line-height:1; }
+  .kpi-value small { font-size:14px; font-weight:700; color:#8a97ad; }
+  .kpi-sub { font-size:11.5px; color:#9aa6b8; margin-top:7px; }
+  .kpi-card.good  { border-left:4px solid #17a673; }
+  .kpi-card.warn  { border-left:4px solid #e0a018; }
+  .kpi-card.bad   { border-left:4px solid #d64545; }
+  .kpi-card.info  { border-left:4px solid #003087; }
+  .kpi-card.muted { border-left:4px solid #b8c2d4; }
+  .badge-na { font-size:10px; font-weight:700; background:#eef1f6; color:#9aa6b8;
+    padding:2px 8px; border-radius:20px; position:absolute; top:16px; right:16px; }
+
+  .chart-row { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-top:16px; }
+  @media (max-width:900px){ .chart-row{ grid-template-columns:1fr; } }
+  .chart-card { background:#fff; border:1px solid #e8edf5; border-radius:16px; padding:18px 20px;
+    box-shadow:0 2px 10px rgba(0,48,135,.05); }
+  .chart-card h3 { font-size:13px; font-weight:800; color:#1a2b4a; margin:0 0 14px; text-transform:uppercase; letter-spacing:.4px; }
+  .chart-wrap { position:relative; height:280px; }
+  .chart-wrap.sm { height:230px; }
+
+  .tbl-card { background:#fff; border:1px solid #e8edf5; border-radius:16px; padding:6px 4px 4px; margin-top:16px; overflow:hidden; }
+  table.isoc-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.isoc-tbl th { text-align:left; padding:11px 14px; color:#8a97ad; font-size:10.5px;
+    text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid #eef1f6; }
+  table.isoc-tbl td { padding:10px 14px; border-bottom:1px solid #f4f6fa; color:#33415c; }
+  table.isoc-tbl tr:last-child td { border-bottom:none; }
+  .pill { display:inline-block; font-size:10.5px; font-weight:700; padding:2px 9px; border-radius:20px; }
+  .pill.ok   { background:#e4f6ef; color:#17a673; }
+  .pill.err  { background:#fbe6e6; color:#d64545; }
+  .pill.up   { background:#e4f6ef; color:#17a673; }
+  .pill.down { background:#fbe6e6; color:#d64545; }
+  .pill.na   { background:#eef1f6; color:#9aa6b8; }
+  .q-cell { max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .note { font-size:11.5px; color:#9aa6b8; margin-top:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="isoc-banner">
+  <div class="isoc-banner-left">
+    <div class="isoc-banner-logo"><img src="{% static 'reports/isoc_ia_logo.svg' %}" alt="ISOC_IA"></div>
+    <div>
+      <div class="isoc-banner-tag">Évaluation de l'agent IA</div>
+      <div class="isoc-banner-name">ISOC_IA — Tableau de bord</div>
+      <div class="isoc-banner-sub">{{ total }} interaction{{ total|pluralize }} analysée{{ total|pluralize }}
+        · {{ n_ok }} succès · {{ n_err }} erreur{{ n_err|pluralize }}</div>
+    </div>
+  </div>
+  <div class="period-bar">
+    <a href="?period=7d"  class="period-btn {% if period == '7d' %}active{% endif %}">7 jours</a>
+    <a href="?period=30d" class="period-btn {% if period == '30d' %}active{% endif %}">30 jours</a>
+    <a href="?period=90d" class="period-btn {% if period == '90d' %}active{% endif %}">90 jours</a>
+    <a href="?period=all" class="period-btn {% if period == 'all' %}active{% endif %}">Tout</a>
+  </div>
+</div>
+
+{% if total == 0 %}
+<div class="chart-card" style="text-align:center; padding:50px 20px;">
+  <div style="font-size:15px; font-weight:700; color:#33415c;">Aucune interaction enregistrée sur cette période.</div>
+  <div class="note">Les échanges avec le chatbot ISOC_IA apparaîtront ici automatiquement.</div>
+</div>
+{% else %}
+
+<!-- 1. PERFORMANCE SUR LA TÂCHE -->
+<div class="cat-title"><span class="cat-num">1</span> Performance sur la tâche</div>
+<div class="kpi-grid">
+  <div class="kpi-card {% if task_success == None %}muted{% elif task_success >= 80 %}good{% elif task_success >= 60 %}warn{% else %}bad{% endif %}">
+    {% if task_success == None %}<span class="badge-na">à annoter</span>{% endif %}
+    <div class="kpi-label">Taux de succès (tâche)</div>
+    <div class="kpi-value">{% if task_success == None %}—{% else %}{{ task_success }}<small>%</small>{% endif %}</div>
+    <div class="kpi-sub">Sur {{ n_eval }} interaction{{ n_eval|pluralize }} évaluée{{ n_eval|pluralize }} (annotation humaine)</div>
+  </div>
+  <div class="kpi-card {% if answer_rate >= 85 %}good{% elif answer_rate >= 65 %}warn{% else %}bad{% endif %}">
+    <div class="kpi-label">Taux de réponse effective</div>
+    <div class="kpi-value">{{ answer_rate }}<small>%</small></div>
+    <div class="kpi-sub">{{ n_answered }} réponses fournies sans refus (proxy auto)</div>
+  </div>
+  <div class="kpi-card info">
+    <div class="kpi-label">Interactions totales</div>
+    <div class="kpi-value">{{ total }}</div>
+    <div class="kpi-sub">{{ n_ok }} succès / {{ n_err }} erreurs</div>
+  </div>
+</div>
+
+<!-- 2. EFFICACITÉ -->
+<div class="cat-title"><span class="cat-num">2</span> Efficacité</div>
+<div class="kpi-grid">
+  <div class="kpi-card {% if avg_latency <= 4000 %}good{% elif avg_latency <= 10000 %}warn{% else %}bad{% endif %}">
+    <div class="kpi-label">Latence moyenne</div>
+    <div class="kpi-value">{{ avg_latency }}<small> ms</small></div>
+    <div class="kpi-sub">P95 : {{ p95_latency }} ms</div>
+  </div>
+  <div class="kpi-card info">
+    <div class="kpi-label">Tokens / interaction</div>
+    <div class="kpi-value">{{ avg_tokens }}</div>
+    <div class="kpi-sub">Contexte moyen injecté : {{ avg_ctx }} car.</div>
+  </div>
+  <div class="kpi-card info">
+    <div class="kpi-label">Tokens cumulés</div>
+    <div class="kpi-value">{{ total_tokens }}</div>
+    <div class="kpi-sub">Coût estimé : ~${{ est_cost }}</div>
+  </div>
+  <div class="kpi-card muted">
+    <div class="kpi-label">Historique moyen</div>
+    <div class="kpi-value">{{ avg_history }}<small> tours</small></div>
+    <div class="kpi-sub">Profondeur conversationnelle</div>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-card">
+    <h3>Volume quotidien (succès / erreurs)</h3>
+    <div class="chart-wrap"><canvas id="volChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <h3>Latence moyenne par jour</h3>
+    <div class="chart-wrap"><canvas id="latChart"></canvas></div>
+  </div>
+</div>
+
+<!-- 3. ROBUSTESSE & FIABILITÉ -->
+<div class="cat-title"><span class="cat-num">3</span> Robustesse &amp; fiabilité</div>
+<div class="kpi-grid">
+  <div class="kpi-card {% if error_rate <= 3 %}good{% elif error_rate <= 10 %}warn{% else %}bad{% endif %}">
+    <div class="kpi-label">Taux d'erreur</div>
+    <div class="kpi-value">{{ error_rate }}<small>%</small></div>
+    <div class="kpi-sub">Échecs techniques (API, parsing…)</div>
+  </div>
+  <div class="kpi-card {% if refusal_rate <= 15 %}good{% elif refusal_rate <= 30 %}warn{% else %}bad{% endif %}">
+    <div class="kpi-label">Taux de refus / non-réponse</div>
+    <div class="kpi-value">{{ refusal_rate }}<small>%</small></div>
+    <div class="kpi-sub">« Je ne dispose pas de… » (détection auto)</div>
+  </div>
+  <div class="kpi-card {% if hallu_rate == None %}muted{% elif hallu_rate <= 5 %}good{% elif hallu_rate <= 15 %}warn{% else %}bad{% endif %}">
+    {% if hallu_rate == None %}<span class="badge-na">à annoter</span>{% endif %}
+    <div class="kpi-label">Taux d'hallucination</div>
+    <div class="kpi-value">{% if hallu_rate == None %}—{% else %}{{ hallu_rate }}<small>%</small>{% endif %}</div>
+    <div class="kpi-sub">Info inventée (annotation humaine)</div>
+  </div>
+</div>
+{% if error_breakdown %}
+<div class="tbl-card">
+  <table class="isoc-tbl">
+    <thead><tr><th>Type d'erreur</th><th>Occurrences</th></tr></thead>
+    <tbody>
+      {% for e in error_breakdown %}
+      <tr><td>{{ e.error_type|default:"(inconnu)" }}</td><td>{{ e.n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- 4. QUALITÉ DU RAISONNEMENT -->
+<div class="cat-title"><span class="cat-num">4</span> Qualité du raisonnement</div>
+<div class="kpi-grid">
+  <div class="kpi-card {% if faithful_rate == None %}muted{% elif faithful_rate >= 85 %}good{% elif faithful_rate >= 65 %}warn{% else %}bad{% endif %}">
+    {% if faithful_rate == None %}<span class="badge-na">à annoter</span>{% endif %}
+    <div class="kpi-label">Fidélité (faithfulness)</div>
+    <div class="kpi-value">{% if faithful_rate == None %}—{% else %}{{ faithful_rate }}<small>%</small>{% endif %}</div>
+    <div class="kpi-sub">Réponse fidèle au contexte ({{ faithful_n }} évaluées)</div>
+  </div>
+  <div class="kpi-card {% if tool_ok_rate == None %}muted{% elif tool_ok_rate >= 85 %}good{% elif tool_ok_rate >= 65 %}warn{% else %}bad{% endif %}">
+    {% if tool_ok_rate == None %}<span class="badge-na">à annoter</span>{% endif %}
+    <div class="kpi-label">Justesse d'utilisation du contexte</div>
+    <div class="kpi-value">{% if tool_ok_rate == None %}—{% else %}{{ tool_ok_rate }}<small>%</small>{% endif %}</div>
+    <div class="kpi-sub">Bonnes données mobilisées ({{ tool_ok_n }} évaluées)</div>
+  </div>
+  <div class="kpi-card {% if grounded_rate >= 85 %}good{% elif grounded_rate >= 60 %}warn{% else %}bad{% endif %}">
+    <div class="kpi-label">Grounding (contexte fourni)</div>
+    <div class="kpi-value">{{ grounded_rate }}<small>%</small></div>
+    <div class="kpi-sub">Réponses appuyées sur des données réelles</div>
+  </div>
+</div>
+
+<!-- 5. ALIGNEMENT & SÉCURITÉ / 7. AGENTIQUE -->
+<div class="cat-title"><span class="cat-num">5</span> Alignement, sécurité &amp; traçabilité</div>
+<div class="kpi-grid">
+  <div class="kpi-card info">
+    <div class="kpi-label">Requêtes centrées site</div>
+    <div class="kpi-value">{{ site_focused_rate }}<small>%</small></div>
+    <div class="kpi-sub">Périmètre métier ciblé (grounding par site)</div>
+  </div>
+  <div class="kpi-card muted">
+    <div class="kpi-label">Traçabilité</div>
+    <div class="kpi-value">100<small>%</small></div>
+    <div class="kpi-sub">Chaque décision journalisée (question, contexte, réponse)</div>
+  </div>
+  <div class="kpi-card {% if human_loop_rate == None %}muted{% elif human_loop_rate <= 15 %}good{% elif human_loop_rate <= 35 %}warn{% else %}bad{% endif %}">
+    {% if human_loop_rate == None %}<span class="badge-na">à annoter</span>{% endif %}
+    <div class="kpi-label">Intervention humaine requise</div>
+    <div class="kpi-value">{% if human_loop_rate == None %}—{% else %}{{ human_loop_rate }}<small>%</small>{% endif %}</div>
+    <div class="kpi-sub">Human-in-the-loop rate (annotation)</div>
+  </div>
+</div>
+
+<!-- 6. SATISFACTION UTILISATEUR -->
+<div class="cat-title"><span class="cat-num">6</span> Satisfaction utilisateur</div>
+<div class="chart-row">
+  <div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">
+      <div class="kpi-card {% if csat == None %}muted{% elif csat >= 80 %}good{% elif csat >= 60 %}warn{% else %}bad{% endif %}">
+        {% if csat == None %}<span class="badge-na">aucun vote</span>{% endif %}
+        <div class="kpi-label">CSAT (👍 / total votes)</div>
+        <div class="kpi-value">{% if csat == None %}—{% else %}{{ csat }}<small>%</small>{% endif %}</div>
+        <div class="kpi-sub">{{ n_up }} 👍 · {{ n_down }} 👎</div>
+      </div>
+      <div class="kpi-card info">
+        <div class="kpi-label">Couverture des retours</div>
+        <div class="kpi-value">{{ feedback_coverage }}<small>%</small></div>
+        <div class="kpi-sub">{{ n_rated }} interaction{{ n_rated|pluralize }} notée{{ n_rated|pluralize }}</div>
+      </div>
+      <div class="kpi-card {% if avg_rating == None %}muted{% else %}info{% endif %}">
+        {% if avg_rating == None %}<span class="badge-na">à annoter</span>{% endif %}
+        <div class="kpi-label">Note moyenne</div>
+        <div class="kpi-value">{% if avg_rating == None %}—{% else %}{{ avg_rating }}<small>/5</small>{% endif %}</div>
+        <div class="kpi-sub">Évaluation humaine (1-5)</div>
+      </div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>Répartition des retours</h3>
+    <div class="chart-wrap sm"><canvas id="fbChart"></canvas></div>
+  </div>
+</div>
+
+{% if top_sites %}
+<div class="cat-title"><span class="cat-num">7</span> Sites les plus interrogés</div>
+<div class="tbl-card">
+  <table class="isoc-tbl">
+    <thead><tr><th>Site</th><th>Interactions</th></tr></thead>
+    <tbody>
+      {% for s in top_sites %}
+      <tr><td>{{ s.site_focus }}</td><td>{{ s.n }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- INTERACTIONS RÉCENTES -->
+<div class="cat-title"><span class="cat-num">•</span> Interactions récentes</div>
+<div class="tbl-card">
+  <table class="isoc-tbl">
+    <thead>
+      <tr><th>Date</th><th>Utilisateur</th><th>Site</th><th>Question</th>
+          <th>Statut</th><th>Latence</th><th>Tokens</th><th>Retour</th></tr>
+    </thead>
+    <tbody>
+      {% for r in recent %}
+      <tr>
+        <td>{{ r.created_at|date:"d/m H:i" }}</td>
+        <td>{{ r.user.username|default:"—" }}</td>
+        <td>{{ r.site_focus|default:"—" }}</td>
+        <td class="q-cell" title="{{ r.question }}">{{ r.question|default:"—" }}</td>
+        <td>{% if r.status == 'success' %}<span class="pill ok">succès</span>{% else %}<span class="pill err">{{ r.error_type|default:"erreur" }}</span>{% endif %}</td>
+        <td>{{ r.latency_ms }} ms</td>
+        <td>{{ r.total_tokens }}</td>
+        <td>
+          {% if r.feedback == 'up' %}<span class="pill up">👍</span>
+          {% elif r.feedback == 'down' %}<span class="pill down">👎</span>
+          {% else %}<span class="pill na">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="note">Les métriques marquées « à annoter » nécessitent une évaluation humaine
+  via l'administration Django (modèle <em>Chat interactions</em>) : succès de tâche, fidélité,
+  hallucination, note 1-5, intervention humaine.</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if total > 0 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  const LABELS = {{ chart_labels|safe }};
+  const VOL_OK = {{ chart_vol_ok|safe }};
+  const VOL_ERR = {{ chart_vol_err|safe }};
+  const LAT = {{ chart_lat|safe }};
+  const FB = {{ chart_feedback|safe }};
+
+  const gridColor = 'rgba(0,0,0,0.05)';
+
+  new Chart(document.getElementById('volChart'), {
+    type: 'bar',
+    data: { labels: LABELS, datasets: [
+      { label: 'Succès', data: VOL_OK, backgroundColor: '#17a673', borderRadius: 4, stack: 's' },
+      { label: 'Erreurs', data: VOL_ERR, backgroundColor: '#d64545', borderRadius: 4, stack: 's' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { x: { stacked: true, grid: { display: false } },
+                y: { stacked: true, beginAtZero: true, grid: { color: gridColor } } } }
+  });
+
+  new Chart(document.getElementById('latChart'), {
+    type: 'line',
+    data: { labels: LABELS, datasets: [
+      { label: 'Latence (ms)', data: LAT, borderColor: '#003087',
+        backgroundColor: 'rgba(0,48,135,.08)', fill: true, tension: .35, pointRadius: 2 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: gridColor } } } }
+  });
+
+  new Chart(document.getElementById('fbChart'), {
+    type: 'doughnut',
+    data: { labels: ['👍 Positif', '👎 Négatif', 'Sans retour'], datasets: [
+      { data: FB, backgroundColor: ['#17a673', '#d64545', '#dfe4ec'], borderWidth: 0 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { position: 'bottom' } } }
+  });
+</script>
+{% endif %}
+{% endblock %}

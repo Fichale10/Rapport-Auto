@@ -6012,7 +6012,7 @@ def fixe_ftth_export(request, image, fmt):
     generated_on = date.today().strftime('%d/%m/%Y')
     from .fixe_ftth import (build_png_image1, build_png_image2,
                             build_png_image3, build_png_image4)
-    from .pptx_report import generate_image_slide, generate_image_deck
+    from .pptx_report import generate_ftth_editable
 
     builders = {
         'image1': (build_png_image1, 'GDI_FTTH_Types_Incidents_Regions'),
@@ -6021,24 +6021,24 @@ def fixe_ftth_export(request, image, fmt):
         'image4': (build_png_image4, 'GDI_FTTH_Statistiques_Causes'),
     }
 
-    # Export groupé : les 4 images dans un seul PPTX
+    # Export groupé : les 4 diapos natives (modifiables) dans un seul PPTX
     if image == 'all':
         if fmt != 'pptx':
             raise Http404('Format inconnu')
-        pngs = [b(report, generated_on) for b, _ in builders.values()]
-        buf = generate_image_deck(pngs, generated_on, report.get('period_label', ''))
+        buf = generate_ftth_editable(report, generated_on)
         return FileResponse(
             buf, as_attachment=True, filename='GDI_FTTH_Rapport_Complet.pptx',
             content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
 
     builder, base = builders[image]
-    png = builder(report, generated_on)
 
     if fmt == 'png':
+        png = builder(report, generated_on)
         return FileResponse(png, as_attachment=True, filename=f'{base}.png',
                             content_type='image/png')
     if fmt == 'pptx':
-        buf = generate_image_slide(png, generated_on, report.get('period_label', ''))
+        # Diapo native PowerPoint : textes, tableaux et graphiques modifiables
+        buf = generate_ftth_editable(report, generated_on, images=(image,))
         return FileResponse(
             buf, as_attachment=True, filename=f'{base}.pptx',
             content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
@@ -6316,6 +6316,124 @@ def _json_find_site(data, low, path=''):
     return hits
 
 
+def _row_matches_site(row, low, sid):
+    """Détermine si une ligne de ticket (dict issu de l'API) concerne le site."""
+    if not isinstance(row, dict):
+        return False
+    for k, v in row.items():
+        kl = str(k).lower()
+        val = str(v if v is not None else '').strip()
+        if not val:
+            continue
+        if sid and 'site' in kl and 'id' in kl and val == sid:
+            return True
+        if low and 'site' in kl and 'parent' not in kl and val.lower() == low:
+            return True
+        if low and 'parent' in kl and low in val.lower():
+            return True
+    return False
+
+
+def _fetch_site_incidents_from_api(site_name, site_id='', days=None, timeout=25, limit=60):
+    """Récupère les tickets détaillés d'un site DIRECTEMENT depuis l'API ticketing
+    (la même base que l'onglet « Import API » de la page /upload/).
+
+    La fenêtre de récupération (jours) est configurable via ISOC_API_WINDOW_DAYS
+    dans le .env (défaut : 180). Résultat mis en cache 10 min par site.
+    Ne lève jamais d'exception. Retourne (rows, status) :
+      - status 'ok'            → rows = tickets du site (peut être vide)
+      - status 'unconfigured'  → identifiants API absents du .env
+      - status 'unreachable'   → API injoignable / erreur réseau ou serveur
+    """
+    from django.core.cache import cache
+    import datetime as _dt
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    if days is None:
+        days = getattr(settings, 'ISOC_API_WINDOW_DAYS', 180)
+
+    low = (site_name or '').lower().strip()
+    sid = (site_id or '').strip()
+    if not low and not sid:
+        return [], 'ok'
+
+    cache_key = f"isoc_api_inc:{low}:{sid}:{days}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    api_url  = getattr(settings, 'TICKETING_API_URL', '') or ''
+    api_user = getattr(settings, 'TICKETING_API_USERNAME', '') or ''
+    api_pass = getattr(settings, 'TICKETING_API_PASSWORD', '') or ''
+    if not (api_url and api_user and api_pass):
+        result = ([], 'unconfigured')
+        cache.set(cache_key, result, 600)
+        return result
+
+    rows_out = []
+    any_ok = False
+    try:
+        from .api_client import TicketingApiClient
+        client = TicketingApiClient(api_url, timeout=timeout)
+        client.login(api_user, api_pass)
+        date_fin   = _dt.date.today()
+        date_debut = date_fin - _dt.timedelta(days=days)
+        # IDs de plateformes résolus UNE fois (évite un appel par tranche)
+        plateformes_id = client.get_plateformes_ids_for_network('all')
+
+        # L'export complet sur une longue période dépasse la limite du serveur
+        # (HTTP 413 Payload Too Large) → on découpe en tranches, de la plus
+        # récente à la plus ancienne. Si une tranche est encore trop grosse,
+        # on la subdivise (30 j → 10 j → 3 j) avant d'abandonner la tranche.
+        def _fetch_range(d1, d2, depth=0):
+            nonlocal any_ok
+            try:
+                rows = client.export_data(d1.isoformat(), d2.isoformat(),
+                                          plateformes_id=plateformes_id)
+                any_ok = True
+                for r in rows:
+                    if _row_matches_site(r, low, sid):
+                        rows_out.append(r)
+                        if len(rows_out) >= limit:
+                            return False
+                return True
+            except Exception as exc:
+                if '413' in str(exc) and depth < 2:
+                    sub = [10, 3][depth]
+                    cur_end = d2
+                    while cur_end >= d1:
+                        cur_start = max(d1, cur_end - _dt.timedelta(days=sub - 1))
+                        if not _fetch_range(cur_start, cur_end, depth + 1):
+                            return False
+                        cur_end = cur_start - _dt.timedelta(days=1)
+                    return True
+                _log.warning("ISOC_IA : tranche API %s→%s ignorée : %s", d1, d2, exc)
+                return True   # on continue avec les autres tranches
+
+        chunk = 30
+        cur_end = date_fin
+        while cur_end >= date_debut:
+            cur_start = max(date_debut, cur_end - _dt.timedelta(days=chunk - 1))
+            if not _fetch_range(cur_start, cur_end):
+                break   # limite atteinte
+            cur_end = cur_start - _dt.timedelta(days=1)
+
+        if not any_ok:
+            raise RuntimeError("aucune tranche API n'a abouti")
+    except Exception as exc:
+        _log.warning("ISOC_IA : API ticketing injoignable (%s) : %s",
+                     api_url, exc)
+        # Échec NON mis en cache longtemps : on retentera vite (60 s)
+        result = ([], 'unreachable')
+        cache.set(cache_key, result, 60)
+        return result
+
+    result = (rows_out, 'ok')
+    cache.set(cache_key, result, 600)   # 10 minutes
+    return result
+
+
 def _build_site_chatbot_context(site_name, message):
     """Construit un contexte détaillé centré sur UN site précis.
 
@@ -6459,10 +6577,32 @@ def _build_site_chatbot_context(site_name, message):
     incs = Incident.objects.filter(inc_filter)
     inc_count = incs.count()
 
+    # ── Tickets détaillés récupérés en DIRECT depuis l'API ticketing ──────
+    #    (même base que l'onglet « Import API » de /upload/). Donne le détail
+    #    par incident : nature, cause, escalade, durée, statut, root cause…
+    api_incidents, api_status = _fetch_site_incidents_from_api(sname, site.site_id)
+    api_count = len(api_incidents)
+
     lines.append("")
     lines.append("=== HISTORIQUE DES PANNES / INDISPONIBILITÉS ===")
 
-    if total_outages or inc_count:
+    # État de la connexion à la base ticketing (API temps réel)
+    if api_status == 'unreachable':
+        lines.append(
+            "ATTENTION : la base ticketing en temps réel (API) est actuellement "
+            "INJOIGNABLE (problème réseau ou serveur API arrêté). Les détails des "
+            "tickets (créateur du ticket / ingénieur NOC, cause, escalade, statut…) "
+            "ne sont donc pas disponibles pour le moment. Si on te pose une question "
+            "nécessitant ces détails, indique que la connexion à la base ticketing "
+            "est momentanément indisponible et qu'il faut réessayer plus tard."
+        )
+    elif api_status == 'unconfigured':
+        lines.append(
+            "NOTE : l'accès direct à la base ticketing (API) n'est pas configuré "
+            "sur ce serveur ; seuls les rapports traités sont disponibles."
+        )
+
+    if total_outages or inc_count or api_count:
         if total_outages:
             lines.append(
                 f"Nombre total de fois où le site est tombé (cumulé sur les rapports) : {total_outages}"
@@ -6473,6 +6613,10 @@ def _build_site_chatbot_context(site_name, message):
             lines.append(
                 f"Incidents détaillés enregistrés (table incidents) : {inc_count} "
                 f"— durée cumulée : {_fmt_duration(total_dur)}"
+            )
+        if api_count:
+            lines.append(
+                f"Tickets détaillés récupérés en direct via l'API ticketing : {api_count}"
             )
 
         # Détail par rapport
@@ -6516,11 +6660,49 @@ def _build_site_chatbot_context(site_name, message):
                     for k, v in _model_all_fields(inc, exclude=('id', 'imported_at', 'source_file'))
                 )
                 lines.append(f"  • {detail}")
+
+        # ── Tickets détaillés issus de l'API ticketing (source « Import API ») ──
+        if api_count:
+            def _row_get(row, *keys):
+                for k in row:
+                    kl = str(k).lower()
+                    for want in keys:
+                        if want in kl:
+                            return str(row[k] if row[k] is not None else '').strip()
+                return ''
+
+            # Causes les plus fréquentes côté API
+            api_causes = {}
+            for r in api_incidents:
+                c = _row_get(r, 'cause')
+                if c:
+                    api_causes[c] = api_causes.get(c, 0) + 1
+            if api_causes:
+                lines.append("")
+                lines.append("Causes des tickets récupérés via l'API (nombre d'occurrences) :")
+                for cname, n in sorted(api_causes.items(), key=lambda kv: kv[1], reverse=True)[:10]:
+                    lines.append(f"  • {cname.replace(chr(10), ' ')[:140]} → {n} fois")
+
+            lines.append("")
+            lines.append(
+                "Détail des tickets récupérés en direct via l'API ticketing "
+                "(tous les champs fournis par la base) :"
+            )
+            for r in api_incidents[:25]:
+                if not isinstance(r, dict):
+                    continue
+                detail = '; '.join(
+                    f"{k}={str(v).strip()[:160]}"
+                    for k, v in r.items()
+                    if str(v if v is not None else '').strip()
+                )
+                lines.append(f"  • {detail[:1200]}")
     else:
         lines.append(
-            "Aucune panne enregistrée pour ce site dans les rapports traités "
-            "ni dans la table des incidents. Le site n'apparaît dans aucun rapport "
-            "comme ayant été impacté."
+            "Aucune panne enregistrée pour ce site dans les rapports traités, "
+            "dans la table des incidents"
+            + (", ni via l'API ticketing" if api_status == 'ok' else "")
+            + ". Le site n'apparaît dans aucun rapport comme ayant été impacté."
         )
 
     # ── Mentions du site dans les autres données des rapports (JSON) ───────
@@ -6535,14 +6717,44 @@ def _build_site_chatbot_context(site_name, message):
     return '\n'.join(lines)
 
 
+def _log_chat_interaction(request, **fields):
+    """Crée un enregistrement ChatInteraction (best-effort, ne casse jamais l'API)."""
+    from .models import ChatInteraction
+    try:
+        return ChatInteraction.objects.create(
+            user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+            session_key=(request.session.session_key or '') if hasattr(request, 'session') else '',
+            **fields,
+        )
+    except Exception:
+        return None
+
+
+# Détection d'un refus / d'une non-réponse (« je ne dispose pas de cette information »)
+_REFUSAL_PATTERNS = (
+    'je ne dispose pas', 'je ne dispose d', "je n'ai pas", 'aucune information',
+    'pas de donnée', 'pas de données', "je ne peux pas", 'je ne suis pas en mesure',
+    "n'est pas présent", "n'est pas disponible", 'information non disponible',
+)
+
+
+def _detect_refusal(text):
+    low = (text or '').lower()
+    return any(p in low for p in _REFUSAL_PATTERNS)
+
+
 def chatbot_api(request):
     """Endpoint du chatbot ISOC_IA. Reçoit un message, interroge la base et l'API IA."""
     import requests as _requests
+    import time as _time
+    _t0 = _time.monotonic()
 
     if request.method != 'POST':
         return JsonResponse({'error': 'Méthode non autorisée.'}, status=405)
 
     if not settings.RODIUM_API_KEY:
+        _log_chat_interaction(request, status='error', error_type='no_api_key',
+                              error_detail='Clé API manquante.')
         return JsonResponse(
             {'error': "Le chatbot n'est pas configuré (clé API manquante)."},
             status=503,
@@ -6551,16 +6763,22 @@ def chatbot_api(request):
     try:
         payload = json.loads(request.body.decode('utf-8'))
     except (ValueError, UnicodeDecodeError):
+        _log_chat_interaction(request, status='error', error_type='bad_request',
+                              error_detail='Corps de requête invalide.')
         return JsonResponse({'error': 'Requête invalide.'}, status=400)
 
     user_message = (payload.get('message') or '').strip()
     if not user_message:
+        _log_chat_interaction(request, status='error', error_type='empty_message')
         return JsonResponse({'error': 'Message vide.'}, status=400)
     if len(user_message) > 2000:
         user_message = user_message[:2000]
 
     history = payload.get('history') or []
     site_focus = (payload.get('site') or '').strip()
+
+    def _elapsed_ms():
+        return int((_time.monotonic() - _t0) * 1000)
 
     # Contexte issu de la base de données
     try:
@@ -6625,12 +6843,19 @@ def chatbot_api(request):
 
     messages_payload = [{'role': 'system', 'content': system_prompt}]
     # Historique récent (max 8 derniers échanges) pour garder le contexte conversationnel
+    hist_used = 0
     for h in history[-8:]:
         role = h.get('role')
         content = (h.get('content') or '').strip()
         if role in ('user', 'assistant') and content:
             messages_payload.append({'role': role, 'content': content[:2000]})
+            hist_used += 1
     messages_payload.append({'role': 'user', 'content': user_message})
+
+    log_common = dict(
+        site_focus=site_focus, question=user_message, model_name=settings.RODIUM_MODEL,
+        context_chars=len(db_context or ''), history_len=hist_used,
+    )
 
     try:
         resp = _requests.post(
@@ -6646,9 +6871,14 @@ def chatbot_api(request):
             timeout=60,
         )
     except _requests.RequestException as exc:
+        _log_chat_interaction(request, status='error', error_type='api_unreachable',
+                              error_detail=str(exc)[:2000], latency_ms=_elapsed_ms(), **log_common)
         return JsonResponse({'error': f"Impossible de joindre l'IA : {exc}"}, status=502)
 
     if resp.status_code != 200:
+        _log_chat_interaction(request, status='error', error_type=f'api_{resp.status_code}',
+                              error_detail=(resp.text or '')[:2000], latency_ms=_elapsed_ms(),
+                              **log_common)
         return JsonResponse(
             {'error': f"Erreur de l'API IA ({resp.status_code})."},
             status=502,
@@ -6658,7 +6888,13 @@ def chatbot_api(request):
         data = resp.json()
         reply = data['choices'][0]['message']['content']
     except (ValueError, KeyError, IndexError):
+        _log_chat_interaction(request, status='error', error_type='bad_response',
+                              error_detail=(resp.text or '')[:2000], latency_ms=_elapsed_ms(),
+                              **log_common)
         return JsonResponse({'error': "Réponse inattendue de l'IA."}, status=502)
+
+    # Consommation de tokens (usage OpenAI-compatible) si présente
+    usage = data.get('usage') or {}
 
     # Nettoyage de secours : retire le Markdown résiduel (le widget affiche du texte brut)
     import re as _re
@@ -6672,7 +6908,198 @@ def chatbot_api(request):
     reply = _re.sub(r'^\s*(?:---+|===+)\s*$', '', reply, flags=_re.M)  # lignes ---/===
     reply = _re.sub(r'\n{3,}', '\n\n', reply).strip()
 
-    return JsonResponse({'reply': reply})
+    log = _log_chat_interaction(
+        request, status='success', reply=reply, latency_ms=_elapsed_ms(),
+        prompt_tokens=int(usage.get('prompt_tokens') or 0),
+        completion_tokens=int(usage.get('completion_tokens') or 0),
+        total_tokens=int(usage.get('total_tokens') or 0),
+        is_refusal=_detect_refusal(reply), **log_common,
+    )
+
+    return JsonResponse({'reply': reply, 'interaction_id': log.id if log else None})
+
+
+def chatbot_feedback(request):
+    """Reçoit le retour utilisateur (👍/👎) sur une réponse du chatbot ISOC_IA."""
+    from django.utils import timezone as _tz
+    from .models import ChatInteraction
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Méthode non autorisée.'}, status=405)
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'error': 'Requête invalide.'}, status=400)
+
+    interaction_id = payload.get('interaction_id')
+    feedback = (payload.get('feedback') or '').strip()
+    if feedback not in ('up', 'down', ''):
+        return JsonResponse({'error': 'Feedback invalide.'}, status=400)
+
+    try:
+        obj = ChatInteraction.objects.get(pk=interaction_id)
+    except (ChatInteraction.DoesNotExist, ValueError, TypeError):
+        return JsonResponse({'error': 'Interaction introuvable.'}, status=404)
+
+    obj.feedback = feedback
+    obj.feedback_at = _tz.now()
+    obj.save(update_fields=['feedback', 'feedback_at'])
+    return JsonResponse({'ok': True})
+
+
+def isoc_dashboard(request):
+    """Tableau de bord d'évaluation de l'agent ISOC_IA (métriques d'évaluation IA)."""
+    from datetime import timedelta
+    from django.utils import timezone as _tz
+    from django.db.models import Avg, Count, Sum, Q
+    from .models import ChatInteraction
+
+    # ── Période ─────────────────────────────────────────────────────────────
+    period = request.GET.get('period', '30d')
+    period_map = {'7d': 7, '30d': 30, '90d': 90, 'all': None}
+    days = period_map.get(period, 30)
+
+    qs = ChatInteraction.objects.all()
+    if days is not None:
+        since = _tz.now() - timedelta(days=days)
+        qs = qs.filter(created_at__gte=since)
+
+    total = qs.count()
+    ok_qs   = qs.filter(status='success')
+    err_qs  = qs.filter(status='error')
+    n_ok    = ok_qs.count()
+    n_err   = err_qs.count()
+
+    def pct(a, b):
+        return round(100.0 * a / b, 1) if b else 0.0
+
+    # ── 1. Performance sur la tâche ─────────────────────────────────────────
+    n_eval          = qs.filter(eval_success__isnull=False).count()
+    n_eval_success  = qs.filter(eval_success=True).count()
+    task_success    = pct(n_eval_success, n_eval) if n_eval else None
+    # Proxy automatique : réponse fournie et non refus
+    n_answered      = ok_qs.filter(is_refusal=False).count()
+    answer_rate     = pct(n_answered, total)
+
+    # ── 2. Efficacité ───────────────────────────────────────────────────────
+    agg = ok_qs.aggregate(
+        avg_lat=Avg('latency_ms'),
+        avg_ptok=Avg('prompt_tokens'),
+        avg_ctok=Avg('completion_tokens'),
+        avg_ttok=Avg('total_tokens'),
+        sum_ttok=Sum('total_tokens'),
+        avg_hist=Avg('history_len'),
+        avg_ctx=Avg('context_chars'),
+    )
+    avg_latency  = int(agg['avg_lat'] or 0)
+    avg_tokens   = int(agg['avg_ttok'] or 0)
+    total_tokens = int(agg['sum_ttok'] or 0)
+    # Coût estimatif (tarif indicatif configurable) : $ / 1M tokens
+    cost_per_mtok = 3.0
+    est_cost      = round(total_tokens / 1_000_000 * cost_per_mtok, 4)
+    # P95 latence (calcul en Python — SQLite n'a pas de percentile natif)
+    lat_values = list(ok_qs.exclude(latency_ms=0).values_list('latency_ms', flat=True))
+    lat_values.sort()
+    p95_latency = lat_values[int(len(lat_values) * 0.95)] if lat_values else 0
+
+    # ── 3. Robustesse / fiabilité ───────────────────────────────────────────
+    error_rate    = pct(n_err, total)
+    refusal_rate  = pct(ok_qs.filter(is_refusal=True).count(), total)
+    n_hallu       = qs.filter(eval_hallucination=True).count()
+    n_hallu_eval  = qs.filter(eval_hallucination__isnull=False).count()
+    hallu_rate    = pct(n_hallu, n_hallu_eval) if n_hallu_eval else None
+    # Répartition des types d'erreur
+    error_breakdown = list(
+        err_qs.values('error_type')
+              .annotate(n=Count('id')).order_by('-n')
+    )
+
+    # ── 4. Qualité du raisonnement (annotations humaines) ───────────────────
+    def eval_pct(field):
+        tot = qs.filter(**{f'{field}__isnull': False}).count()
+        pos = qs.filter(**{field: True}).count()
+        return (pct(pos, tot), tot) if tot else (None, 0)
+
+    faithful_rate, faithful_n = eval_pct('eval_faithful')
+    tool_ok_rate,  tool_ok_n  = eval_pct('eval_tool_ok')
+
+    # ── 5. Alignement & sécurité ────────────────────────────────────────────
+    # Taux de refus « appropriés » approché par le taux de refus global ci-dessus.
+    # Grounding : proportion de réponses avec contexte injecté non vide.
+    grounded_rate = pct(ok_qs.filter(context_chars__gt=0).count(), n_ok) if n_ok else 0.0
+
+    # ── 6. Satisfaction utilisateur ─────────────────────────────────────────
+    n_up    = qs.filter(feedback='up').count()
+    n_down  = qs.filter(feedback='down').count()
+    n_rated = n_up + n_down
+    csat    = pct(n_up, n_rated) if n_rated else None
+    feedback_coverage = pct(n_rated, total)
+    n_needs_human = qs.filter(eval_needs_human=True).count()
+    needs_human_eval = qs.filter(eval_needs_human__isnull=False).count()
+    human_loop_rate  = pct(n_needs_human, needs_human_eval) if needs_human_eval else None
+    avg_rating = qs.filter(eval_rating__isnull=False).aggregate(a=Avg('eval_rating'))['a']
+    avg_rating = round(avg_rating, 2) if avg_rating is not None else None
+
+    # ── 7. Agentique / traçabilité ──────────────────────────────────────────
+    site_focused_rate = pct(qs.exclude(site_focus='').count(), total)
+    avg_history = round(agg['avg_hist'] or 0, 1)
+
+    # ── Séries pour graphiques ──────────────────────────────────────────────
+    n_days = days or 30
+    labels, vol_ok, vol_err, lat_series = [], [], [], []
+    today = _tz.localdate()
+    for i in range(n_days - 1, -1, -1):
+        d = today - timedelta(days=i)
+        day_qs = qs.filter(created_at__date=d)
+        labels.append(d.strftime('%d/%m'))
+        vol_ok.append(day_qs.filter(status='success').count())
+        vol_err.append(day_qs.filter(status='error').count())
+        dlat = day_qs.filter(status='success').aggregate(a=Avg('latency_ms'))['a']
+        lat_series.append(int(dlat or 0))
+
+    # Top sites interrogés
+    top_sites = list(
+        qs.exclude(site_focus='').values('site_focus')
+          .annotate(n=Count('id')).order_by('-n')[:10]
+    )
+
+    recent = qs.order_by('-created_at')[:25]
+
+    ctx = {
+        'period': period,
+        'total': total,
+        'n_ok': n_ok, 'n_err': n_err,
+        # 1. Performance
+        'task_success': task_success, 'n_eval': n_eval,
+        'answer_rate': answer_rate, 'n_answered': n_answered,
+        # 2. Efficacité
+        'avg_latency': avg_latency, 'p95_latency': p95_latency,
+        'avg_tokens': avg_tokens, 'total_tokens': total_tokens, 'est_cost': est_cost,
+        'avg_ctx': int(agg['avg_ctx'] or 0),
+        # 3. Robustesse
+        'error_rate': error_rate, 'refusal_rate': refusal_rate,
+        'hallu_rate': hallu_rate, 'error_breakdown': error_breakdown,
+        # 4. Qualité
+        'faithful_rate': faithful_rate, 'faithful_n': faithful_n,
+        'tool_ok_rate': tool_ok_rate, 'tool_ok_n': tool_ok_n,
+        # 5. Alignement
+        'grounded_rate': grounded_rate,
+        # 6. Satisfaction
+        'csat': csat, 'n_up': n_up, 'n_down': n_down, 'n_rated': n_rated,
+        'feedback_coverage': feedback_coverage, 'avg_rating': avg_rating,
+        'human_loop_rate': human_loop_rate,
+        # 7. Agentique
+        'site_focused_rate': site_focused_rate, 'avg_history': avg_history,
+        # Charts / tables
+        'chart_labels': json.dumps(labels),
+        'chart_vol_ok': json.dumps(vol_ok),
+        'chart_vol_err': json.dumps(vol_err),
+        'chart_lat': json.dumps(lat_series),
+        'chart_feedback': json.dumps([n_up, n_down, max(total - n_rated, 0)]),
+        'top_sites': top_sites,
+        'recent': recent,
+    }
+    return render(request, 'reports/isoc_dashboard.html', ctx)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

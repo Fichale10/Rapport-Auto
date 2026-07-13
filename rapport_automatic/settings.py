@@ -92,7 +92,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 TICKETING_API_URL      = os.environ.get('TICKETING_API_URL', '').strip().rstrip('/')
 TICKETING_API_USERNAME = os.environ.get('TICKETING_API_USERNAME', '').strip()
 TICKETING_API_PASSWORD = os.environ.get('TICKETING_API_PASSWORD', '').strip()
-TICKETING_API_IMPORT_INTERVAL_HOURS = int(os.environ.get('TICKETING_API_IMPORT_INTERVAL_HOURS', '3'))
+# Fenêtre (en jours) de récupération des tickets API par le chatbot ISOC_IA
+try:
+    ISOC_API_WINDOW_DAYS = int(os.environ.get('ISOC_API_WINDOW_DAYS', '180'))
+except ValueError:
+    ISOC_API_WINDOW_DAYS = 180
 
 # ── Chatbot ISOC_IA (Rodium AI / OpenAI-compatible) ─────────────────────────────
 RODIUM_API_KEY  = os.environ.get('RODIUM_API_KEY', '')
