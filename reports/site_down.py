@@ -100,13 +100,40 @@ def _network_bases():
 
 
 def _source_alarmes_candidates():
+    """Dossiers sources candidats : mois courant + mois précédent, sur chaque base.
+
+    Le mois précédent couvre la transition de mois (fichiers des 30/31 déposés
+    dans le dossier du mois précédent après le changement de mois).
+    """
     now = datetime.now()
-    mois, annee = NOMS_MOIS_DOSSIER[now.month], now.year
+    mois_list = [(NOMS_MOIS_DOSSIER[now.month], now.year)]
+    prev_mois = 12 if now.month == 1 else now.month - 1
+    prev_annee = now.year - 1 if now.month == 1 else now.year
+    mois_list.append((NOMS_MOIS_DOSSIER[prev_mois], prev_annee))
+
     return [
         os.path.join(base, 'RAPPORT RESEAU MOBILE', 'ALARME NETACT SITES DOWN',
                      f'SITE DOWN {mois} {annee}')
+        for mois, annee in mois_list
         for base in _network_bases()
     ]
+
+
+def _sources_alarmes_existantes():
+    """Retourne un dossier source existant par mois (courant, précédent).
+
+    Les candidats sont groupés par mois ; pour chaque mois on prend la
+    première base accessible (fallback IP → DNS).
+    """
+    candidats = _source_alarmes_candidates()
+    n_bases = max(len(_network_bases()), 1)
+    sources = []
+    for i in range(0, len(candidats), n_bases):
+        groupe = candidats[i:i + n_bases]
+        src = next((s for s in groupe if os.path.exists(s)), None)
+        if src:
+            sources.append(src)
+    return sources
 
 
 def _lire_journal(path):
@@ -175,12 +202,14 @@ def _dates_deja_traitees_cache():
 def collecter_alarmes():
     """Copie les nouveaux fichiers d'alarmes du partage réseau vers ``a_traiter``.
 
+    Parcourt les dossiers du mois courant et du mois précédent.
+
     Returns:
         int: nombre de fichiers copiés (0 si le réseau est inaccessible).
     """
     ensure_dirs()
-    source = next((s for s in _source_alarmes_candidates() if os.path.exists(s)), None)
-    if source is None:
+    sources = _sources_alarmes_existantes()
+    if not sources:
         logger.warning("site_down : source alarmes inaccessible (%s)",
                        _source_alarmes_candidates())
         return 0
@@ -188,36 +217,37 @@ def collecter_alarmes():
     deja_copies = _lire_journal(_journal_alarmes())
     dates_traitees = _dates_deja_traitees_cache()
 
-    fichiers = [
-        f for f in os.listdir(source)
-        if os.path.isfile(os.path.join(source, f))
-        and f.lower().endswith(('.xlsx', '.xls', '.csv'))
-        and not f.startswith(('~$', '.'))
-    ]
+    total_copies = []
+    for source in sources:
+        fichiers = [
+            f for f in os.listdir(source)
+            if os.path.isfile(os.path.join(source, f))
+            and f.lower().endswith(('.xlsx', '.xls', '.csv'))
+            and not f.startswith(('~$', '.'))
+        ]
 
-    candidats = []
-    for f in sorted(fichiers):
-        ma = extraire_mois_annee(f)
-        d = extraire_date(f)
-        date_fichier = f"{d[0]}-{d[1]}-{d[2]}" if d else None
-        if ma and date_fichier:
-            if date_fichier not in dates_traitees(ma):
+        candidats = []
+        for f in sorted(fichiers):
+            ma = extraire_mois_annee(f)
+            d = extraire_date(f)
+            date_fichier = f"{d[0]}-{d[1]}-{d[2]}" if d else None
+            if ma and date_fichier:
+                if date_fichier not in dates_traitees(ma):
+                    candidats.append(f)
+            elif f not in deja_copies:
                 candidats.append(f)
-        elif f not in deja_copies:
-            candidats.append(f)
 
-    copies = []
-    for nom in candidats:
-        try:
-            shutil.copy2(os.path.join(source, nom), os.path.join(folder_a_traiter(), nom))
-            copies.append(nom)
-        except Exception:
-            logger.exception("site_down : erreur copie %s", nom)
+        for nom in candidats:
+            try:
+                shutil.copy2(os.path.join(source, nom), os.path.join(folder_a_traiter(), nom))
+                total_copies.append(nom)
+            except Exception:
+                logger.exception("site_down : erreur copie %s", nom)
 
-    if copies:
-        _ecrire_journal(_journal_alarmes(), copies)
-        logger.info("site_down : %d fichier(s) alarme copié(s)", len(copies))
-    return len(copies)
+    if total_copies:
+        _ecrire_journal(_journal_alarmes(), total_copies)
+        logger.info("site_down : %d fichier(s) alarme copié(s)", len(total_copies))
+    return len(total_copies)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
