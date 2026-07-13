@@ -24,6 +24,8 @@ from datetime import datetime, time
 import pandas as pd
 from django.conf import settings
 from openpyxl import load_workbook
+from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -80,6 +82,8 @@ GRIS_LIGNE_PAIRE = 'F2F2F2'
 VERT_TOTAL       = '92D050'
 ORANGE_TOTAL     = 'FFA500'
 ROUGE_TOTAL      = 'FF4040'
+BLEU_FONCE       = '003087'
+JAUNE_YAS        = 'FFC72C'
 
 BORDER_THIN = Border(
     left=Side(style='thin'), right=Side(style='thin'),
@@ -526,8 +530,6 @@ _FONT_HEADER   = Font(name='Arial', bold=True, color=NOIR_TEXTE, size=10)
 _FILL_HEADER   = PatternFill('solid', start_color=JAUNE_HEADER)
 _ALIGN_HEADER  = Alignment(horizontal='center', vertical='center', wrap_text=True)
 _FONT_DATA     = Font(name='Arial', size=9)
-_FILL_PAIRE    = PatternFill('solid', start_color=GRIS_LIGNE_PAIRE)
-_FILL_IMPAIRE  = PatternFill('solid', start_color='FFFFFF')
 _ALIGN_LEFT    = Alignment(horizontal='left',   vertical='center')
 _ALIGN_CENTER  = Alignment(horizontal='center', vertical='center')
 
@@ -536,13 +538,6 @@ def _style_header(cell):
     cell.font      = _FONT_HEADER
     cell.fill      = _FILL_HEADER
     cell.alignment = _ALIGN_HEADER
-    cell.border    = BORDER_THIN
-
-
-def _style_cell(cell, row_index, align='left'):
-    cell.font      = _FONT_DATA
-    cell.fill      = _FILL_PAIRE if row_index % 2 == 0 else _FILL_IMPAIRE
-    cell.alignment = _ALIGN_LEFT if align == 'left' else _ALIGN_CENTER
     cell.border    = BORDER_THIN
 
 
@@ -651,6 +646,179 @@ def colorier_totaux_cumul(ws, df):
                 cell.font = font_c
                 cell.alignment = Alignment(horizontal='center', vertical='center')
                 cell.border = BORDER_THIN
+
+
+def ajouter_heatmap_cumul(ws, df):
+    """Dégradé blanc → jaune → rouge sur les colonnes « Durée » journalières."""
+    if len(df) == 0:
+        return
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        if re.match(r'^\d+-\w+ Durée$', col_name):
+            letter = get_column_letter(col_idx)
+            ws.conditional_formatting.add(
+                f'{letter}2:{letter}{len(df) + 1}',
+                ColorScaleRule(
+                    start_type='num', start_value=0,   start_color='FFFFFF',
+                    mid_type='num',   mid_value=120,   mid_color=JAUNE_YAS,
+                    end_type='num',   end_value=720,   end_color=ROUGE_TOTAL))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Onglet Synthèse (KPI + graphiques)
+# ──────────────────────────────────────────────────────────────────────────────
+def _fmt_duree(total_min):
+    total_min = int(total_min)
+    if total_min >= 1440:
+        return f"{total_min // 1440} j {(total_min % 1440) // 60} h"
+    if total_min >= 60:
+        return f"{total_min // 60} h {total_min % 60:02d} min"
+    return f"{total_min} min"
+
+
+def creer_feuille_synthese(wb, df, df_cumul, mois_annee):
+    """Insère un onglet Synthèse en première position : KPI + 3 graphiques."""
+    annee, mois_num = mois_annee.split('-')
+    nom_mois = NOMS_MOIS_COMPLETS.get(mois_num, mois_num)
+
+    if 'Synthèse' in wb.sheetnames:
+        del wb['Synthèse']
+    if '_data' in wb.sheetnames:
+        del wb['_data']
+    ws = wb.create_sheet('Synthèse', 0)
+    ws.sheet_view.showGridLines = False
+
+    # ── Données dérivées ───────────────────────────────────────────
+    mask = df['Alarm Time'].notna()
+    total_alarmes = int(mask.sum())
+    nb_sites      = int(df['Name'].nunique())
+    total_min     = int(df_cumul['Total Durée'].fillna(0).sum()) if len(df_cumul) else 0
+    par_jour      = (df.loc[mask].groupby(df.loc[mask, 'Alarm Time'].dt.day).size()
+                     if total_alarmes else pd.Series(dtype=int))
+    jour_pic      = int(par_jour.idxmax()) if len(par_jour) else None
+    top10         = df_cumul.head(10) if len(df_cumul) else df_cumul
+
+    esc = df['Escalade'].astype(str).str.strip() if 'Escalade' in df.columns else pd.Series(dtype=str)
+    par_escalade = esc[esc != ''].value_counts()
+    if len(par_escalade) == 0 and 'Région' in df_cumul.columns:
+        reg = df_cumul['Région'].astype(str).str.strip()
+        par_escalade = reg[reg != ''].value_counts()
+        pie_titre = 'Répartition par région'
+    else:
+        pie_titre = 'Répartition par escalade'
+
+    # ── Feuille de données cachée pour les graphiques ──────────────────────
+    wsd = wb.create_sheet('_data')
+    wsd.sheet_state = 'hidden'
+    wsd['A1'], wsd['B1'] = 'Jour', 'Alarmes'
+    for i, (jour, nb) in enumerate(sorted(par_jour.items()), start=2):
+        wsd.cell(row=i, column=1, value=int(jour))
+        wsd.cell(row=i, column=2, value=int(nb))
+    wsd['D1'], wsd['E1'], wsd['F1'] = 'Site', 'Nb', 'Durée (min)'
+    for i, (_, r) in enumerate(top10.iterrows(), start=2):
+        wsd.cell(row=i, column=4, value=str(r['Site']))
+        wsd.cell(row=i, column=5, value=int(r['Total Nb'] or 0))
+        wsd.cell(row=i, column=6, value=int(r['Total Durée'] or 0))
+    wsd['H1'], wsd['I1'] = 'Catégorie', 'Nb'
+    for i, (label, nb) in enumerate(par_escalade.head(8).items(), start=2):
+        wsd.cell(row=i, column=8, value=str(label))
+        wsd.cell(row=i, column=9, value=int(nb))
+
+    # ── Titre ──────────────────────────────────────────────────────────
+    ws.merge_cells('A1:P2')
+    c = ws['A1']
+    c.value = f"📉 SITE DOWN — {nom_mois} {annee}"
+    c.font = Font(name='Arial', bold=True, size=18, color='FFFFFF')
+    c.fill = PatternFill('solid', start_color=BLEU_FONCE)
+    c.alignment = Alignment(horizontal='center', vertical='center')
+    ws.merge_cells('A3:P3')
+    c = ws['A3']
+    c.value = f"Généré le {datetime.now():%d/%m/%Y %H:%M} — consolidation mensuelle des micro-coupures"
+    c.font = Font(name='Arial', size=10, color='888888', italic=True)
+    c.alignment = Alignment(horizontal='center')
+
+    # ── Cartes KPI ────────────────────────────────────────────────────
+    kpis = [
+        ('Alarmes',        f"{total_alarmes:,}".replace(',', ' ')),
+        ('Sites impactés', f"{nb_sites:,}".replace(',', ' ')),
+        ('Durée cumulée',  _fmt_duree(total_min)),
+        ('Durée moyenne',  _fmt_duree(total_min / total_alarmes) if total_alarmes else '—'),
+        ('Jour le plus impacté', f"{jour_pic} {NOMS_MOIS_COURTS.get(mois_num, '')}" if jour_pic else '—'),
+    ]
+    start_cols = [1, 4, 7, 10, 13]   # A, D, G, J, M
+    for (label, value), sc in zip(kpis, start_cols):
+        l1, l2 = get_column_letter(sc), get_column_letter(sc + 2)
+        ws.merge_cells(f'{l1}5:{l2}5')
+        ws.merge_cells(f'{l1}6:{l2}6')
+        lab = ws[f'{l1}5']; lab.value = label.upper()
+        lab.font = Font(name='Arial', size=9, bold=True, color='888888')
+        lab.alignment = Alignment(horizontal='center')
+        val = ws[f'{l1}6']; val.value = value
+        val.font = Font(name='Arial', size=16, bold=True, color=BLEU_FONCE)
+        val.alignment = Alignment(horizontal='center')
+        for row in (5, 6):
+            for cc in range(sc, sc + 3):
+                ws.cell(row=row, column=cc).fill = PatternFill('solid', start_color='F0F4FF')
+    ws.row_dimensions[5].height = 16
+    ws.row_dimensions[6].height = 26
+
+    # ── Graphiques ────────────────────────────────────────────────────
+    n_top = len(top10)
+    if n_top:
+        bar = BarChart()
+        bar.type, bar.style = 'col', 10
+        bar.title = 'Top 10 sites (nombre de coupures)'
+        bar.y_axis.title = 'Nb'
+        bar.legend = None
+        bar.width, bar.height = 17, 9
+        bar.add_data(Reference(wsd, min_col=5, min_row=1, max_row=n_top + 1),
+                     titles_from_data=True)
+        bar.set_categories(Reference(wsd, min_col=4, min_row=2, max_row=n_top + 1))
+        ws.add_chart(bar, 'A9')
+
+    if len(par_jour):
+        line = LineChart()
+        line.title = 'Alarmes par jour'
+        line.y_axis.title = 'Nb'
+        line.x_axis.title = 'Jour'
+        line.legend = None
+        line.width, line.height = 17, 9
+        line.add_data(Reference(wsd, min_col=2, min_row=1, max_row=len(par_jour) + 1),
+                      titles_from_data=True)
+        line.set_categories(Reference(wsd, min_col=1, min_row=2, max_row=len(par_jour) + 1))
+        ws.add_chart(line, 'J9')
+
+    if len(par_escalade):
+        pie = PieChart()
+        pie.title = pie_titre
+        pie.width, pie.height = 12, 9
+        n_pie = min(len(par_escalade), 8)
+        pie.add_data(Reference(wsd, min_col=9, min_row=1, max_row=n_pie + 1),
+                     titles_from_data=True)
+        pie.set_categories(Reference(wsd, min_col=8, min_row=2, max_row=n_pie + 1))
+        ws.add_chart(pie, 'A28')
+
+    for col in range(1, 17):
+        ws.column_dimensions[get_column_letter(col)].width = 9
+    wb.active = 0
+
+
+def _ecrire_fichier_mensuel(output_file, df_consolide, df_cumul, mois_annee, nom_feuille_cumul):
+    """Écrit le fichier mensuel complet : Synthèse + Données + Cumul formatés."""
+    cols_donnees = [c for c in df_consolide.columns if c not in ('Cause', 'Escalade')]
+    df_donnees = df_consolide[cols_donnees]
+
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        df_donnees.to_excel(writer, sheet_name='Données', index=False)
+        df_cumul.to_excel(writer, sheet_name=nom_feuille_cumul, index=False)
+
+    wb = load_workbook(output_file)
+    formater_feuille(wb['Données'], df_donnees, 'Données')
+    formater_feuille(wb[nom_feuille_cumul], df_cumul, nom_feuille_cumul)
+    colorier_totaux_cumul(wb[nom_feuille_cumul], df_cumul)
+    ajouter_heatmap_cumul(wb[nom_feuille_cumul], df_cumul)
+    creer_feuille_synthese(wb, df_consolide, df_cumul, mois_annee)
+    wb.save(output_file)
+    return df_donnees
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -817,18 +985,8 @@ def process_pending_files(extra_causes_map=None):
         df_consolide = df_consolide.sort_values('Alarm Time').reset_index(drop=True)
         df_cumul = creer_feuille_cumul(df_consolide, mois_annee, regions_map)
 
-        cols_donnees = [c for c in df_consolide.columns if c not in ('Cause', 'Escalade')]
-        df_donnees = df_consolide[cols_donnees]
-
-        with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
-            df_donnees.to_excel(writer, sheet_name='Données', index=False)
-            df_cumul.to_excel(writer, sheet_name=nom_feuille_cumul, index=False)
-
-        wb = load_workbook(output_file)
-        formater_feuille(wb['Données'], df_donnees, 'Données')
-        formater_feuille(wb[nom_feuille_cumul], df_cumul, nom_feuille_cumul)
-        colorier_totaux_cumul(wb[nom_feuille_cumul], df_cumul)
-        wb.save(output_file)
+        df_donnees = _ecrire_fichier_mensuel(
+            output_file, df_consolide, df_cumul, mois_annee, nom_feuille_cumul)
 
         # Persistance ORM (uniquement les nouvelles lignes traitées)
         created, updated = _sauvegarder_orm(
@@ -871,18 +1029,8 @@ def actualiser_fichiers_existants(extra_causes_map=None):
             df = ajouter_cause_escalade(df, causes_map)
             df_cumul = creer_feuille_cumul(df, mois_annee, regions_map)
 
-            cols_donnees = [c for c in df.columns if c not in ('Cause', 'Escalade')]
-            df_donnees = df[cols_donnees]
-
-            with pd.ExcelWriter(info['path'], engine='openpyxl') as writer:
-                df_donnees.to_excel(writer, sheet_name='Données', index=False)
-                df_cumul.to_excel(writer, sheet_name=nom_feuille_cumul, index=False)
-
-            wb = load_workbook(info['path'])
-            formater_feuille(wb['Données'], df_donnees, 'Données')
-            formater_feuille(wb[nom_feuille_cumul], df_cumul, nom_feuille_cumul)
-            colorier_totaux_cumul(wb[nom_feuille_cumul], df_cumul)
-            wb.save(info['path'])
+            _ecrire_fichier_mensuel(
+                info['path'], df, df_cumul, mois_annee, nom_feuille_cumul)
             summary['refreshed'] += 1
         except Exception as exc:
             logger.exception("site_down : actualisation %s échouée", info['name'])
