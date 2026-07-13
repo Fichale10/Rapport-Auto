@@ -59,16 +59,52 @@
     <div class="card" style="padding:24px;">
       <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">📤 Upload manuel</div>
       <div style="font-size:12px;color:#888;margin-bottom:16px;">
-        Téléverse un ou plusieurs fichiers d'alarmes NetAct (.xlsx, .xls, .csv) —
-        le nom doit contenir la date (ex. <code>… 05-07-2026.xlsx</code>).
+        Deux sélections distinctes : le fichier d'alarmes NetAct et, en option,
+        le rapport journalier pour les Cause/Escalade.
       </div>
-      <form method="post" enctype="multipart/form-data">
+      <form method="post" enctype="multipart/form-data" id="sd-upload-form">
         {% csrf_token %}
         <input type="hidden" name="action" value="upload">
-        <input type="file" name="alarm_files" multiple accept=".xlsx,.xls,.csv"
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
+          1️⃣ Fichier(s) d'alarmes NetAct (.xlsx, .xls, .csv)
+        </label>
+        <div style="font-size:11px;color:#888;margin-bottom:6px;">
+          Le nom doit contenir la date — ex. <code>… 05-07-2026.xlsx</code>
+        </div>
+        <input type="file" name="alarm_files" id="sd-alarm-files" multiple accept=".xlsx,.xls,.csv"
                style="margin-bottom:14px;display:block;">
-        <button type="submit" class="btn-primary">Traiter les fichiers</button>
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
+          2️⃣ Rapport(s) journalier(s) — Cause/Escalade (.xlsx, optionnel)
+        </label>
+        <div style="font-size:11px;color:#888;margin-bottom:6px;">
+          Onglet <code>INCIDENTS MOB J-1</code> — complète les incidents déjà en base
+        </div>
+        <input type="file" name="rapport_files" id="sd-rapport-files" multiple accept=".xlsx,.xls"
+               style="margin-bottom:14px;display:block;">
+
+        <div id="sd-dup-warn" style="display:none;font-size:12px;color:#dc2626;font-weight:600;margin-bottom:10px;">
+          ⚠️ Le même fichier est sélectionné dans les deux champs.
+        </div>
+        <button type="submit" class="btn-primary" id="sd-upload-btn">Traiter les fichiers</button>
       </form>
+      <script>
+        (function () {
+          const alarms   = document.getElementById('sd-alarm-files');
+          const rapports = document.getElementById('sd-rapport-files');
+          const warn     = document.getElementById('sd-dup-warn');
+          const btn      = document.getElementById('sd-upload-btn');
+          function check() {
+            const a = new Set(Array.from(alarms.files).map(f => f.name.toLowerCase()));
+            const dup = Array.from(rapports.files).some(f => a.has(f.name.toLowerCase()));
+            warn.style.display = dup ? 'block' : 'none';
+            btn.disabled = dup;
+          }
+          alarms.addEventListener('change', check);
+          rapports.addEventListener('change', check);
+        })();
+      </script>
     </div>
   </div>
 

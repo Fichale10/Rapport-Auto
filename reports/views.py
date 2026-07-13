@@ -7561,29 +7561,74 @@ def site_down_view(request):
             return redirect('site_down')
 
         if action == 'upload':
-            files = request.FILES.getlist('alarm_files')
-            if not files:
+            alarm_files   = request.FILES.getlist('alarm_files')
+            rapport_files = request.FILES.getlist('rapport_files')
+            if not alarm_files and not rapport_files:
                 messages.error(request, "Aucun fichier sélectionné.")
                 return redirect('site_down')
+
+            # Rejet si le même fichier apparaît dans les deux sélections
+            alarm_names   = {os.path.basename(f.name).lower() for f in alarm_files}
+            doublons = sorted({os.path.basename(f.name)
+                               for f in rapport_files
+                               if os.path.basename(f.name).lower() in alarm_names})
+            if doublons:
+                messages.error(
+                    request,
+                    "Fichier(s) présent(s) dans les deux sélections : "
+                    f"{', '.join(doublons)}. Le fichier d'alarmes et le rapport "
+                    "journalier doivent être des fichiers différents.")
+                return redirect('site_down')
+
+            # ── Rapports journaliers → mapping Cause/Escalade ────────────────
+            extra_causes_map = {}
+            for f in rapport_files:
+                name = os.path.basename(f.name)
+                if not name.lower().endswith(('.xlsx', '.xls')):
+                    messages.error(request, f"Format non supporté (rapport) : {name}")
+                    return redirect('site_down')
+                try:
+                    extra_causes_map.update(sd.charger_causes_escalades_rapport(f, name))
+                except Exception as exc:
+                    messages.error(request, f"Rapport journalier invalide — {exc}")
+                    return redirect('site_down')
+            if rapport_files:
+                messages.info(
+                    request,
+                    f"{len(rapport_files)} rapport(s) journalier(s) lu(s) — "
+                    f"{len(extra_causes_map)} correspondance(s) Cause/Escalade.")
+
+            # ── Fichiers d'alarmes → dossier à traiter ───────────────────────
             sd.ensure_dirs()
-            for f in files:
+            deposes = 0
+            for f in alarm_files:
                 name = os.path.basename(f.name)
                 if not name.lower().endswith(('.xlsx', '.xls', '.csv')):
-                    messages.error(request, f"Format non supporté : {name}")
+                    messages.error(request, f"Format non supporté (alarmes) : {name}")
                     continue
                 dest = os.path.join(sd.folder_a_traiter(), name)
                 with open(dest, 'wb') as out:
                     for chunk in f.chunks():
                         out.write(chunk)
+                deposes += 1
+
             try:
-                summary = sd.process_pending_files()
-                messages.success(
-                    request,
-                    f"Traitement terminé — {summary['processed']} fichier(s) traité(s), "
-                    f"{summary['errors']} erreur(s), {summary['created']} alarme(s) créée(s), "
-                    f"{summary['updated']} mise(s) à jour.")
-                for msg in summary['messages'][:5]:
-                    messages.info(request, msg)
+                if deposes:
+                    summary = sd.process_pending_files(extra_causes_map=extra_causes_map)
+                    messages.success(
+                        request,
+                        f"Traitement terminé — {summary['processed']} fichier(s) traité(s), "
+                        f"{summary['errors']} erreur(s), {summary['created']} alarme(s) créée(s), "
+                        f"{summary['updated']} mise(s) à jour.")
+                    for msg in summary['messages'][:5]:
+                        messages.info(request, msg)
+                else:
+                    # Seulement des rapports journaliers : actualise l'existant
+                    summary = sd.actualiser_fichiers_existants(extra_causes_map=extra_causes_map)
+                    messages.success(
+                        request,
+                        f"Cause/Escalade actualisées sur {summary['refreshed']} fichier(s) "
+                        f"mensuel(s), {summary['errors']} erreur(s).")
             except Exception as exc:
                 messages.error(request, f"Erreur durant le traitement : {exc}")
             return redirect('site_down')

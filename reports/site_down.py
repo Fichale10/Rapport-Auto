@@ -232,6 +232,35 @@ def charger_causes_escalades_map(mois_annee=None):
     return mapping
 
 
+def charger_causes_escalades_rapport(file_or_path, filename=''):
+    """Mapping (site, alarm_time à la minute) → {Cause, Escalade} depuis un
+    rapport journalier Excel (onglet ``INCIDENTS MOB J-1``).
+
+    Accepte un chemin ou un objet fichier (upload Django).
+    """
+    df = pd.read_excel(file_or_path, sheet_name='INCIDENTS MOB J-1')
+    required = ['Site Name', 'Alarm Time', 'Cause', 'Escalade']
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"{filename or 'rapport journalier'} : colonnes manquantes {missing} "
+            "dans l'onglet INCIDENTS MOB J-1")
+
+    df['Alarm Time'] = pd.to_datetime(df['Alarm Time'], errors='coerce', dayfirst=True)
+    mapping = {}
+    for _, row in df.iterrows():
+        site = str(row['Site Name']).strip()
+        at = row['Alarm Time']
+        if not site or pd.isna(at):
+            continue
+        key = (site, at.to_pydatetime().replace(second=0, microsecond=0))
+        mapping[key] = {
+            'Cause':    str(row['Cause'])    if pd.notna(row['Cause'])    else '',
+            'Escalade': str(row['Escalade']) if pd.notna(row['Escalade']) else '',
+        }
+    return mapping
+
+
 def ajouter_cause_escalade(df, mapping):
     causes, escalades = [], []
     for _, row in df.iterrows():
@@ -638,8 +667,12 @@ def fichiers_mensuels():
     return out
 
 
-def process_pending_files():
+def process_pending_files(extra_causes_map=None):
     """Traite tous les fichiers présents dans ``a_traiter``.
+
+    Args:
+        extra_causes_map: mapping Cause/Escalade supplémentaire (ex. rapport
+            journalier uploadé) — prioritaire sur celui de la base Incident.
 
     Returns:
         dict résumé : {processed, errors, months, created, updated, messages}
@@ -667,6 +700,8 @@ def process_pending_files():
 
     for mois_annee in sorted(fichiers_par_mois):
         causes_map = charger_causes_escalades_map(mois_annee)
+        if extra_causes_map:
+            causes_map = {**causes_map, **extra_causes_map}
         annee, mois_num = mois_annee.split('-')
         nom_feuille_cumul = f"Cumul_{NOMS_MOIS_COMPLETS.get(mois_num, mois_num)}_{annee}"
         output_file = os.path.join(folder_traites(), f'SITE_DOWN_{mois_annee}.xlsx')
@@ -745,7 +780,7 @@ def process_pending_files():
     return summary
 
 
-def actualiser_fichiers_existants():
+def actualiser_fichiers_existants(extra_causes_map=None):
     """Ré-applique Cause/Escalade + cumul sur les fichiers mensuels existants."""
     ensure_dirs()
     regions_map = charger_regions_map()
@@ -761,7 +796,10 @@ def actualiser_fichiers_existants():
             df = pd.read_excel(info['path'], sheet_name='Données')
             df['Alarm Time']  = pd.to_datetime(df['Alarm Time'],  errors='coerce')
             df['Cancel Time'] = pd.to_datetime(df['Cancel Time'], errors='coerce')
-            df = ajouter_cause_escalade(df, charger_causes_escalades_map(mois_annee))
+            causes_map = charger_causes_escalades_map(mois_annee)
+            if extra_causes_map:
+                causes_map = {**causes_map, **extra_causes_map}
+            df = ajouter_cause_escalade(df, causes_map)
             df_cumul = creer_feuille_cumul(df, mois_annee, regions_map)
 
             cols_donnees = [c for c in df.columns if c not in ('Cause', 'Escalade')]
