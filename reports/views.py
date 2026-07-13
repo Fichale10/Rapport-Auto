@@ -7615,11 +7615,18 @@ def site_down_view(request):
             try:
                 if deposes:
                     summary = sd.process_pending_files(extra_causes_map=extra_causes_map)
-                    messages.success(
-                        request,
-                        f"Traitement terminé — {summary['processed']} fichier(s) traité(s), "
-                        f"{summary['errors']} erreur(s), {summary['created']} alarme(s) créée(s), "
-                        f"{summary['updated']} mise(s) à jour.")
+                    if summary['processed'] == 0:
+                        messages.warning(
+                            request,
+                            "Aucun fichier n'a pu être traité — vérifie que le nom "
+                            "contient une date (ex. « … 05-07-2026.xlsx ») et que les "
+                            "colonnes attendues sont présentes.")
+                    else:
+                        messages.success(
+                            request,
+                            f"Traitement terminé — {summary['processed']} fichier(s) traité(s), "
+                            f"{summary['errors']} erreur(s), {summary['created']} alarme(s) créée(s), "
+                            f"{summary['updated']} mise(s) à jour.")
                     for msg in summary['messages'][:5]:
                         messages.info(request, msg)
                 else:

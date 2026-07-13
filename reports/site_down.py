@@ -118,10 +118,31 @@ def _ecrire_journal(path, noms):
             f.write(nom + '\n')
 
 
+_DATE_PATTERNS = [
+    # JJ-MM-AAAA (séparateurs - _ . ou espace)
+    (re.compile(r'(\d{2})[-_. ](\d{2})[-_. ](\d{4})'), lambda m: (m.group(3), m.group(2), m.group(1))),
+    # AAAA-MM-JJ
+    (re.compile(r'(\d{4})[-_. ](\d{2})[-_. ](\d{2})'), lambda m: (m.group(1), m.group(2), m.group(3))),
+    # JJ-MM-AA (année sur 2 chiffres)
+    (re.compile(r'(\d{2})[-_. ](\d{2})[-_. ](\d{2})(?!\d)'), lambda m: ('20' + m.group(3), m.group(2), m.group(1))),
+]
+
+
+def extraire_date(filename):
+    """Extrait (AAAA, MM, JJ) du nom de fichier, ou None."""
+    for pattern, extract in _DATE_PATTERNS:
+        m = pattern.search(filename)
+        if m:
+            annee, mois, jour = extract(m)
+            if 1 <= int(mois) <= 12 and 1 <= int(jour) <= 31:
+                return annee, mois, jour
+    return None
+
+
 def extraire_mois_annee(filename):
     """`... 05-07-2026 ...` → ``2026-07`` (None si pas de date dans le nom)."""
-    m = re.search(r'(\d{2})-(\d{2})-(\d{4})', filename)
-    return f"{m.group(3)}-{m.group(2)}" if m else None
+    d = extraire_date(filename)
+    return f"{d[0]}-{d[1]}" if d else None
 
 
 def _dates_deja_traitees_cache():
@@ -173,8 +194,8 @@ def collecter_alarmes():
     candidats = []
     for f in sorted(fichiers):
         ma = extraire_mois_annee(f)
-        m = re.search(r'(\d{2})-(\d{2})-(\d{4})', f)
-        date_fichier = f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+        d = extraire_date(f)
+        date_fichier = f"{d[0]}-{d[1]}-{d[2]}" if d else None
         if ma and date_fichier:
             if date_fichier not in dates_traitees(ma):
                 candidats.append(f)
@@ -696,7 +717,15 @@ def process_pending_files(extra_causes_map=None):
         if ma:
             fichiers_par_mois.setdefault(ma, []).append(f)
         else:
-            summary['messages'].append(f"Mois indéterminé, ignoré : {f}")
+            summary['errors'] += 1
+            summary['messages'].append(
+                f"❌ {f} : aucune date (JJ-MM-AAAA) trouvée dans le nom du fichier — "
+                "déplacé vers le dossier erreurs.")
+            try:
+                shutil.move(os.path.join(folder_a_traiter(), f),
+                            os.path.join(folder_erreurs(), f))
+            except OSError:
+                pass
 
     for mois_annee in sorted(fichiers_par_mois):
         causes_map = charger_causes_escalades_map(mois_annee)
