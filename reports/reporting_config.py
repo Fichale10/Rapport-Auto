@@ -53,6 +53,16 @@ PLATFORMS = {
                 'icon':     '📡',
                 'badge':    'Interactif',
             },
+            {
+                'num':      4,
+                'title':    'Outil 4',
+                'subtitle': 'Site Down — Micro-coupures',
+                'desc':     'Consolidation mensuelle des alarmes NetAct sites down : Nb & durée par site/jour, Cause/Escalade automatiques',
+                'url_name': 'site_down',
+                'url_kwargs': {},
+                'icon':     '📉',
+                'badge':    'Interactif',
+            },
         ],
         'import': {
             'domains': ['mobile', 'dr2'],

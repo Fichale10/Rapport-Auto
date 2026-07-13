@@ -1,6 +1,7 @@
 import calendar
 import json
 import logging
+import re
 import time  # noqa
 import os
 import math
@@ -7522,3 +7523,106 @@ def _build_cgi_ctx(data, mois_label, filename):
     return ctx
 
     return JsonResponse({'reply': reply})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SITE DOWN — traitement automatique des micro-coupures
+# ─────────────────────────────────────────────────────────────────────────────
+
+def site_down_view(request):
+    """Page Site Down : collecte réseau, upload manuel, liste des fichiers mensuels."""
+    from . import site_down as sd
+    from .models import SiteDownAlarm
+
+    if request.method == 'POST':
+        # Actions en écriture réservées aux gestionnaires/admins
+        try:
+            can_write = request.user.profile.can_write
+        except Exception:
+            can_write = request.user.is_superuser
+        if not can_write:
+            messages.error(request, "Accès réservé aux gestionnaires et administrateurs.")
+            return redirect('site_down')
+
+        action = request.POST.get('action', '')
+
+        if action == 'collect':
+            try:
+                summary = sd.run_auto()
+                messages.success(
+                    request,
+                    f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
+                    f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
+                    f"{summary['created']} alarme(s) créée(s) en base.")
+                for msg in summary['messages'][:5]:
+                    messages.info(request, msg)
+            except Exception as exc:
+                messages.error(request, f"Erreur durant la collecte : {exc}")
+            return redirect('site_down')
+
+        if action == 'upload':
+            files = request.FILES.getlist('alarm_files')
+            if not files:
+                messages.error(request, "Aucun fichier sélectionné.")
+                return redirect('site_down')
+            sd.ensure_dirs()
+            for f in files:
+                name = os.path.basename(f.name)
+                if not name.lower().endswith(('.xlsx', '.xls', '.csv')):
+                    messages.error(request, f"Format non supporté : {name}")
+                    continue
+                dest = os.path.join(sd.folder_a_traiter(), name)
+                with open(dest, 'wb') as out:
+                    for chunk in f.chunks():
+                        out.write(chunk)
+            try:
+                summary = sd.process_pending_files()
+                messages.success(
+                    request,
+                    f"Traitement terminé — {summary['processed']} fichier(s) traité(s), "
+                    f"{summary['errors']} erreur(s), {summary['created']} alarme(s) créée(s), "
+                    f"{summary['updated']} mise(s) à jour.")
+                for msg in summary['messages'][:5]:
+                    messages.info(request, msg)
+            except Exception as exc:
+                messages.error(request, f"Erreur durant le traitement : {exc}")
+            return redirect('site_down')
+
+        if action == 'refresh':
+            try:
+                summary = sd.actualiser_fichiers_existants()
+                messages.success(
+                    request,
+                    f"Actualisation terminée — {summary['refreshed']} fichier(s), "
+                    f"{summary['errors']} erreur(s).")
+            except Exception as exc:
+                messages.error(request, f"Erreur durant l'actualisation : {exc}")
+            return redirect('site_down')
+
+        messages.error(request, "Action inconnue.")
+        return redirect('site_down')
+
+    # ── GET ──────────────────────────────────────────────────────────────────
+    total_alarmes = SiteDownAlarm.objects.count()
+    dernieres = SiteDownAlarm.objects.all()[:15]
+    ctx = {
+        'fichiers':        sd.fichiers_mensuels(),
+        'total_alarmes':   total_alarmes,
+        'dernieres':       dernieres,
+        'network_enabled': bool(getattr(settings, 'SITE_DOWN_NETWORK_BASES', [])),
+        'interval_hours':  getattr(settings, 'SITE_DOWN_INTERVAL_HOURS', 0),
+    }
+    return render(request, 'reports/site_down.html', ctx)
+
+
+def site_down_download(request, filename):
+    """Télécharge un fichier mensuel SITE_DOWN_AAAA-MM.xlsx."""
+    from . import site_down as sd
+
+    # Nom strictement validé → pas de traversée de répertoire possible
+    if not re.fullmatch(r'SITE_DOWN_\d{4}-\d{2}\.xlsx', filename):
+        raise Http404
+    path = os.path.join(sd.folder_traites(), filename)
+    if not os.path.exists(path):
+        raise Http404
+    return FileResponse(open(path, 'rb'), as_attachment=True, filename=filename)

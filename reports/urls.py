@@ -27,6 +27,8 @@ urlpatterns = [
     # Outils globaux (avant le slug générique)
     path('reporting/dr2-daily/',                  login_required(views.dr2_daily_report),  name='dr2_daily'),
     path('reporting/dr2-daily/export/',           login_required(views.dr2_daily_export),  name='dr2_daily_export'),
+    path('reporting/site-down/',                  login_required(views.site_down_view),     name='site_down'),
+    path('reporting/site-down/download/<str:filename>/', login_required(views.site_down_download), name='site_down_download'),
     path('reporting/cgi-rapport/',               login_required(views.cgi_rapport_view),   name='cgi_rapport'),
     path('reporting/cgi-rapport/export/',        login_required(views.cgi_rapport_export), name='cgi_rapport_export'),
     path('reporting/mobile-cgi/',                login_required(views.mobile_cgi_view),    name='mobile_cgi'),

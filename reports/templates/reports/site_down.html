@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Site Down — Micro-coupures{% endblock %}
+{% block breadcrumb %}Site Down{% endblock %}
+{% block content %}
+
+<div style="max-width:1000px;margin:0 auto;">
+
+  <!-- En-tête -->
+  <div class="card" style="padding:28px;margin-bottom:24px;">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div style="font-size:36px;">📉</div>
+      <div>
+        <div style="font-size:20px;font-weight:700;color:#003087;">Traitement SITE DOWN</div>
+        <div style="font-size:13px;color:#888;">
+          Consolidation mensuelle des alarmes NetAct « sites down » — Nb &amp; durée par site/jour,
+          Cause/Escalade depuis les incidents importés, régions depuis la base sites.
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:24px;margin-top:20px;font-size:13px;">
+      <div><b>{{ total_alarmes }}</b> alarme(s) en base</div>
+      <div>
+        Collecte réseau :
+        {% if network_enabled %}
+          <span style="color:#059669;font-weight:600;">activée</span>
+          {% if interval_hours %}(toutes les {{ interval_hours }} h){% endif %}
+        {% else %}
+          <span style="color:#d97706;font-weight:600;">non configurée</span>
+          <span style="color:#888;">(SITE_DOWN_NETWORK_BASES dans .env)</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+
+    <div class="card" style="padding:24px;">
+      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">🌐 Collecte réseau</div>
+      <div style="font-size:12px;color:#888;margin-bottom:16px;">
+        Copie les nouveaux fichiers d'alarmes depuis le partage ISOC puis lance le traitement.
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="collect">
+        <button type="submit" class="btn-primary" {% if not network_enabled %}disabled title="Configurer SITE_DOWN_NETWORK_BASES"{% endif %}>
+          Collecter &amp; traiter
+        </button>
+      </form>
+      <form method="post" style="margin-top:10px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="refresh">
+        <button type="submit" class="btn-primary" style="background:#e2e8f0;">
+          Actualiser Cause/Escalade
+        </button>
+      </form>
+    </div>
+
+    <div class="card" style="padding:24px;">
+      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">📤 Upload manuel</div>
+      <div style="font-size:12px;color:#888;margin-bottom:16px;">
+        Téléverse un ou plusieurs fichiers d'alarmes NetAct (.xlsx, .xls, .csv) —
+        le nom doit contenir la date (ex. <code>… 05-07-2026.xlsx</code>).
+      </div>
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="upload">
+        <input type="file" name="alarm_files" multiple accept=".xlsx,.xls,.csv"
+               style="margin-bottom:14px;display:block;">
+        <button type="submit" class="btn-primary">Traiter les fichiers</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Fichiers mensuels -->
+  <div class="card" style="padding:24px;margin-bottom:24px;">
+    <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:14px;">📁 Fichiers mensuels consolidés</div>
+    {% if fichiers %}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="text-align:left;border-bottom:2px solid #e2e8f0;">
+            <th style="padding:8px;">Fichier</th>
+            <th style="padding:8px;">Dernière mise à jour</th>
+            <th style="padding:8px;">Taille</th>
+            <th style="padding:8px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in fichiers %}
+          <tr style="border-bottom:1px solid #f0f2f7;">
+            <td style="padding:8px;font-weight:600;">{{ f.name }}</td>
+            <td style="padding:8px;">{{ f.mtime|date:"d/m/Y H:i" }}</td>
+            <td style="padding:8px;">{{ f.size|filesizeformat }}</td>
+            <td style="padding:8px;text-align:right;">
+              <a href="{% url 'site_down_download' f.name %}" class="btn-primary"
+                 style="padding:6px 14px;font-size:12px;text-decoration:none;">⬇️ Télécharger</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="font-size:13px;color:#888;">Aucun fichier consolidé pour l'instant.</div>
+    {% endif %}
+  </div>
+
+  <!-- Dernières alarmes -->
+  <div class="card" style="padding:24px;">
+    <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:14px;">🕐 Dernières alarmes en base</div>
+    {% if dernieres %}
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="text-align:left;border-bottom:2px solid #e2e8f0;">
+            <th style="padding:6px;">Site</th>
+            <th style="padding:6px;">Région</th>
+            <th style="padding:6px;">Alarme</th>
+            <th style="padding:6px;">Fin</th>
+            <th style="padding:6px;">Durée (min)</th>
+            <th style="padding:6px;">Escalade</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in dernieres %}
+          <tr style="border-bottom:1px solid #f0f2f7;">
+            <td style="padding:6px;font-weight:600;">{{ a.site_name }}</td>
+            <td style="padding:6px;">{{ a.region|default:"—" }}</td>
+            <td style="padding:6px;">{{ a.alarm_time|date:"d/m/Y H:i" }}</td>
+            <td style="padding:6px;">{{ a.cancel_time|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td style="padding:6px;">{{ a.duration_min|floatformat:0|default:"—" }}</td>
+            <td style="padding:6px;">{{ a.escalade|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="font-size:13px;color:#888;">Aucune alarme en base pour l'instant.</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -22,7 +22,7 @@ class ReportsConfig(AppConfig):
             interval = getattr(settings, 'TICKETING_API_IMPORT_INTERVAL_HOURS', 3)
 
             scheduler = BackgroundScheduler()
-            from .scheduler import auto_api_import
+            from .scheduler import auto_api_import, auto_site_down
             scheduler.add_job(
                 auto_api_import,
                 trigger=IntervalTrigger(hours=interval),
@@ -30,6 +30,15 @@ class ReportsConfig(AppConfig):
                 name='Import API automatique',
                 replace_existing=True,
             )
+            sd_interval = getattr(settings, 'SITE_DOWN_INTERVAL_HOURS', 0)
+            if sd_interval and getattr(settings, 'SITE_DOWN_NETWORK_BASES', []):
+                scheduler.add_job(
+                    auto_site_down,
+                    trigger=IntervalTrigger(hours=sd_interval),
+                    id='auto_site_down',
+                    name='Traitement SITE DOWN automatique',
+                    replace_existing=True,
+                )
             scheduler.start()
         except Exception:
             pass

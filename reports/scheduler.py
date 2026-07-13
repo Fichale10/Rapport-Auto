@@ -35,3 +35,20 @@ def auto_api_import():
                 logger.error("auto_api_import erreur : %s", err)
     except Exception:
         logger.exception("auto_api_import : exception non gérée")
+
+
+def auto_site_down():
+    """Collecte réseau + traitement automatique des alarmes SITE DOWN."""
+    from .site_down import run_auto
+
+    try:
+        summary = run_auto()
+        logger.info(
+            "auto_site_down : %s collecté(s), %s traité(s), %s erreur(s), "
+            "%s créée(s) / %s maj en base",
+            summary.get('collected', 0), summary['processed'], summary['errors'],
+            summary['created'], summary['updated'])
+        for msg in summary['messages']:
+            logger.info("auto_site_down : %s", msg)
+    except Exception:
+        logger.exception("auto_site_down : exception non gérée")

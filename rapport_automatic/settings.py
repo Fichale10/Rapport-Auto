@@ -102,7 +102,17 @@ except ValueError:
 RODIUM_API_KEY  = os.environ.get('RODIUM_API_KEY', '')
 RODIUM_API_BASE = os.environ.get('RODIUM_API_BASE', 'https://api.rodiumai.io/v1').rstrip('/')
 RODIUM_MODEL    = os.environ.get('RODIUM_MODEL', 'anthropic/claude-fable-5')
-
+# ── Traitement SITE DOWN (micro-coupures) ────────────────────────────────
+# Racines réseau candidates, séparées par des points-virgules
+# ex. \\10.228.15.80\isoc;\\ca-filstorsrv\ISOC
+SITE_DOWN_NETWORK_BASES = [
+    p.strip() for p in os.environ.get('SITE_DOWN_NETWORK_BASES', '').split(';') if p.strip()
+]
+# Intervalle (heures) de la tâche planifiée — 0 pour désactiver
+try:
+    SITE_DOWN_INTERVAL_HOURS = int(os.environ.get('SITE_DOWN_INTERVAL_HOURS', '6'))
+except ValueError:
+    SITE_DOWN_INTERVAL_HOURS = 6
 # ── Auth ───────────────────────────────────────────────────────────────────────
 LOGIN_URL           = '/accounts/login/'
 LOGIN_REDIRECT_URL  = '/'

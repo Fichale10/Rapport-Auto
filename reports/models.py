@@ -234,6 +234,37 @@ class Incident(models.Model):
         return (end - alarm).total_seconds() >= dr2_offset
 
 
+class SiteDownAlarm(models.Model):
+    """Alarme « site down » NetAct consolidée par le traitement automatique.
+
+    Alimenté par reports/site_down.py (collecte réseau planifiée ou upload manuel).
+    Une ligne = une occurrence d'alarme (site + heure d'alarme uniques).
+    """
+    site_name   = models.CharField(max_length=150, db_index=True)
+    alarm_time  = models.DateTimeField(db_index=True)
+    cancel_time = models.DateTimeField(null=True, blank=True)
+    duration_min = models.FloatField(null=True, blank=True)
+    alarm_text  = models.CharField(max_length=255, blank=True, default='')
+    cause       = models.TextField(blank=True, default='')
+    escalade    = models.CharField(max_length=80, blank=True, default='', db_index=True)
+    region      = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    source_file = models.CharField(max_length=255, blank=True, default='')
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-alarm_time']
+        constraints = [
+            models.UniqueConstraint(fields=['site_name', 'alarm_time'],
+                                    name='uniq_sitedown_site_alarmtime'),
+        ]
+        indexes = [
+            models.Index(fields=['alarm_time', 'site_name']),
+        ]
+
+    def __str__(self):
+        return f"{self.site_name} ({self.alarm_time:%Y-%m-%d %H:%M})"
+
+
 class ChatInteraction(models.Model):
     """Journalise chaque échange avec le chatbot ISOC_IA pour l'évaluation de l'agent.
 
