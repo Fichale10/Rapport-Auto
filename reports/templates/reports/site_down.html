@@ -32,6 +32,112 @@
     </div>
   </div>
 
+  <!-- Actions -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+
+    <div class="card" style="padding:24px;">
+      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">🌐 Collecte réseau</div>
+      <div style="font-size:12px;color:#888;margin-bottom:16px;">
+        Copie les nouveaux fichiers d'alarmes depuis le partage ISOC puis lance le traitement.
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="collect">
+        <button type="submit" class="btn-primary" {% if not network_enabled %}disabled title="Configurer SITE_DOWN_NETWORK_BASES"{% endif %}>
+          Collecter &amp; traiter
+        </button>
+      </form>
+      <form method="post" style="margin-top:10px;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="refresh">
+        <button type="submit" class="btn-primary" style="background:#e2e8f0;">
+          Actualiser Cause/Escalade
+        </button>
+      </form>
+    </div>
+
+    <div class="card" style="padding:24px;">
+      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">📤 Upload manuel</div>
+      <div style="font-size:12px;color:#888;margin-bottom:16px;">
+        Deux sélections distinctes : le fichier d'alarmes NetAct et, en option,
+        le rapport journalier pour les Cause/Escalade.
+      </div>
+      <form method="post" enctype="multipart/form-data" id="sd-upload-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="upload">
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
+          1️⃣ Fichier(s) d'alarmes NetAct (.xlsx, .xls, .csv)
+        </label>
+        <div style="font-size:11px;color:#888;margin-bottom:6px;">
+          Le nom doit contenir la date — ex. <code>… 05-07-2026.xlsx</code>
+        </div>
+        <input type="file" name="alarm_files" id="sd-alarm-files" multiple accept=".xlsx,.xls,.csv"
+               style="margin-bottom:14px;display:block;">
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
+          2️⃣ Rapport(s) journalier(s) — Cause/Escalade (.xlsx, optionnel)
+        </label>
+        <div style="font-size:11px;color:#888;margin-bottom:6px;">
+          Onglet <code>INCIDENTS MOB J-1</code> — complète les incidents déjà en base
+        </div>
+        <input type="file" name="rapport_files" id="sd-rapport-files" multiple accept=".xlsx,.xls"
+               style="margin-bottom:14px;display:block;">
+
+        <div id="sd-dup-warn" style="display:none;font-size:12px;color:#dc2626;font-weight:600;margin-bottom:10px;">
+          ⚠️ Le même fichier est sélectionné dans les deux champs.
+        </div>
+        <button type="submit" class="btn-primary" id="sd-upload-btn">Traiter les fichiers</button>
+      </form>
+      <script>
+        (function () {
+          const alarms   = document.getElementById('sd-alarm-files');
+          const rapports = document.getElementById('sd-rapport-files');
+          const warn     = document.getElementById('sd-dup-warn');
+          const btn      = document.getElementById('sd-upload-btn');
+          function check() {
+            const a = new Set(Array.from(alarms.files).map(f => f.name.toLowerCase()));
+            const dup = Array.from(rapports.files).some(f => a.has(f.name.toLowerCase()));
+            warn.style.display = dup ? 'block' : 'none';
+            btn.disabled = dup;
+          }
+          alarms.addEventListener('change', check);
+          rapports.addEventListener('change', check);
+
+          // État « en cours » sur les boutons d'action Site Down uniquement
+          document.querySelectorAll('input[type="hidden"][name="action"]').forEach(function (inp) {
+            const form = inp.closest('form');
+            if (!form) return;
+            form.addEventListener('submit', function () {
+              const b = form.querySelector('button[type="submit"]');
+              if (!b || b.disabled) return;
+              // Laisse la soumission partir, puis fige le bouton
+              setTimeout(function () {
+                b.disabled = true;
+                b.dataset.originalText = b.textContent;
+                b.innerHTML = '<span class="sd-spinner"></span> Traitement en cours…';
+                b.style.opacity = '0.75';
+                b.style.cursor = 'wait';
+              }, 0);
+            });
+          });
+        })();
+      </script>
+      <style>
+        .sd-spinner {
+          display: inline-block;
+          width: 13px; height: 13px;
+          border: 2px solid rgba(0,0,0,0.25);
+          border-top-color: #003087;
+          border-radius: 50%;
+          vertical-align: -2px;
+          animation: sd-spin 0.8s linear infinite;
+        }
+        @keyframes sd-spin { to { transform: rotate(360deg); } }
+      </style>
+    </div>
+  </div>
+
   <!-- Statistiques du mois -->
   {% if stats %}
   <div class="card" style="padding:24px;margin-bottom:24px;">
@@ -172,112 +278,6 @@
     {% endif %}
   </div>
   {% endif %}
-
-  <!-- Actions -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
-
-    <div class="card" style="padding:24px;">
-      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">🌐 Collecte réseau</div>
-      <div style="font-size:12px;color:#888;margin-bottom:16px;">
-        Copie les nouveaux fichiers d'alarmes depuis le partage ISOC puis lance le traitement.
-      </div>
-      <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="collect">
-        <button type="submit" class="btn-primary" {% if not network_enabled %}disabled title="Configurer SITE_DOWN_NETWORK_BASES"{% endif %}>
-          Collecter &amp; traiter
-        </button>
-      </form>
-      <form method="post" style="margin-top:10px;">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="refresh">
-        <button type="submit" class="btn-primary" style="background:#e2e8f0;">
-          Actualiser Cause/Escalade
-        </button>
-      </form>
-    </div>
-
-    <div class="card" style="padding:24px;">
-      <div style="font-size:15px;font-weight:700;color:#003087;margin-bottom:6px;">📤 Upload manuel</div>
-      <div style="font-size:12px;color:#888;margin-bottom:16px;">
-        Deux sélections distinctes : le fichier d'alarmes NetAct et, en option,
-        le rapport journalier pour les Cause/Escalade.
-      </div>
-      <form method="post" enctype="multipart/form-data" id="sd-upload-form">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="upload">
-
-        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
-          1️⃣ Fichier(s) d'alarmes NetAct (.xlsx, .xls, .csv)
-        </label>
-        <div style="font-size:11px;color:#888;margin-bottom:6px;">
-          Le nom doit contenir la date — ex. <code>… 05-07-2026.xlsx</code>
-        </div>
-        <input type="file" name="alarm_files" id="sd-alarm-files" multiple accept=".xlsx,.xls,.csv"
-               style="margin-bottom:14px;display:block;">
-
-        <label style="display:block;font-size:12px;font-weight:600;color:#003087;margin-bottom:4px;">
-          2️⃣ Rapport(s) journalier(s) — Cause/Escalade (.xlsx, optionnel)
-        </label>
-        <div style="font-size:11px;color:#888;margin-bottom:6px;">
-          Onglet <code>INCIDENTS MOB J-1</code> — complète les incidents déjà en base
-        </div>
-        <input type="file" name="rapport_files" id="sd-rapport-files" multiple accept=".xlsx,.xls"
-               style="margin-bottom:14px;display:block;">
-
-        <div id="sd-dup-warn" style="display:none;font-size:12px;color:#dc2626;font-weight:600;margin-bottom:10px;">
-          ⚠️ Le même fichier est sélectionné dans les deux champs.
-        </div>
-        <button type="submit" class="btn-primary" id="sd-upload-btn">Traiter les fichiers</button>
-      </form>
-      <script>
-        (function () {
-          const alarms   = document.getElementById('sd-alarm-files');
-          const rapports = document.getElementById('sd-rapport-files');
-          const warn     = document.getElementById('sd-dup-warn');
-          const btn      = document.getElementById('sd-upload-btn');
-          function check() {
-            const a = new Set(Array.from(alarms.files).map(f => f.name.toLowerCase()));
-            const dup = Array.from(rapports.files).some(f => a.has(f.name.toLowerCase()));
-            warn.style.display = dup ? 'block' : 'none';
-            btn.disabled = dup;
-          }
-          alarms.addEventListener('change', check);
-          rapports.addEventListener('change', check);
-
-          // État « en cours » sur les boutons d'action Site Down uniquement
-          document.querySelectorAll('input[type="hidden"][name="action"]').forEach(function (inp) {
-            const form = inp.closest('form');
-            if (!form) return;
-            form.addEventListener('submit', function () {
-              const b = form.querySelector('button[type="submit"]');
-              if (!b || b.disabled) return;
-              // Laisse la soumission partir, puis fige le bouton
-              setTimeout(function () {
-                b.disabled = true;
-                b.dataset.originalText = b.textContent;
-                b.innerHTML = '<span class="sd-spinner"></span> Traitement en cours…';
-                b.style.opacity = '0.75';
-                b.style.cursor = 'wait';
-              }, 0);
-            });
-          });
-        })();
-      </script>
-      <style>
-        .sd-spinner {
-          display: inline-block;
-          width: 13px; height: 13px;
-          border: 2px solid rgba(0,0,0,0.25);
-          border-top-color: #003087;
-          border-radius: 50%;
-          vertical-align: -2px;
-          animation: sd-spin 0.8s linear infinite;
-        }
-        @keyframes sd-spin { to { transform: rotate(360deg); } }
-      </style>
-    </div>
-  </div>
 
   <!-- Fichiers mensuels -->
   <div class="card" style="padding:24px;margin-bottom:24px;">
