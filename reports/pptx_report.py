@@ -1780,3 +1780,225 @@ def generate_ftth_editable(report, generated_on='',
     buf.seek(0)
     return buf
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXPORT STATISTIQUES PPTX
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _cover_stats(prs, period_label, generated_on):
+    sl = _blank(prs)
+    _rect(sl, 0, 0, SW, SH, C_BLUE)
+    _rect(sl, 0, 0, SW, Inches(0.12), C_YELL)
+    _rect(sl, 0, SH - Inches(0.12), SW, Inches(0.12), C_YELL)
+    _rect(sl, SW - Inches(0.12), 0, Inches(0.12), SH, C_YELL)
+    _rect(sl, 0, 0, Inches(0.12), SH, C_YELL)
+    _txt(sl, 'Yas Togo / DT / DOC / iSOC', MARGIN, Inches(0.5),
+         SW - 2*MARGIN, Inches(0.4), size=11,
+         color=RGBColor(0x80, 0xA0, 0xD0), align=PP_ALIGN.CENTER)
+    _txt(sl, 'STATISTIQUES', MARGIN, Inches(1.5),
+         SW - 2*MARGIN, Inches(1.1), size=60, bold=True, color=C_WHITE, align=PP_ALIGN.CENTER)
+    _txt(sl, 'RÉSEAU MOBILE', MARGIN, Inches(2.5),
+         SW - 2*MARGIN, Inches(0.9), size=40, bold=True, color=C_YELL, align=PP_ALIGN.CENTER)
+    _txt(sl, period_label.upper() if period_label else '', MARGIN, Inches(3.7),
+         SW - 2*MARGIN, Inches(0.8), size=26, bold=True, color=C_WHITE, align=PP_ALIGN.CENTER)
+    _txt(sl, f'Généré le {generated_on}', MARGIN, SH - Inches(0.8),
+         SW - 2*MARGIN, Inches(0.35), size=10,
+         color=RGBColor(0x80, 0xA0, 0xD0), align=PP_ALIGN.CENTER)
+
+
+def _slide_stats_kpis(prs, total_incidents, total_outage_sec,
+                      total_duree_sec, nb_escalades, mois_label):
+    sl = _blank(prs)
+    _header(sl, "Vue d'ensemble — Réseau Mobile", mois_label=mois_label)
+
+    def _fh(s):
+        return f'{s/3600:.1f}h' if s else '0.0h'
+
+    mttr_sec = total_duree_sec / total_incidents if total_incidents else 0
+    kpis = [
+        ('Total Incidents',   str(total_incidents),  'PÉRIODE',    C_BLUE),
+        ('Outage Total',      _fh(total_outage_sec), 'RÉSEAU',     RGBColor(0xD9, 0x50, 0x00)),
+        ('MTTR Moyen',        _fh(mttr_sec),         'PAR INCIDENT', RGBColor(0xC9, 0x77, 0x00)),
+        ('Escalades Actives', str(nb_escalades),     'MÉTIERS',    RGBColor(0x05, 0x80, 0x50)),
+    ]
+    _kpi_bar(sl, kpis)
+
+
+def _slide_stats_escalades(prs, escalades_sorted, total_incidents,
+                            total_outage_sec, total_duree_sec, mois_label):
+    sl = _blank(prs)
+    _header(sl, 'Synthèse par Escalade', mois_label=mois_label)
+
+    rows, fmts = [], {}
+    for i, (esc, v) in enumerate(escalades_sorted):
+        count = v['count']
+        if not count:
+            continue
+        mttr_sec = v['duree_sec'] / count
+        pct = f"{round(v['outage_sec'] / total_outage_sec * 100)}%" if total_outage_sec else '0%'
+        rows.append([esc, count, _fmt(v['duree_sec']), _fmt(mttr_sec), _fmt(v['outage_sec']), pct])
+        ri = len(rows) - 1
+        if count >= 20:
+            fmts[(ri, 1)] = (C_RED_BG, C_RED_FG)
+        elif count >= 10:
+            fmts[(ri, 1)] = (C_YELL_BG, C_YELL_FG)
+        else:
+            fmts[(ri, 1)] = (C_GREEN_BG, C_GREEN_FG)
+
+    total_mttr = total_duree_sec / total_incidents if total_incidents else 0
+    rows.append(['TOTAL', total_incidents, _fmt(total_duree_sec),
+                 _fmt(total_mttr), _fmt(total_outage_sec), '100%'])
+    last = len(rows) - 1
+    for j in range(6):
+        fmts[(last, j)] = (C_BLUE3, C_WHITE)
+
+    _table(sl, ['ESCALADE', 'INC', 'DURÉE', 'MTTR', 'OUTAGE', '% OUTAGE'],
+           rows, col_widths=[4.5, 1, 2, 2, 2, 1.5],
+           cell_fmts=fmts, font_size=9)
+
+
+def _slide_stats_degraded(prs, degraded_top10, site_top_cause, mois_label):
+    sl = _blank(prs)
+    _header(sl, 'Sites les Plus Dégradés — Durée Outage', mois_label=mois_label)
+
+    max_dur = degraded_top10[0][1] if degraded_top10 else 1
+    rows, fmts = [], {}
+    for i, (site, dur_sec) in enumerate(degraded_top10):
+        cause = (site_top_cause or {}).get(site) or 'N/A'
+        rows.append([str(i + 1), site[:35], f'{dur_sec/3600:.1f}h', cause[:45]])
+        ri = len(rows) - 1
+        if dur_sec >= max_dur * 0.7:
+            fmts[(ri, 2)] = (C_RED_BG, C_RED_FG)
+        elif dur_sec >= max_dur * 0.4:
+            fmts[(ri, 2)] = (C_YELL_BG, C_YELL_FG)
+        else:
+            fmts[(ri, 2)] = (C_GREEN_BG, C_GREEN_FG)
+
+    _table(sl, ['#', 'SITE', 'DURÉE OUTAGE', 'CAUSE PRINCIPALE'],
+           rows, col_widths=[0.5, 4, 2, 6.5], cell_fmts=fmts, font_size=10)
+
+
+def _slide_stats_recurrence(prs, sites_top10, mois_label):
+    sl = _blank(prs)
+    _header(sl, 'Récurrence des Sites — Top Incidents', mois_label=mois_label)
+
+    max_cnt = sites_top10[0][1] if sites_top10 else 1
+    rows, fmts = [], {}
+    for i, (site, count) in enumerate(sites_top10):
+        rows.append([str(i + 1), site[:55], count])
+        ri = len(rows) - 1
+        if count >= max_cnt * 0.7:
+            fmts[(ri, 2)] = (C_RED_BG, C_RED_FG)
+        elif count >= max_cnt * 0.4:
+            fmts[(ri, 2)] = (C_YELL_BG, C_YELL_FG)
+        else:
+            fmts[(ri, 2)] = (C_GREEN_BG, C_GREEN_FG)
+
+    _table(sl, ['#', 'SITE', 'NB INCIDENTS'],
+           rows, col_widths=[0.5, 9, 2], cell_fmts=fmts, font_size=10)
+
+
+def _slide_stats_causes(prs, causes_dur_top10, mois_label):
+    sl = _blank(prs)
+    _header(sl, "Top Causes — Par Durée d'Outage", mois_label=mois_label)
+
+    total_dur = sum(d for _, d in causes_dur_top10) or 1
+    rows = []
+    for i, (cause, dur_sec) in enumerate(causes_dur_top10):
+        pct = round(dur_sec / total_dur * 100)
+        rows.append([str(i + 1), cause[:60], f'{dur_sec/3600:.1f}h', f'{pct}%'])
+
+    _table(sl, ['#', 'CAUSE', 'DURÉE OUTAGE', '% DU TOTAL'],
+           rows, col_widths=[0.5, 8.5, 2, 1.5], font_size=10)
+
+
+def _slide_stats_dispo(prs, dispo_table, semaine_labels, mois_label):
+    """Slide disponibilité : résumé min/moy par escalade."""
+    sl = _blank(prs)
+    _header(sl, 'Disponibilité Réseau — Taux par Équipement', mois_label=mois_label)
+
+    rows, fmts = [], {}
+    for esc, periods in dispo_table.items():
+        vals = [v for v in periods.values() if v is not None]
+        if not vals:
+            continue
+        mn  = min(vals)
+        moy = sum(vals) / len(vals)
+        derniere_lbl = semaine_labels[-1] if semaine_labels else ''
+        derniere = periods.get(derniere_lbl)
+        rows.append([esc,
+                     f'{mn:.2f}%',
+                     f'{moy:.2f}%',
+                     f'{derniere:.2f}%' if derniere is not None else '—'])
+        ri = len(rows) - 1
+        val_ref = mn
+        if val_ref < 99.0:
+            fmts[(ri, 1)] = (C_RED_BG, C_RED_FG)
+        elif val_ref < 99.5:
+            fmts[(ri, 1)] = (C_YELL_BG, C_YELL_FG)
+        else:
+            fmts[(ri, 1)] = (C_GREEN_BG, C_GREEN_FG)
+
+    if rows:
+        _table(sl, ['ÉQUIPEMENT', 'MIN (%)', 'MOY (%)', 'DERNIÈRE PÉRIODE'],
+               rows, col_widths=[4, 2.5, 2.5, 3.5],
+               cell_fmts=fmts, font_size=10)
+    else:
+        _txt(sl, 'Aucune donnée de disponibilité pour cette période.',
+             MARGIN, CONTENT_TOP + Inches(1), SW - 2*MARGIN, Inches(0.5),
+             size=14, color=C_BLUE3)
+
+
+def generate_statistiques_pptx(
+    escalades_sorted,
+    total_incidents,
+    total_outage_sec,
+    total_duree_sec,
+    degraded_top10,
+    site_top_cause,
+    sites_top10,
+    causes_dur_top10,
+    dispo_table,
+    semaine_labels,
+    period_label='',
+    generated_on='',
+):
+    """
+    Génère le PPTX export des statistiques réseau mobile.
+    Retourne un BytesIO prêt à être envoyé en réponse HTTP.
+    """
+    prs = Presentation()
+    prs.slide_width  = SW
+    prs.slide_height = SH
+
+    mois_label = period_label or ''
+
+    _cover_stats(prs, period_label, generated_on)
+
+    nb_actives = sum(1 for _, v in escalades_sorted if v['count'] > 0)
+    _slide_stats_kpis(prs, total_incidents, total_outage_sec,
+                      total_duree_sec, nb_actives, mois_label)
+
+    if escalades_sorted:
+        _slide_stats_escalades(prs, escalades_sorted, total_incidents,
+                                total_outage_sec, total_duree_sec, mois_label)
+
+    if degraded_top10:
+        _slide_stats_degraded(prs, degraded_top10, site_top_cause, mois_label)
+
+    if sites_top10:
+        _slide_stats_recurrence(prs, sites_top10, mois_label)
+
+    if causes_dur_top10:
+        _slide_stats_causes(prs, causes_dur_top10, mois_label)
+
+    if dispo_table:
+        _slide_stats_dispo(prs, dispo_table, semaine_labels, mois_label)
+
+    _closing(prs)
+
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
