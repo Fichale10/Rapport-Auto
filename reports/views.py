@@ -1479,9 +1479,30 @@ def notifications(request):
         'count':    r.unresolved_count,
     } for r in reports[:10]]
 
+    total = reports.count()
+
+    # ── Alerte Site Down : fichiers sources manquants ──────────────────────
+    try:
+        from . import site_down as sd
+        mq = sd.lire_fichiers_manquants()
+    except Exception:
+        mq = None
+    if mq and mq.get('total'):
+        jours = ', '.join(
+            j for m in mq.get('mois', []) for j in m.get('jours', []))[:60]
+        data.insert(0, {
+            'pk':       '',
+            'url':      '/reporting/site-down/',
+            'filename': '📉 Site Down — fichiers sources manquants',
+            'date':     f"{jours} — vérifié le {mq.get('checked_at', '')}",
+            'count':    mq['total'],
+            'badge':    f"⚠ {mq['total']} jour{'s' if mq['total'] > 1 else ''}",
+        })
+        total += 1
+
     return JsonResponse({
-        'total': reports.count(),
-        'items': data,
+        'total': total,
+        'items': data[:10],
     })
 
 
