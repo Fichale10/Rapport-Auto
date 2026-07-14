@@ -446,16 +446,47 @@ def home(request):
             _m_end    = min(date(_y, _m, _last_day), _w_end)
             _home_auto_fetch(_m_start.isoformat(), _m_end.isoformat())
 
-    # Rapport unique couvrant exactement la fenêtre du preset (semaine/mois)
+    # Rapport unique couvrant exactement la fenêtre du filtre
     synth_exact_report = None
 
-    if period == 'custom' and custom_start and custom_end:
-        # Filtrage par date_rapport (date réelle des données, pas date d'upload)
-        _ensure_month_coverage(custom_start, custom_end)
-        base_qs = all_reports.filter(
-            date_rapport__gte=custom_start,
-            date_rapport__lte=custom_end,
+    def _find_exact_report(_w_start, _w_end):
+        """Rapport réseau mobile couvrant EXACTEMENT la fenêtre — Excel manuel
+        (« Traiter un fichier ») ou import API. Le plus récent d'abord."""
+        _qs = all_reports.filter(date_rapport=_w_start)
+        if _w_end != _w_start:
+            _qs = _qs.filter(date_fin=_w_end)
+        else:
+            _qs = _qs.filter(Q(date_fin__isnull=True) | Q(date_fin=_w_start))
+        for _r in _qs:
+            _name = (_r.original_filename or '').upper()
+            if _name.startswith('API_') and not _name.startswith('API_MOBILE_'):
+                continue  # rapport API d'un autre réseau
+            return _r
+        return None
+
+    def _reports_fully_within(_w_start, _w_end):
+        """Rapports dont la période est ENTIÈREMENT dans la fenêtre — exclut
+        p.ex. un rapport mensuel qui déborde d'une fenêtre hebdomadaire."""
+        return all_reports.filter(date_rapport__gte=_w_start).filter(
+            Q(date_fin__lte=_w_end)
+            | Q(date_fin__isnull=True, date_rapport__lte=_w_end)
         )
+
+    if period == 'custom' and custom_start and custom_end:
+        _delta = (custom_end - custom_start).days
+        # 1) Un rapport couvrant exactement la fenêtre existe-t-il déjà ?
+        synth_exact_report = _find_exact_report(custom_start, custom_end)
+        if _delta <= 31:
+            # Fenêtre courte : importer LA fenêtre exacte si nécessaire
+            if synth_exact_report is None or force_refresh:
+                _home_auto_fetch(custom_start.isoformat(), custom_end.isoformat())
+                synth_exact_report = _find_exact_report(custom_start, custom_end)
+        else:
+            # Fenêtre longue : couverture mois par mois
+            _ensure_month_coverage(custom_start, custom_end)
+        # Évolution/agrégation : uniquement les rapports entièrement DANS la
+        # fenêtre (un mensuel qui déborde ne doit pas gonfler une semaine)
+        base_qs = _reports_fully_within(custom_start, custom_end)
     elif period in _PRESET_DAYS:
         base_qs = all_reports
         _win_end   = date.today()
@@ -465,17 +496,13 @@ def home(request):
         _fetch_allowed = ('period' in request.GET) or force_refresh
 
         if _PRESET_DAYS[period] <= 31:
-            # Fenêtre courte : UN rapport API couvrant exactement la fenêtre
+            # Fenêtre courte : UN rapport couvrant exactement la fenêtre
             # → sémantique identique à « Traiter un fichier » (incidents bornés
             #   à la fenêtre et comptés une seule fois)
-            _exact_qs = all_reports.filter(
-                original_filename__startswith='API_MOBILE_',
-                date_rapport=_win_start, date_fin=_win_end,
-            )
-            synth_exact_report = _exact_qs.first()
+            synth_exact_report = _find_exact_report(_win_start, _win_end)
             if (synth_exact_report is None or force_refresh) and _fetch_allowed:
                 _home_auto_fetch(_win_start.isoformat(), _win_end.isoformat())
-                synth_exact_report = _exact_qs.first()
+                synth_exact_report = _find_exact_report(_win_start, _win_end)
         elif _fetch_allowed:
             # Fenêtre longue : couverture mois par mois (comme le filtre custom)
             _ensure_month_coverage(_win_start, _win_end)
@@ -502,10 +529,13 @@ def home(request):
         # Un seul rapport couvrant exactement la fenêtre → chiffres identiques
         # à « Traiter un fichier » sur cette période
         synth_qs = [synth_exact_report]
+    elif period in _PRESET_DAYS:
+        # Agrégation de repli : rapports entièrement dans la fenêtre,
+        # sans périodes englobées (journaliers couverts par un mensuel)
+        synth_qs = _exclude_covered_periods(
+            _reports_fully_within(_win_start, _win_end))
     else:
-        # Agrégation multi-rapports : on exclut les périodes englobées (ex.
-        # rapports journaliers couverts par un rapport mensuel API)
-        synth_qs = _exclude_covered_periods(_filter_reports_by_period(base_qs, period))
+        synth_qs = _exclude_covered_periods(base_qs)
 
     esc_data = defaultdict(lambda: {
         'inc': 0, 'duree_sec': 0, 'outage_sec': 0,
