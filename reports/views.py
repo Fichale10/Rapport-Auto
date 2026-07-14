@@ -280,6 +280,37 @@ def _exclude_duplicate_periods(qs):
     return qs.exclude(pk__in=dup_ids) if dup_ids else qs
 
 
+def _exclude_covered_periods(qs):
+    """Exclut les rapports dont la période est strictement incluse dans celle
+    d'un rapport plus long du même réseau (ex. rapports journaliers couverts
+    par un rapport mensuel API).
+
+    Évite le double comptage des incidents lors de l'agrégation : un incident
+    présent dans le rapport mensuel ET dans un rapport journalier ne doit
+    compter qu'une fois.
+    """
+    spans = []
+    for pk, fname, d_rap, d_fin in qs.values_list(
+            'id', 'original_filename', 'date_rapport', 'date_fin'):
+        name = (fname or '').upper()
+        if name.startswith('API_') and len(name.split('_')) > 1:
+            network = name.split('_')[1]
+        else:
+            network = 'MOBILE'
+        spans.append((pk, network, d_rap, d_fin or d_rap))
+
+    dup_ids, kept = [], []
+    # Les périodes les plus longues d'abord
+    for pk, network, start, end in sorted(
+            spans, key=lambda s: (s[3] - s[2]).days, reverse=True):
+        if any(n == network and ks <= start and ke >= end and (ks, ke) != (start, end)
+               for _, n, ks, ke in kept):
+            dup_ids.append(pk)
+        else:
+            kept.append((pk, network, start, end))
+    return qs.exclude(pk__in=dup_ids) if dup_ids else qs
+
+
 def home(request):
     if request.user.is_superuser:
         all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
@@ -371,21 +402,24 @@ def home(request):
                 f"Erreur lors de l'import MOBILE : {type(_exc).__name__}: {_exc}")
             return None
 
-    if period == 'custom' and custom_start and custom_end:
-        # Filtrage par date_rapport (date réelle des données, pas date d'upload)
-        base_qs = all_reports.filter(
-            date_rapport__gte=custom_start,
-            date_rapport__lte=custom_end,
-        )
+    _PRESET_DAYS = {'week': 6, 'month': 29, 'quarter': 89, 'half': 179, 'year': 364}
 
-        # ── Calcul des mois à fetcher ──────────────────────────────────────
+    def _ensure_month_coverage(_w_start, _w_end):
+        """Importe depuis l'API les mois manquants de la fenêtre.
+
+        Chaque mois devient UN rapport (fenêtre de traitement unique) —
+        même sémantique que « Traiter un fichier ».
+        """
         import calendar as _cal
         from django.db.models.functions import ExtractYear, ExtractMonth
 
+        _rng_qs = all_reports.filter(
+            date_rapport__gte=_w_start, date_rapport__lte=_w_end)
+
         # Mois attendus sur la plage
         _all_months = []
-        _cur = date(custom_start.year, custom_start.month, 1)
-        _end_month_start = date(custom_end.year, custom_end.month, 1)
+        _cur = date(_w_start.year, _w_start.month, 1)
+        _end_month_start = date(_w_end.year, _w_end.month, 1)
         while _cur <= _end_month_start:
             _all_months.append((_cur.year, _cur.month))
             if _cur.month == 12:
@@ -397,28 +431,54 @@ def home(request):
             # Forcer la MAJ : re-fetcher TOUS les mois (overwrite=True dans _home_auto_fetch)
             _months_to_fetch = _all_months
         else:
-            # Mois déjà présents en base
+            # Mois déjà présents en base → fetch uniquement les manquants
             _covered = set(
-                base_qs.annotate(
+                _rng_qs.annotate(
                     _y=ExtractYear('date_rapport'),
                     _m=ExtractMonth('date_rapport'),
                 ).values_list('_y', '_m').distinct()
             )
-            # Fetch uniquement les mois manquants
             _months_to_fetch = sorted(set(_all_months) - _covered)
 
-        if _months_to_fetch:
-            for _y, _m in _months_to_fetch:
-                _last_day = _cal.monthrange(_y, _m)[1]
-                _m_start  = max(date(_y, _m, 1), custom_start)
-                _m_end    = min(date(_y, _m, _last_day), custom_end)
-                _home_auto_fetch(_m_start.isoformat(), _m_end.isoformat())
+        for _y, _m in _months_to_fetch:
+            _last_day = _cal.monthrange(_y, _m)[1]
+            _m_start  = max(date(_y, _m, 1), _w_start)
+            _m_end    = min(date(_y, _m, _last_day), _w_end)
+            _home_auto_fetch(_m_start.isoformat(), _m_end.isoformat())
 
-            # Re-query après import
-            base_qs = all_reports.filter(
-                date_rapport__gte=custom_start,
-                date_rapport__lte=custom_end,
+    # Rapport unique couvrant exactement la fenêtre du preset (semaine/mois)
+    synth_exact_report = None
+
+    if period == 'custom' and custom_start and custom_end:
+        # Filtrage par date_rapport (date réelle des données, pas date d'upload)
+        _ensure_month_coverage(custom_start, custom_end)
+        base_qs = all_reports.filter(
+            date_rapport__gte=custom_start,
+            date_rapport__lte=custom_end,
+        )
+    elif period in _PRESET_DAYS:
+        base_qs = all_reports
+        _win_end   = date.today()
+        _win_start = _win_end - timedelta(days=_PRESET_DAYS[period])
+        # Fetch API uniquement sur action explicite (choix d'un filtre ou MAJ
+        # forcée) pour ne pas bloquer le chargement par défaut si l'API est lente
+        _fetch_allowed = ('period' in request.GET) or force_refresh
+
+        if _PRESET_DAYS[period] <= 31:
+            # Fenêtre courte : UN rapport API couvrant exactement la fenêtre
+            # → sémantique identique à « Traiter un fichier » (incidents bornés
+            #   à la fenêtre et comptés une seule fois)
+            _exact_qs = all_reports.filter(
+                original_filename__startswith='API_MOBILE_',
+                date_rapport=_win_start, date_fin=_win_end,
             )
+            synth_exact_report = _exact_qs.first()
+            if (synth_exact_report is None or force_refresh) and _fetch_allowed:
+                _home_auto_fetch(_win_start.isoformat(), _win_end.isoformat())
+                synth_exact_report = _exact_qs.first()
+        elif _fetch_allowed:
+            # Fenêtre longue : couverture mois par mois (comme le filtre custom)
+            _ensure_month_coverage(_win_start, _win_end)
     else:
         base_qs = all_reports
 
@@ -438,7 +498,14 @@ def home(request):
         evol_latest_report = last_report
 
     # ── Synthèse par Escalade agrégée (même période) ───────────────────────
-    synth_qs = _filter_reports_by_period(base_qs, period)  # 'custom' → return as-is
+    if synth_exact_report is not None:
+        # Un seul rapport couvrant exactement la fenêtre → chiffres identiques
+        # à « Traiter un fichier » sur cette période
+        synth_qs = [synth_exact_report]
+    else:
+        # Agrégation multi-rapports : on exclut les périodes englobées (ex.
+        # rapports journaliers couverts par un rapport mensuel API)
+        synth_qs = _exclude_covered_periods(_filter_reports_by_period(base_qs, period))
 
     esc_data = defaultdict(lambda: {
         'inc': 0, 'duree_sec': 0, 'outage_sec': 0,
