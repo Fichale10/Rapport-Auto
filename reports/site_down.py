@@ -705,6 +705,29 @@ def ajouter_heatmap_cumul(ws, df):
                     end_type='num',   end_value=720,   end_color=ROUGE_TOTAL))
 
 
+def ajouter_legende_cumul(ws, df):
+    """Légende des couleurs, placée sous le tableau du cumul."""
+    row = len(df) + 3   # une ligne vide après le tableau
+
+    titre = ws.cell(row=row, column=1, value='Légende')
+    titre.font = Font(name='Arial', bold=True, size=10)
+
+    entrees = [
+        (ROUGE_TOTAL,  'FFFFFF', 'Total rouge : site en panne les 4 derniers jours consécutifs'),
+        (ORANGE_TOTAL, '000000', 'Total orange : site en panne les 3 derniers jours consécutifs'),
+        (VERT_TOTAL,   '000000', 'Total vert : aucune panne sur les 3 derniers jours'),
+        (JAUNE_YAS,    '000000', 'Colonnes Durée : dégradé blanc → jaune (2 h) → rouge (12 h et +) de coupure dans la journée'),
+    ]
+    for i, (couleur, font_color, texte) in enumerate(entrees, start=1):
+        pastille = ws.cell(row=row + i, column=1)
+        pastille.fill = PatternFill('solid', start_color=couleur)
+        pastille.border = BORDER_THIN
+        pastille.font = Font(name='Arial', size=9, bold=True, color=font_color)
+        libelle = ws.cell(row=row + i, column=2, value=texte)
+        libelle.font = Font(name='Arial', size=9)
+        ws.row_dimensions[row + i].height = 14
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Onglet Synthèse (KPI + graphiques)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -858,6 +881,7 @@ def _ecrire_fichier_mensuel(output_file, df_consolide, df_cumul, mois_annee, nom
     formater_feuille(wb[nom_feuille_cumul], df_cumul, nom_feuille_cumul)
     colorier_totaux_cumul(wb[nom_feuille_cumul], df_cumul)
     ajouter_heatmap_cumul(wb[nom_feuille_cumul], df_cumul)
+    ajouter_legende_cumul(wb[nom_feuille_cumul], df_cumul)
     creer_feuille_synthese(wb, df_consolide, df_cumul, mois_annee)
     wb.save(output_file)
     return df_donnees
