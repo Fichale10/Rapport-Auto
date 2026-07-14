@@ -78,18 +78,21 @@ def _filter_reports_by_month(queryset, year=None, month=None):
 
 
 def _filter_reports_by_period(queryset, period):
+    """Filtre sur la date réelle des données (date_rapport/date_fin), pas sur
+    la date d'upload — cohérent avec l'import API et le graphique d'évolution.
+
+    Un rapport multi-jours est inclus dès que sa période chevauche la fenêtre.
+    """
+    days = {'week': 6, 'month': 29, 'quarter': 89,
+            'half': 179, 'year': 364}.get(period)
+    if days is None:
+        return queryset  # 'all' ou 'custom'
     today = date.today()
-    if period == 'week':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=6))
-    if period == 'month':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=29))
-    if period == 'quarter':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=89))
-    if period == 'half':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=179))
-    if period == 'year':
-        return queryset.filter(uploaded_at__date__gte=today - timedelta(days=364))
-    return queryset  # 'all' ou 'custom'
+    start = today - timedelta(days=days)
+    return queryset.filter(date_rapport__lte=today).filter(
+        Q(date_fin__gte=start)
+        | Q(date_fin__isnull=True, date_rapport__gte=start)
+    )
 
 
 def _shift_month(d, delta):
@@ -504,7 +507,9 @@ def home(request):
             'escalade':   esc,
             'inc_count':  inc if inc > 0 else 0,
             'duree':      _sec_to_hms(d['duree_sec']) if d['duree_sec'] else '0:00:00',
-            'mttr':       _sec_to_hms(d['mttr_sec']) if d['mttr_sec'] else '0:00:00',
+            # MTTR recalculé (durée totale / incidents) — une somme de MTTR
+            # par rapport n'est pas une moyenne valide
+            'mttr':       _sec_to_hms(int(d['duree_sec'] / inc)) if inc > 0 else '0:00:00',
             'outage':     _sec_to_hms(d['outage_sec']) if d['outage_sec'] else '0:00:00',
             'status':     status,
             'unresolved': unres,
