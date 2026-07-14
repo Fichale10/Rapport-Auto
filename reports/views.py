@@ -7571,17 +7571,18 @@ def site_down_view(request):
             try:
                 summary = sd.run_auto()
                 if not summary.get('network_ok', True):
+                    # Réseau inaccessible : uniquement l'erreur, pas de détails parasites
                     messages.error(
                         request,
                         "❌ Partage réseau ISOC inaccessible depuis le serveur : la collecte "
                         "automatique est impossible pour le moment. Vérifiez la connectivité "
                         "du serveur au partage, ou utilisez l'upload manuel ci-dessous.")
-                else:
-                    messages.success(
-                        request,
-                        f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
-                        f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
-                        f"{summary['created']} alarme(s) créée(s) en base.")
+                    return redirect('site_down')
+                messages.success(
+                    request,
+                    f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
+                    f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
+                    f"{summary['created']} alarme(s) créée(s) en base.")
                 mq = summary.get('fichiers_manquants') or {}
                 if mq.get('total'):
                     details = ' — '.join(
