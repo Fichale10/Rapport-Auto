@@ -9,13 +9,20 @@
   <div class="card" style="padding:28px;margin-bottom:24px;">
     <div style="display:flex;align-items:center;gap:16px;">
       <div style="font-size:36px;">📉</div>
-      <div>
+      <div style="flex:1;">
         <div style="font-size:20px;font-weight:700;color:#003087;">Traitement SITE DOWN</div>
         <div style="font-size:13px;color:#888;">
           Consolidation mensuelle des alarmes NetAct « sites down » — Nb &amp; durée par site/jour,
           Cause/Escalade depuis les incidents importés, régions depuis la base sites.
         </div>
       </div>
+      <a href="{% url 'reporting_platform' 'mobile-dr2' %}"
+         style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid #e2e8f0;
+                border-radius:8px;font-size:13px;font-weight:600;color:#003087;text-decoration:none;
+                white-space:nowrap;background:#f8fafc;"
+         onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='#f8fafc'">
+        &#8592; Retour
+      </a>
     </div>
     <div style="display:flex;gap:24px;margin-top:20px;font-size:13px;">
       <div><b>{{ total_alarmes }}</b> alarme(s) en base</div>
