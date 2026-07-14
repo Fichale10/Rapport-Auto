@@ -93,6 +93,10 @@ class UploadedReport(models.Model):
     # }
     # Valeurs en secondes d'outage cumulé par jour.
     outage_journalier_json     = models.JSONField(default=dict, blank=True)
+    # Nb d'incidents (dédupliqués) par jour : {"TOTAL": {"2026-06-01": 3, …},
+    # "ENERGIE": {…}, …} — permet au graphe d'évolution de répartir les
+    # rapports multi-jours jour par jour au lieu de tout attribuer au 1er jour.
+    incidents_journaliers_json = models.JSONField(default=dict, blank=True)
     region_sites_json          = models.JSONField(default=dict, blank=True)
     fixe_stats_json            = models.JSONField(default=dict, blank=True)
     transmission_stats_json    = models.JSONField(default=dict, blank=True)

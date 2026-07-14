@@ -430,6 +430,23 @@ def run_import(
     else:
         report.outage_journalier_json = {}
 
+    # incidents_journaliers_json : nb d'incidents (dédupliqués) par jour et par
+    # escalade — jour = date de l'alarme (bornée à la fenêtre par process_file)
+    inc_jour: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    if "Alarm Time" in df_synth.columns:
+        _at_synth = _pd.to_datetime(df_synth["Alarm Time"], dayfirst=True,
+                                    format='mixed', errors='coerce')
+        for i in df_synth.index:
+            t = _at_synth.get(i)
+            if _pd.isna(t):
+                continue
+            day_str = t.strftime("%Y-%m-%d")
+            inc_jour["TOTAL"][day_str] += 1
+            esc = str(df_synth.at[i, "Escalade"]).strip() if "Escalade" in df_synth.columns else ""
+            if esc and esc.lower() != "nan":
+                inc_jour[esc][day_str] += 1
+    report.incidents_journaliers_json = {k: dict(v) for k, v in inc_jour.items()}
+
     report.save()
 
     result["created"] += 1

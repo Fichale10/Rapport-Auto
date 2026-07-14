@@ -194,6 +194,18 @@ def _evol_time_buckets(period, today=None, custom_start=None, custom_end=None):
 
 
 def _build_spark_evolution(reports_qs, period, custom_start=None, custom_end=None):
+    """Séries du graphe d'évolution.
+
+    Les rapports disposant de ``incidents_journaliers_json`` sont répartis
+    jour par jour (un rapport hebdo/mensuel n'écrase plus tout sur son 1er
+    jour) ; les anciens rapports sans ce champ retombent sur l'attribution
+    à leur date_rapport. Les périodes englobées sont exclues pour éviter le
+    double comptage (journaliers couverts par un rapport plus long).
+    """
+    try:
+        reports_qs = _exclude_covered_periods(reports_qs)
+    except (AttributeError, TypeError):
+        pass  # liste déjà matérialisée
     all_reports = list(reports_qs)
     buckets = _evol_time_buckets(period, custom_start=custom_start, custom_end=custom_end)
     labels = []
@@ -201,16 +213,42 @@ def _build_spark_evolution(reports_qs, period, custom_start=None, custom_end=Non
     esc_vals = {esc: [] for esc, _ in SPARK_ESCALADES}
     range_reports = []
 
+    def _count_in_bucket(day_map, b):
+        """Somme des valeurs du dict {jour ISO: n} dont le jour ∈ bucket."""
+        total = 0
+        for day_str, n in (day_map or {}).items():
+            try:
+                d = date.fromisoformat(day_str)
+            except (ValueError, TypeError):
+                continue
+            if b['start'] <= d <= b['end']:
+                total += n
+        return total
+
     for b in buckets:
-        matching = [
-            r for r in all_reports
-            if b['start'] <= r.date_rapport <= b['end']
-        ]
-        range_reports.extend(matching)
         labels.append(b['label'])
-        total_vals.append(sum(r.total_incidents for r in matching))
+        bucket_total = 0
+        bucket_esc = {esc: 0 for esc, _ in SPARK_ESCALADES}
+        for r in all_reports:
+            inc_jour = r.incidents_journaliers_json or {}
+            if inc_jour.get('TOTAL'):
+                # Répartition journalière exacte
+                n = _count_in_bucket(inc_jour['TOTAL'], b)
+                if n:
+                    bucket_total += n
+                    range_reports.append(r)
+                for esc, _ in SPARK_ESCALADES:
+                    bucket_esc[esc] += _count_in_bucket(inc_jour.get(esc), b)
+            else:
+                # Rétro-compat : tout sur la date_rapport
+                if b['start'] <= r.date_rapport <= b['end']:
+                    bucket_total += r.total_incidents
+                    range_reports.append(r)
+                    for esc, _ in SPARK_ESCALADES:
+                        bucket_esc[esc] += _inc_for_escalade(r, esc)
+        total_vals.append(bucket_total)
         for esc, _ in SPARK_ESCALADES:
-            esc_vals[esc].append(sum(_inc_for_escalade(r, esc) for r in matching))
+            esc_vals[esc].append(bucket_esc[esc])
 
     spark_series = [{
         'name': 'Total',
@@ -235,9 +273,11 @@ def _build_spark_evolution(reports_qs, period, custom_start=None, custom_end=Non
 
     unique_range = {r.pk: r for r in range_reports}
     range_list = sorted(unique_range.values(), key=lambda r: r.date_rapport)
-    evol_incidents = sum(r.total_incidents for r in unique_range.values())
+    # Incidents de la fenêtre = somme des buckets (exact même si un rapport
+    # déborde partiellement de la fenêtre)
+    evol_incidents = sum(total_vals)
     evol_unresolved = sum(r.unresolved_count or 0 for r in unique_range.values())
-    evol_resolved = evol_incidents - evol_unresolved
+    evol_resolved = max(0, evol_incidents - evol_unresolved)
     latest = range_list[-1] if range_list else None
     return labels, spark_series, period_label, evol_incidents, evol_resolved, evol_unresolved, latest, bool(labels)
 
@@ -1027,6 +1067,23 @@ def process_report(request, pk):
         esc: dict(jours)
         for esc, jours in outage_j.items()
     }
+
+    # incidents_journaliers_json : nb d'incidents (dédupliqués) par jour et par
+    # escalade — jour = date de l'alarme (bornée à la fenêtre par process_file)
+    inc_jour = defaultdict(lambda: defaultdict(int))
+    if 'Alarm Time' in df_dedup.columns:
+        _at_dedup = pd.to_datetime(df_dedup['Alarm Time'], dayfirst=True,
+                                   format='mixed', errors='coerce')
+        for i in df_dedup.index:
+            t = _at_dedup.get(i)
+            if pd.isna(t):
+                continue
+            day_str = t.strftime('%Y-%m-%d')
+            inc_jour['TOTAL'][day_str] += 1
+            esc = str(df_dedup.at[i, 'Escalade']).strip() if 'Escalade' in df_dedup.columns else ''
+            if esc and esc.lower() != 'nan':
+                inc_jour[esc][day_str] += 1
+    report.incidents_journaliers_json = {k: dict(v) for k, v in inc_jour.items()}
     report.save()
 
     return JsonResponse({
