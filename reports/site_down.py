@@ -61,6 +61,9 @@ def ensure_dirs():
 # ──────────────────────────────────────────────────────────────────────────────
 ALARM_FILTER = 'WCDMA BASE STATION OUT OF USE'
 
+# Nb de coupures dans une même journée à partir duquel un site est « fluctuant »
+SEUIL_FLUCTUANT = 3
+
 NOMS_MOIS_COURTS = {
     '01': 'janv', '02': 'févr', '03': 'mars', '04': 'avr',
     '05': 'mai',  '06': 'juin', '07': 'juil', '08': 'août',
@@ -1256,12 +1259,27 @@ def stats_mensuelles(mois_annee=None):
 
     # Sites chroniques : ≥ 3 jours consécutifs avec coupure
     jours_par_site = defaultdict(set)
+    coupures_par_site_jour = defaultdict(int)
     for site, at in qs.values_list('site_name', 'alarm_time'):
-        jours_par_site[site].add(tz.localtime(at).day if tz.is_aware(at) else at.day)
+        jour = tz.localtime(at).day if tz.is_aware(at) else at.day
+        jours_par_site[site].add(jour)
+        coupures_par_site_jour[(site, jour)] += 1
     chroniques = sorted(
         ({'site': s, 'jours': _max_jours_consecutifs(j)}
          for s, j in jours_par_site.items() if _max_jours_consecutifs(j) >= 3),
         key=lambda x: -x['jours'])[:10]
+
+    # Sites fluctuants : ≥ SEUIL_FLUCTUANT coupures dans une même journée
+    # (site qui « clignote » : down/up répétés, ≠ coupure franche)
+    fluct_par_site = defaultdict(lambda: {'jours': 0, 'max': 0})
+    for (site, jour), nb in coupures_par_site_jour.items():
+        if nb >= SEUIL_FLUCTUANT:
+            fluct_par_site[site]['jours'] += 1
+            fluct_par_site[site]['max'] = max(fluct_par_site[site]['max'], nb)
+    fluctuants = sorted(
+        ({'site': s, 'jours': v['jours'], 'max': v['max']}
+         for s, v in fluct_par_site.items()),
+        key=lambda x: (-x['max'], -x['jours']))[:10]
 
     # Répartition par région (avec taux d'impact du parc)
     sites_par_region = dict(
@@ -1316,6 +1334,8 @@ def stats_mensuelles(mois_annee=None):
         'evolution_pct':    evolution_pct,
         'top_sites':        top_sites,
         'chroniques':       chroniques,
+        'fluctuants':       fluctuants,
+        'seuil_fluctuant':  SEUIL_FLUCTUANT,
         'regions':          regions,
         'escalades':        escalades,
         'taux_qualif':      taux_qualif,

@@ -268,6 +268,20 @@
           <div style="font-size:12px;color:#059669;margin-bottom:16px;">✓ Aucun site en panne 3 jours consécutifs.</div>
         {% endif %}
 
+        <div style="font-size:12px;font-weight:700;color:#d97706;margin-bottom:8px;">🔀 Sites fluctuants (≥ {{ stats.seuil_fluctuant }} coupures/jour)</div>
+        {% if stats.fluctuants %}
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">
+            {% for f in stats.fluctuants %}
+            <span style="background:#fef3c7;color:#9c6500;font-size:11px;font-weight:600;padding:4px 10px;border-radius:12px;"
+                  title="{{ f.jours }} jour(s) avec fluctuation — pic à {{ f.max }} coupures dans la journée">
+              {{ f.site }} · {{ f.max }}×/j{% if f.jours > 1 %} · {{ f.jours }} j{% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="font-size:12px;color:#059669;margin-bottom:16px;">✓ Aucun site fluctuant ce mois.</div>
+        {% endif %}
+
         <div style="font-size:12px;font-weight:700;color:#003087;margin-bottom:8px;">🔧 Par escalade</div>
         {% if stats.escalades %}
           <table style="width:100%;border-collapse:collapse;font-size:12px;">
