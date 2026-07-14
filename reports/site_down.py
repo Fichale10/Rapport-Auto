@@ -15,11 +15,12 @@ Version intégrée du script autonome ``site_down_auto.py`` :
   dans ``MEDIA_ROOT/site_down/traites/`` (onglet Données + onglet Cumul).
 """
 
+import json
 import logging
 import os
 import re
 import shutil
-from datetime import datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pandas as pd
 from django.conf import settings
@@ -120,19 +121,25 @@ def _source_alarmes_candidates():
 
 
 def _sources_alarmes_existantes():
-    """Retourne un dossier source existant par mois (courant, précédent).
+    """Retourne un dossier source existant par mois : [{'mois': 'AAAA-MM', 'path': …}].
 
     Les candidats sont groupés par mois ; pour chaque mois on prend la
     première base accessible (fallback IP → DNS).
     """
-    candidats = _source_alarmes_candidates()
-    n_bases = max(len(_network_bases()), 1)
+    now = datetime.now()
+    prev_mois = 12 if now.month == 1 else now.month - 1
+    prev_annee = now.year - 1 if now.month == 1 else now.year
+    mois_list = [(now.year, now.month), (prev_annee, prev_mois)]
+
     sources = []
-    for i in range(0, len(candidats), n_bases):
-        groupe = candidats[i:i + n_bases]
-        src = next((s for s in groupe if os.path.exists(s)), None)
-        if src:
-            sources.append(src)
+    for annee, mois in mois_list:
+        for base in _network_bases():
+            chemin = os.path.join(
+                base, 'RAPPORT RESEAU MOBILE', 'ALARME NETACT SITES DOWN',
+                f'SITE DOWN {NOMS_MOIS_DOSSIER[mois]} {annee}')
+            if os.path.exists(chemin):
+                sources.append({'mois': f'{annee}-{mois:02d}', 'path': chemin})
+                break
     return sources
 
 
@@ -218,7 +225,8 @@ def collecter_alarmes():
     dates_traitees = _dates_deja_traitees_cache()
 
     total_copies = []
-    for source in sources:
+    for src in sources:
+        source = src['path']
         fichiers = [
             f for f in os.listdir(source)
             if os.path.isfile(os.path.join(source, f))
@@ -1075,12 +1083,102 @@ def run_auto():
     nb = collecter_alarmes()
     summary = process_pending_files()
     summary['collected'] = nb
+    summary['fichiers_manquants'] = verifier_fichiers_manquants()
     if nb == 0 and summary['processed'] == 0:
         # Rien de neuf : rafraîchit quand même Cause/Escalade des fichiers du mois
         refresh = actualiser_fichiers_existants()
         summary['messages'].append(
             f"Actualisation : {refresh['refreshed']} fichier(s), {refresh['errors']} erreur(s)")
     return summary
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Contrôle des fichiers sources manquants
+# ──────────────────────────────────────────────────────────────────────────────
+def _missing_json_path():
+    return os.path.join(_base_dir(), 'fichiers_manquants.json')
+
+
+def verifier_fichiers_manquants():
+    """Contrôle, pour chaque jour écoulé, la présence d'un fichier d'alarme
+    dans les dossiers sources réseau (mois courant + précédent).
+
+    Le résultat est persisté dans ``fichiers_manquants.json`` pour affichage
+    permanent sur la page Site Down.
+
+    Returns:
+        dict {'checked_at', 'sources_ok', 'mois': [{'mois','label','jours':[...]}], 'total'}
+    """
+    import calendar
+
+    ensure_dirs()
+    sources = _sources_alarmes_existantes()
+    result = {
+        'checked_at': datetime.now().strftime('%d/%m/%Y %H:%M'),
+        'sources_ok': bool(sources),
+        'mois': [],
+        'total': 0,
+    }
+
+    hier = date.today() - timedelta(days=1)
+    for src in sources:
+        annee, mois = map(int, src['mois'].split('-'))
+        try:
+            noms = os.listdir(src['path'])
+        except OSError:
+            continue
+
+        dispo = set()
+        for f in noms:
+            d = extraire_date(f)
+            if d:
+                dispo.add((int(d[0]), int(d[1]), int(d[2])))
+
+        # Jours attendus : du 1er du mois jusqu'à hier (ou fin du mois)
+        dernier = calendar.monthrange(annee, mois)[1]
+        fin = min(hier, date(annee, mois, dernier))
+        debut = date(annee, mois, 1)
+        if fin < debut:
+            continue
+
+        jours_manquants = []
+        cur = debut
+        while cur <= fin:
+            if (cur.year, cur.month, cur.day) not in dispo:
+                jours_manquants.append(cur.strftime('%d/%m'))
+            cur += timedelta(days=1)
+
+        result['mois'].append({
+            'mois':  src['mois'],
+            'label': f"{NOMS_MOIS_COMPLETS[f'{mois:02d}']} {annee}",
+            'jours': jours_manquants,
+        })
+
+    result['total'] = sum(len(m['jours']) for m in result['mois'])
+    try:
+        with open(_missing_json_path(), 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=1)
+    except OSError:
+        logger.warning("site_down : écriture fichiers_manquants.json échouée", exc_info=True)
+
+    if result['total']:
+        logger.warning("site_down : %d jour(s) sans fichier source — %s",
+                       result['total'],
+                       '; '.join(f"{m['label']}: {', '.join(m['jours'])}"
+                                 for m in result['mois'] if m['jours']))
+    return result
+
+
+def lire_fichiers_manquants():
+    """Dernier résultat de contrôle persisté (ou None)."""
+    p = _missing_json_path()
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 # ──────────────────────────────────────────────────────────────────────────────

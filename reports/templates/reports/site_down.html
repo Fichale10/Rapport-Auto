@@ -39,6 +39,37 @@
     </div>
   </div>
 
+  <!-- Fichiers sources manquants -->
+  {% if manquants and manquants.total %}
+  <div class="card" style="padding:18px 24px;margin-bottom:24px;border-left:5px solid #d97706;background:#fffbeb;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="font-size:22px;">⚠️</div>
+      <div style="flex:1;min-width:250px;">
+        <div style="font-size:14px;font-weight:700;color:#9c6500;">
+          {{ manquants.total }} jour(s) sans fichier d'alarme dans les dossiers d'origine
+        </div>
+        <div style="font-size:12px;color:#a16207;margin-top:4px;">
+          {% for m in manquants.mois %}{% if m.jours %}
+            <b>{{ m.label }}</b> :
+            {% for j in m.jours %}
+              <span style="display:inline-block;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:1px 8px;margin:1px;font-weight:600;">{{ j }}</span>
+            {% endfor %}
+          {% endif %}{% endfor %}
+        </div>
+        <div style="font-size:11px;color:#a8a29e;margin-top:6px;">
+          Dernière vérification : {{ manquants.checked_at }} — déposez les fichiers manquants
+          sur le partage ISOC ou utilisez l'upload manuel ci-dessous.
+        </div>
+      </div>
+    </div>
+  </div>
+  {% elif manquants and manquants.sources_ok %}
+  <div class="card" style="padding:12px 24px;margin-bottom:24px;border-left:5px solid #059669;">
+    <span style="font-size:13px;color:#059669;font-weight:600;">✓ Aucun fichier source manquant</span>
+    <span style="font-size:11px;color:#888;"> — vérifié le {{ manquants.checked_at }}</span>
+  </div>
+  {% endif %}
+
   <!-- Actions -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
 

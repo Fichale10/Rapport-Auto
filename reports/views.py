@@ -7554,6 +7554,15 @@ def site_down_view(request):
                     f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
                     f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
                     f"{summary['created']} alarme(s) créée(s) en base.")
+                mq = summary.get('fichiers_manquants') or {}
+                if mq.get('total'):
+                    details = ' — '.join(
+                        f"{m['label']} : {', '.join(m['jours'])}"
+                        for m in mq.get('mois', []) if m['jours'])
+                    messages.warning(
+                        request,
+                        f"⚠️ {mq['total']} jour(s) sans fichier source dans les dossiers "
+                        f"d'origine — {details}")
                 for msg in summary['messages'][:5]:
                     messages.info(request, msg)
             except Exception as exc:
@@ -7664,6 +7673,7 @@ def site_down_view(request):
         'network_enabled': bool(getattr(settings, 'SITE_DOWN_NETWORK_BASES', [])),
         'interval_hours':  getattr(settings, 'SITE_DOWN_INTERVAL_HOURS', 0),
         'stats':           sd.stats_mensuelles(request.GET.get('mois') or None),
+        'manquants':       sd.lire_fichiers_manquants(),
     }
     return render(request, 'reports/site_down.html', ctx)
 
