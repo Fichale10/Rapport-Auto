@@ -212,14 +212,15 @@ def collecter_alarmes():
     Parcourt les dossiers du mois courant et du mois précédent.
 
     Returns:
-        int: nombre de fichiers copiés (0 si le réseau est inaccessible).
+        dict: {'copied': n, 'network_ok': bool} — network_ok False si aucun
+        dossier source n'est accessible depuis ce serveur.
     """
     ensure_dirs()
     sources = _sources_alarmes_existantes()
     if not sources:
         logger.warning("site_down : source alarmes inaccessible (%s)",
                        _source_alarmes_candidates())
-        return 0
+        return {'copied': 0, 'network_ok': False}
 
     deja_copies = _lire_journal(_journal_alarmes())
     dates_traitees = _dates_deja_traitees_cache()
@@ -255,7 +256,7 @@ def collecter_alarmes():
     if total_copies:
         _ecrire_journal(_journal_alarmes(), total_copies)
         logger.info("site_down : %d fichier(s) alarme copié(s)", len(total_copies))
-    return len(total_copies)
+    return {'copied': len(total_copies), 'network_ok': True}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1080,11 +1081,17 @@ def actualiser_fichiers_existants(extra_causes_map=None):
 
 def run_auto():
     """Point d'entrée complet : collecte réseau puis traitement (scheduler)."""
-    nb = collecter_alarmes()
+    collecte = collecter_alarmes()
     summary = process_pending_files()
-    summary['collected'] = nb
-    summary['fichiers_manquants'] = verifier_fichiers_manquants()
-    if nb == 0 and summary['processed'] == 0:
+    summary['collected']  = collecte['copied']
+    summary['network_ok'] = collecte['network_ok']
+    if collecte['network_ok']:
+        summary['fichiers_manquants'] = verifier_fichiers_manquants()
+    else:
+        summary['fichiers_manquants'] = None
+        summary['messages'].append(
+            "Partage réseau ISOC inaccessible depuis le serveur — collecte impossible.")
+    if collecte['copied'] == 0 and summary['processed'] == 0:
         # Rien de neuf : rafraîchit quand même Cause/Escalade des fichiers du mois
         refresh = actualiser_fichiers_existants()
         summary['messages'].append(

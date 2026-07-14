@@ -7570,11 +7570,18 @@ def site_down_view(request):
         if action == 'collect':
             try:
                 summary = sd.run_auto()
-                messages.success(
-                    request,
-                    f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
-                    f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
-                    f"{summary['created']} alarme(s) créée(s) en base.")
+                if not summary.get('network_ok', True):
+                    messages.error(
+                        request,
+                        "❌ Partage réseau ISOC inaccessible depuis le serveur : la collecte "
+                        "automatique est impossible pour le moment. Vérifiez la connectivité "
+                        "du serveur au partage, ou utilisez l'upload manuel ci-dessous.")
+                else:
+                    messages.success(
+                        request,
+                        f"Collecte terminée — {summary.get('collected', 0)} fichier(s) copié(s), "
+                        f"{summary['processed']} traité(s), {summary['errors']} erreur(s), "
+                        f"{summary['created']} alarme(s) créée(s) en base.")
                 mq = summary.get('fichiers_manquants') or {}
                 if mq.get('total'):
                     details = ' — '.join(
