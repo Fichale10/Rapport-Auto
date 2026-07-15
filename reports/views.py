@@ -3563,7 +3563,14 @@ def statistiques(request):
     ]
 
     total_reports          = reports.count()
-    total_sites_impacted   = len(site_data)
+    # Sites impactés : union de TOUS les sites touchés (region_sites_json
+    # contient la liste complète par région) ; fallback sur les tops 10
+    # (top_sites_json) pour les anciens rapports sans ce champ
+    _sites_impactes = set()
+    for r in reports:
+        for _rsites in (r.region_sites_json or {}).values():
+            _sites_impactes.update(str(s).strip() for s in _rsites if s)
+    total_sites_impacted   = len(_sites_impactes) if _sites_impactes else len(site_data)
     # Évolution étiquetée par la date RÉELLE des données (plus la date d'upload)
     evolution_reports = list(reports.order_by('date_rapport'))
     evolution_labels  = [r.date_rapport.strftime('%d/%m') for r in evolution_reports]
