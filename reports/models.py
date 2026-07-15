@@ -83,6 +83,10 @@ class UploadedReport(models.Model):
     synthesis_json      = models.JSONField(default=list, blank=True)
     top_sites_json      = models.JSONField(default=list, blank=True)
     top_causes_json     = models.JSONField(default=list, blank=True)
+    # Top causes par NOMBRE d'incidents : [{"name": …, "count": n}, …]
+    # (top_causes_json est par durée) — évite la relecture du fichier Excel
+    # détaillé, inexistant pour les rapports importés par API
+    top_causes_count_json = models.JSONField(default=list, blank=True)
 
     # ── Nouveau champ : outage journalier par escalade ──────────────────────
     # Structure :

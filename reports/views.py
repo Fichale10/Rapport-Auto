@@ -983,17 +983,25 @@ def process_report(request, pk):
     cause_col = next((c for c in ('Cause', 'Root Cause') if c in df_export.columns), None)
     if cause_col and 'Duration' in df_export.columns:
         cause_duration = defaultdict(float)
+        cause_counts   = defaultdict(int)
         for _, row in df_export.iterrows():
             cause = str(row.get(cause_col, '')).strip()
             dur   = _parse_duration(str(row.get('Duration', '')))
-            if cause and cause != 'nan' and dur > 0:
-                cause_duration[cause] += dur
+            if cause and cause != 'nan':
+                cause_counts[cause] += 1
+                if dur > 0:
+                    cause_duration[cause] += dur
         top_causes = sorted(cause_duration.items(), key=lambda x: x[1], reverse=True)[:10]
         report.top_causes_json = json.loads(json.dumps([
             {'name': k, 'duration_sec': v} for k, v in top_causes
         ], cls=_NpEncoder))
+        top_causes_count = sorted(cause_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        report.top_causes_count_json = json.loads(json.dumps([
+            {'name': k, 'count': v} for k, v in top_causes_count
+        ], cls=_NpEncoder))
     else:
         report.top_causes_json = []
+        report.top_causes_count_json = []
 
     # ── site_duration_json : durée cumulée par site (évite la relecture Excel en vue) ──
     _site_dur_col = next(
@@ -3519,6 +3527,12 @@ def statistiques(request):
     # ── Incidents par Cause (Nombre) ──────────────────────────────────────
     cause_count_data = defaultdict(int)
     for r in reports:
+        # Champ stocké au traitement (upload comme API)
+        if r.top_causes_count_json:
+            for c in r.top_causes_count_json:
+                cause_count_data[c['name']] += c['count']
+            continue
+        # Rétro-compat : anciens rapports → relecture du fichier détaillé
         if not r.detailed_file:
             continue
         file_name = r.detailed_file.name or ''

@@ -345,14 +345,21 @@ def run_import(
     cause_col_detail = next((c for c in ("Cause", "Root Cause") if c in df_detail.columns), None)
     if cause_col_detail and "Duration" in df_detail.columns:
         cause_dur: dict[str, float] = defaultdict(float)
+        cause_cnt: dict[str, int] = defaultdict(int)
         for _, row in df_detail.iterrows():
             cause = str(row.get(cause_col_detail, "")).strip()
             dur_s = _parse_hms(str(row.get("Duration", "")))
-            if cause and cause not in ("nan", "") and dur_s > 0:
-                cause_dur[cause] += dur_s
+            if cause and cause not in ("nan", ""):
+                cause_cnt[cause] += 1
+                if dur_s > 0:
+                    cause_dur[cause] += dur_s
         report.top_causes_json = [
             {"name": k, "duration_sec": v}
             for k, v in sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+        report.top_causes_count_json = [
+            {"name": k, "count": v}
+            for k, v in sorted(cause_cnt.items(), key=lambda x: x[1], reverse=True)[:10]
         ]
 
     # site_duration_json : durée cumulée par site (depuis df_detail, tous incidents)
