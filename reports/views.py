@@ -3571,11 +3571,31 @@ def statistiques(request):
         for _rsites in (r.region_sites_json or {}).values():
             _sites_impactes.update(str(s).strip() for s in _rsites if s)
     total_sites_impacted   = len(_sites_impactes) if _sites_impactes else len(site_data)
-    # Évolution étiquetée par la date RÉELLE des données (plus la date d'upload)
-    evolution_reports = list(reports.order_by('date_rapport'))
-    evolution_labels  = [r.date_rapport.strftime('%d/%m') for r in evolution_reports]
-    evolution_incidents = [r.total_incidents for r in evolution_reports]
-    evolution_outage    = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
+    # ── Évolution JOURNALIÈRE sur la période ─────────────────────────────────
+    # Répartition jour par jour depuis les champs stockés au traitement ;
+    # rétro-compat : les anciens rapports sans ces champs sont attribués
+    # à leur date_rapport (ancien comportement : un point par rapport).
+    _inc_par_jour = defaultdict(int)
+    _out_par_jour = defaultdict(float)
+    for r in reports:
+        _inc_j = (r.incidents_journaliers_json or {}).get('TOTAL') or {}
+        if _inc_j:
+            for _d, _n in _inc_j.items():
+                _inc_par_jour[_d] += _n
+        else:
+            _inc_par_jour[r.date_rapport.isoformat()] += r.total_incidents or 0
+        _out_j = r.outage_journalier_json or {}
+        if _out_j:
+            for _esc_days in _out_j.values():
+                for _d, _sec in _esc_days.items():
+                    _out_par_jour[_d] += _sec
+        else:
+            _out_par_jour[r.date_rapport.isoformat()] += r.total_duration_sec or 0
+
+    _jours = sorted(set(_inc_par_jour) | set(_out_par_jour))
+    evolution_labels    = [f"{_d[8:10]}/{_d[5:7]}" for _d in _jours]
+    evolution_incidents = [_inc_par_jour.get(_d, 0) for _d in _jours]
+    evolution_outage    = [round(_out_par_jour.get(_d, 0.0) / 3600, 1) for _d in _jours]
 
     # ── Disponibilité dynamique selon filtre ──────────────────────────────
     if period_filter == 'custom':
