@@ -23,6 +23,13 @@ if %ERRORLEVEL% NEQ 0 (
     echo [WARN] git pull a échoué, démarrage avec le code existant.
 )
 
+REM Installer/mettre à jour les dépendances
+echo [INFO] Installation des dépendances...
+python -m pip install -r requirements.txt --quiet
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARN] pip install a échoué, démarrage avec les paquets existants.
+)
+
 REM Appliquer les migrations si besoin
 echo [INFO] Application des migrations...
 python manage.py migrate --run-syncdb
