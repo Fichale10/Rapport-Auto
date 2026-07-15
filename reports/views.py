@@ -3303,88 +3303,81 @@ def statistiques(request):
         period_filter = 'latest'
     else:
         today = date.today()
-        if period_filter == 'day':
-            reports = base_qs.filter(uploaded_at__date=today)
-        elif period_filter == '3days':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=3))
-        elif period_filter == 'week':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=7))
-        elif period_filter == '2weeks':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=14))
-        elif period_filter == 'month':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=30))
-        elif period_filter == 'quarter':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=90))
-        elif period_filter == 'half':
-            reports = base_qs.filter(uploaded_at__date__gte=today - timedelta(days=180))
+
+        def _reports_pour_fenetre(_d_from, _d_to):
+            """Sélection harmonisée avec le Traitement pour une fenêtre de dates :
+            rapport exact → rapport couvrant → meilleur rapport par mois
+            (entièrement dans la fenêtre) → import API si aucune donnée."""
+            # 1. Correspondance exacte sur la période
+            if _d_from == _d_to:
+                _exact = base_qs.filter(date_rapport=_d_from).filter(
+                    _Q(date_fin__isnull=True) | _Q(date_fin=_d_to)).first()
+            else:
+                _exact = base_qs.filter(date_rapport=_d_from, date_fin=_d_to).first()
+            if _exact:
+                return base_qs.filter(pk=_exact.pk)
+
+            # 2. Rapport couvrant toute la période (évite d'additionner des
+            #    rapports qui se chevauchent)
+            _covering = base_qs.filter(
+                date_rapport__lte=_d_from,
+                date_fin__gte=_d_to,
+            ).order_by('-uploaded_at').first()
+            if _covering:
+                return base_qs.filter(pk=_covering.pk)
+
+            # 3. Un seul rapport par mois calendaire, parmi ceux ENTIÈREMENT
+            #    dans la fenêtre (le plus couvrant, à égalité le plus récent)
+            from collections import defaultdict as _dd
+            _candidates = list(base_qs.filter(
+                date_rapport__gte=_d_from,
+                date_rapport__lte=_d_to,
+            ).filter(
+                _Q(date_fin__lte=_d_to) | _Q(date_fin__isnull=True),
+            ).order_by('date_rapport', '-uploaded_at'))
+            _by_month = _dd(list)
+            for _r in _candidates:
+                _by_month[(_r.date_rapport.year, _r.date_rapport.month)].append(_r)
+            _best_pks = []
+            for _rlist in _by_month.values():
+                _best = max(
+                    _rlist,
+                    key=lambda _r: (
+                        (_r.date_fin - _r.date_rapport).days if _r.date_fin else 0,
+                        _r.uploaded_at,
+                    )
+                )
+                _best_pks.append(_best.pk)
+            if _best_pks:
+                return base_qs.filter(pk__in=_best_pks)
+
+            # 4. Aucune donnée locale : import API (sauf couverture déjà connue)
+            _network = {'mobile': 'mobile', 'fixe': 'fixe',
+                        'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
+            if not _has_coverage(_network, _d_from, _d_to):
+                _qs = _auto_fetch_platform(_network, _d_from.isoformat(), _d_to.isoformat())
+                if _qs is not None and _qs.exists():
+                    return _qs
+            return base_qs.none()
+
+        # Fenêtres sur la date RÉELLE des données (plus la date d'upload)
+        _PRESET_WINDOWS = {'day': 0, '3days': 3, 'week': 7, '2weeks': 14,
+                           'month': 30, 'quarter': 90, 'half': 180}
+        if period_filter in _PRESET_WINDOWS:
+            reports = _reports_pour_fenetre(
+                today - timedelta(days=_PRESET_WINDOWS[period_filter]), today)
         elif period_filter == 'year':
-            reports = base_qs.filter(uploaded_at__year=today.year)
+            reports = _reports_pour_fenetre(date(today.year, 1, 1), today)
         elif period_filter == 'custom':
             date_from = request.GET.get('date_from', '')
             date_to   = request.GET.get('date_to', '')
             if date_from and date_to:
-                _df_date = date_from[:10]
-                _dt_date = date_to[:10]
                 try:
-                    _d_from = date.fromisoformat(_df_date)
-                    _d_to   = date.fromisoformat(_dt_date)
+                    _d_from = date.fromisoformat(date_from[:10])
+                    _d_to   = date.fromisoformat(date_to[:10])
                 except (ValueError, TypeError):
                     _d_from = _d_to = None
-
-                if _d_from and _d_to:
-                    # Priorité 1 : rapport avec correspondance exacte sur la période
-                    _exact = base_qs.filter(
-                        date_rapport=_d_from,
-                        date_fin=_d_to,
-                    ).order_by('-uploaded_at').first()
-                    if _exact:
-                        reports = base_qs.filter(pk=_exact.pk)
-                    else:
-                        # Priorité 2 : rapport couvrant toute la période (date_rapport <= d_from
-                        # ET date_fin >= d_to) — évite d'additionner des rapports qui se chevauchent
-                        _covering = base_qs.filter(
-                            date_rapport__lte=_d_from,
-                            date_fin__gte=_d_to,
-                        ).order_by('-uploaded_at').first()
-                        if _covering:
-                            reports = base_qs.filter(pk=_covering.pk)
-                        else:
-                            # Priorité 3 : un seul rapport par mois calendaire
-                            # (le plus grande plage, à égalité le plus récent)
-                            # Évite d'additionner des rapports journaliers/partiels doublons
-                            from collections import defaultdict as _dd
-                            _candidates = list(base_qs.filter(
-                                date_rapport__gte=_d_from,
-                                date_rapport__lte=_d_to,
-                            ).order_by('date_rapport', '-uploaded_at'))
-                            _by_month = _dd(list)
-                            for _r in _candidates:
-                                _mk = (_r.date_rapport.year, _r.date_rapport.month)
-                                _by_month[_mk].append(_r)
-                            _best_pks = []
-                            for _rlist in _by_month.values():
-                                _best = max(
-                                    _rlist,
-                                    key=lambda _r: (
-                                        (_r.date_fin - _r.date_rapport).days if _r.date_fin else 0,
-                                        _r.uploaded_at,
-                                    )
-                                )
-                                _best_pks.append(_best.pk)
-                            reports = base_qs.filter(pk__in=_best_pks)
-
-                    # Données absentes : vérifier ImportCoverage avant d'appeler l'API
-                    if not reports.exists():
-                        _network = {'mobile': 'mobile', 'fixe': 'fixe',
-                                    'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
-                        if _has_coverage(_network, _d_from, _d_to):
-                            pass
-                        else:
-                            _qs = _auto_fetch_platform(_network, _df_date, _dt_date)
-                            if _qs is not None and _qs.exists():
-                                reports = _qs
-                else:
-                    reports = base_qs
+                reports = _reports_pour_fenetre(_d_from, _d_to) if _d_from and _d_to else base_qs
             else:
                 reports = base_qs
         else:
@@ -3557,8 +3550,9 @@ def statistiques(request):
 
     total_reports          = reports.count()
     total_sites_impacted   = len(site_data)
-    evolution_reports = list(reports.order_by('uploaded_at'))
-    evolution_labels  = [r.uploaded_at.strftime('%d/%m') for r in evolution_reports]
+    # Évolution étiquetée par la date RÉELLE des données (plus la date d'upload)
+    evolution_reports = list(reports.order_by('date_rapport'))
+    evolution_labels  = [r.date_rapport.strftime('%d/%m') for r in evolution_reports]
     evolution_incidents = [r.total_incidents for r in evolution_reports]
     evolution_outage    = [round(r.total_duration_sec / 3600, 1) for r in evolution_reports]
 
