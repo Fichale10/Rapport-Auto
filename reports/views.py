@@ -3334,7 +3334,23 @@ def statistiques(request):
             if _covering:
                 return base_qs.filter(pk=_covering.pk)
 
-            # 3. Un seul rapport par mois calendaire, parmi ceux ENTIÈREMENT
+            _network = {'mobile': 'mobile', 'fixe': 'fixe',
+                        'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
+
+            # 3. Fenêtre courte sans rapport exact ni couvrant : importer LA
+            #    fenêtre exacte via l'API (chiffres identiques au Traitement)
+            #    plutôt que d'agréger des rapports partiels/anciens
+            if (_d_to - _d_from).days <= 31 and not _has_coverage(_network, _d_from, _d_to):
+                _auto_fetch_platform(_network, _d_from.isoformat(), _d_to.isoformat())
+                if _d_from == _d_to:
+                    _exact = base_qs.filter(date_rapport=_d_from).filter(
+                        _Q(date_fin__isnull=True) | _Q(date_fin=_d_to)).first()
+                else:
+                    _exact = base_qs.filter(date_rapport=_d_from, date_fin=_d_to).first()
+                if _exact:
+                    return base_qs.filter(pk=_exact.pk)
+
+            # 4. Un seul rapport par mois calendaire, parmi ceux ENTIÈREMENT
             #    dans la fenêtre (le plus couvrant, à égalité le plus récent)
             from collections import defaultdict as _dd
             _candidates = list(base_qs.filter(
@@ -3359,9 +3375,7 @@ def statistiques(request):
             if _best_pks:
                 return base_qs.filter(pk__in=_best_pks)
 
-            # 4. Aucune donnée locale : import API (sauf couverture déjà connue)
-            _network = {'mobile': 'mobile', 'fixe': 'fixe',
-                        'transmission': 'transmission', 'core': 'core'}.get(platform, 'mobile')
+            # 5. Aucune donnée locale : import API (sauf couverture déjà connue)
             if not _has_coverage(_network, _d_from, _d_to):
                 _qs = _auto_fetch_platform(_network, _d_from.isoformat(), _d_to.isoformat())
                 if _qs is not None and _qs.exists():
@@ -3579,17 +3593,21 @@ def statistiques(request):
     _out_par_jour = defaultdict(float)
     for r in reports:
         _inc_j = (r.incidents_journaliers_json or {}).get('TOTAL') or {}
+        _out_j = r.outage_journalier_json or {}
         if _inc_j:
             for _d, _n in _inc_j.items():
                 _inc_par_jour[_d] += _n
+            if _out_j:
+                for _esc_days in _out_j.values():
+                    for _d, _sec in _esc_days.items():
+                        _out_par_jour[_d] += _sec
+            else:
+                _out_par_jour[r.date_rapport.isoformat()] += r.total_duration_sec or 0
         else:
+            # Ancien rapport sans répartition des incidents : on regroupe AUSSI
+            # l'outage sur la date de début, sinon on afficherait des jours à
+            # « 0 incident / X h d'outage » (mélange de granularités trompeur)
             _inc_par_jour[r.date_rapport.isoformat()] += r.total_incidents or 0
-        _out_j = r.outage_journalier_json or {}
-        if _out_j:
-            for _esc_days in _out_j.values():
-                for _d, _sec in _esc_days.items():
-                    _out_par_jour[_d] += _sec
-        else:
             _out_par_jour[r.date_rapport.isoformat()] += r.total_duration_sec or 0
 
     _jours = sorted(set(_inc_par_jour) | set(_out_par_jour))
