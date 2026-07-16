@@ -65,18 +65,6 @@ SPARK_ESCALADES = [
 ]
 
 
-def _filter_reports_by_month(queryset, year=None, month=None):
-    today = date.today()
-    year = year or today.year
-    month = month or today.month
-    month_start = date(year, month, 1)
-    month_end = date(year, month, calendar.monthrange(year, month)[1])
-    return queryset.filter(date_rapport__lte=month_end).filter(
-        Q(date_fin__gte=month_start)
-        | Q(date_fin__isnull=True, date_rapport__gte=month_start)
-    )
-
-
 def _filter_reports_by_period(queryset, period):
     """Filtre sur la date réelle des données (date_rapport/date_fin), pas sur
     la date d'upload — cohérent avec l'import API et le graphique d'évolution.
@@ -351,6 +339,96 @@ def _exclude_covered_periods(qs):
     return qs.exclude(pk__in=dup_ids) if dup_ids else qs
 
 
+def _report_network(fname):
+    """Réseau d'un rapport d'après son nom de fichier (API_<RESEAU>_...)."""
+    name = (fname or '').upper()
+    if name.startswith('API_') and len(name.split('_')) > 1:
+        return name.split('_')[1]
+    return 'MOBILE'  # export Excel netXcare = réseau mobile
+
+
+def _month_window_stats(qs, w_start, w_end, networks=None):
+    """Stats agrégées sur une fenêtre [w_start, w_end], sans double comptage.
+
+    Les rapports glissants se chevauchent (ex. 01→30, 15→14, 16→15) : chaque
+    jour de la fenêtre est donc attribué, par réseau, à UN seul rapport — le
+    plus court couvrant ce jour (le plus précis), ex æquo → le plus récent.
+    La contribution d'un rapport est ensuite :
+    - répartie jour par jour via ``incidents_journaliers_json`` si présent ;
+    - sinon proratisée au nombre de jours possédés / durée du rapport.
+    Non résolus et durée suivent le même prorata.
+
+    ``networks`` restreint le calcul à un périmètre de réseaux ; la clé
+    ``networks`` du résultat liste les réseaux présents dans la fenêtre
+    (pour comparer deux mois à périmètre constant).
+    """
+    window_qs = qs.filter(date_rapport__lte=w_end).filter(
+        Q(date_fin__gte=w_start)
+        | Q(date_fin__isnull=True, date_rapport__gte=w_start)
+    )
+    by_network = defaultdict(list)
+    for r in window_qs:
+        by_network[_report_network(r.original_filename)].append(r)
+    found_networks = set(by_network)
+    if networks is not None:
+        by_network = {n: rs for n, rs in by_network.items() if n in networks}
+
+    incidents = 0
+    unresolved = duration_sec = 0.0
+    contributing = set()
+    ndays = (w_end - w_start).days + 1
+
+    for rs in by_network.values():
+        # Jour → rapport propriétaire : le plus court d'abord, puis le plus récent
+        rs_sorted = sorted(rs, key=lambda r: (
+            ((r.date_fin or r.date_rapport) - r.date_rapport).days,
+            -(r.uploaded_at.timestamp() if r.uploaded_at else 0),
+        ))
+        owned = defaultdict(set)  # pk -> {jours possédés}
+        for i in range(ndays):
+            d = w_start + timedelta(days=i)
+            for r in rs_sorted:
+                if r.date_rapport <= d <= (r.date_fin or r.date_rapport):
+                    owned[r.pk].add(d)
+                    break
+        for r in rs:
+            days = owned.get(r.pk)
+            if not days:
+                continue
+            day_map = (r.incidents_journaliers_json or {}).get('TOTAL')
+            if day_map:
+                in_win = total = 0
+                for day_str, n in day_map.items():
+                    try:
+                        d = date.fromisoformat(day_str)
+                    except (ValueError, TypeError):
+                        continue
+                    total += n
+                    if d in days:
+                        in_win += n
+                ratio = in_win / total if total else 0.0
+            else:
+                span = ((r.date_fin or r.date_rapport) - r.date_rapport).days + 1
+                ratio = len(days) / span if span else 0.0
+                in_win = int(round(r.total_incidents * ratio))
+            if not in_win:
+                continue
+            incidents    += in_win
+            unresolved   += (r.unresolved_count or 0) * ratio
+            duration_sec += r.total_duration_sec * ratio
+            contributing.add(r.pk)
+
+    unresolved = int(round(unresolved))
+    return {
+        'count':      len(contributing),
+        'incidents':  incidents,
+        'unresolved': unresolved,
+        'resolved':   max(0, incidents - unresolved),
+        'outage_h':   round(duration_sec / 3600, 1),
+        'networks':   found_networks,
+    }
+
+
 def home(request):
     if request.user.is_superuser:
         all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
@@ -365,11 +443,12 @@ def home(request):
     total_outage_h = round(sum(r.total_duration_sec for r in all_reports) / 3600, 1)
 
     today = date.today()
-    month_reports = list(_filter_reports_by_month(all_reports))
-    month_reports_count = len(month_reports)
-    month_incidents = sum(r.total_incidents for r in month_reports)
-    month_unresolved = sum(r.unresolved_count or 0 for r in month_reports)
-    month_resolved = month_incidents - month_unresolved
+    _cur_m_start = date(today.year, today.month, 1)
+    _cur_stats = _month_window_stats(all_reports, _cur_m_start, today)
+    month_reports_count = _cur_stats['count']
+    month_incidents  = _cur_stats['incidents']
+    month_unresolved = _cur_stats['unresolved']
+    month_resolved   = _cur_stats['resolved']
     month_label = f'{MOIS_FR_LONG[today.month]} {today.year}'
 
     prev_month = today.month - 1
@@ -377,14 +456,36 @@ def home(request):
     if prev_month == 0:
         prev_month = 12
         prev_year -= 1
-    _prev_month_reports  = list(_filter_reports_by_month(all_reports, prev_year, prev_month))
-    prev_month_incidents = sum(r.total_incidents for r in _prev_month_reports)
+    # Comparaison « à date équivalente » : 1er → même jour du mois précédent
+    # (comparer 16 jours à un mois complet fausserait la tendance)
+    _prev_m_days  = calendar.monthrange(prev_year, prev_month)[1]
+    _prev_eq_day  = min(today.day, _prev_m_days)
+    _prev_w_start = date(prev_year, prev_month, 1)
+    _prev_w_end   = date(prev_year, prev_month, _prev_eq_day)
+    _prev_stats = _month_window_stats(all_reports, _prev_w_start, _prev_w_end)
+
+    # Périmètre constant : ne comparer que les réseaux présents des DEUX côtés
+    # (ex. juin = mobile+fixe+core, juillet = mobile seul → comparer le mobile)
+    _common_networks = _cur_stats['networks'] & _prev_stats['networks']
+    comp_scope = None
+    if _common_networks and (
+            _common_networks != _cur_stats['networks']
+            or _common_networks != _prev_stats['networks']):
+        _cur_comp  = _month_window_stats(
+            all_reports, _cur_m_start, today, networks=_common_networks)
+        _prev_comp = _month_window_stats(
+            all_reports, _prev_w_start, _prev_w_end, networks=_common_networks)
+        comp_scope = ', '.join(sorted(n.capitalize() for n in _common_networks))
+    else:
+        _cur_comp, _prev_comp = _cur_stats, _prev_stats
+
+    prev_month_incidents = _prev_comp['incidents']
     month_trend_pct = None
     if prev_month_incidents > 0:
         month_trend_pct = round(
-            (month_incidents - prev_month_incidents) / prev_month_incidents * 100, 1,
+            (_cur_comp['incidents'] - prev_month_incidents) / prev_month_incidents * 100, 1,
         )
-    elif month_incidents > 0:
+    elif _cur_comp['incidents'] > 0:
         month_trend_pct = 100.0
 
     # ── Période unifiée pour Évolution + Synthèse ──────────────────────────
@@ -681,12 +782,10 @@ def home(request):
     data_date_to     = _bq_last['date_rapport']  if _bq_last  else None
     data_last_update = _bq_fresh['uploaded_at']  if _bq_fresh else None
 
-    # ── Comparaison M vs M-1 ──────────────────────────────────────────────
-    _prev_resolved   = sum((r.total_incidents - (r.unresolved_count or 0)) for r in _prev_month_reports)
-    _prev_unresolved = sum(r.unresolved_count or 0 for r in _prev_month_reports)
-    _prev_outage_h   = round(sum(r.total_duration_sec for r in _prev_month_reports) / 3600, 1)
-    _curr_outage_h   = round(sum(r.total_duration_sec for r in month_reports) / 3600, 1)
+    # ── Comparaison M vs M-1 (date équivalente, périmètre constant) ──────
     prev_month_label = f"{MOIS_FR_LONG[prev_month]} {prev_year}"
+    if _prev_eq_day < _prev_m_days:
+        prev_month_label += f" (1–{_prev_eq_day})"
 
     def _comp_row(label, cur, prev, unit='', lower_is_better=True):
         cur_f, prev_f = float(cur), float(prev)
@@ -709,10 +808,10 @@ def home(request):
         }
 
     comparison_rows = [
-        _comp_row('Incidents',   month_incidents,  prev_month_incidents, lower_is_better=True),
-        _comp_row('Résolus',     month_resolved,   _prev_resolved,       lower_is_better=False),
-        _comp_row('Non résolus', month_unresolved, _prev_unresolved,     lower_is_better=True),
-        _comp_row('Outage',      _curr_outage_h,   _prev_outage_h,       unit='h', lower_is_better=True),
+        _comp_row('Incidents',   _cur_comp['incidents'],  _prev_comp['incidents'],  lower_is_better=True),
+        _comp_row('Résolus',     _cur_comp['resolved'],   _prev_comp['resolved'],   lower_is_better=False),
+        _comp_row('Non résolus', _cur_comp['unresolved'], _prev_comp['unresolved'], lower_is_better=True),
+        _comp_row('Outage',      _cur_comp['outage_h'],   _prev_comp['outage_h'],   unit='h', lower_is_better=True),
     ]
 
     # ── Résumé multi-plateformes (mois en cours) ──────────────────────────
@@ -819,6 +918,7 @@ def home(request):
         'top3_max':           top3_max,
         'comparison_rows':    comparison_rows,
         'prev_month_label':   prev_month_label,
+        'comp_scope':         comp_scope,
         'total_reports':        total_reports,
         'total_unresolved':     total_unresolved,
         'total_outage_h':       total_outage_h,

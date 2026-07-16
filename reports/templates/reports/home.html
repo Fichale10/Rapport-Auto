@@ -593,6 +593,9 @@
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
     <div class="sec-title" style="margin-bottom:0;flex:1;">📊 Mois en cours vs Mois précédent</div>
     <div style="display:flex;align-items:center;gap:12px;">
+      {% if comp_scope %}
+      <span style="font-size:.72rem;font-weight:600;color:#718096;background:#edf2f7;border-radius:6px;padding:3px 8px;">Périmètre : {{ comp_scope }}</span>
+      {% endif %}
       <div class="comp-legend">
         <span><span class="comp-legend-dot" style="background:#003087;"></span>{{ month_label }}</span>
         <span><span class="comp-legend-dot" style="background:#c8d4ee;"></span>{{ prev_month_label }}</span>
