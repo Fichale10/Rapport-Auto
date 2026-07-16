@@ -80,7 +80,7 @@ echo [INFO] Collecte des fichiers statiques...
 
 REM ── Demarrer le serveur Waitress ────────────────────────────
 echo.
-echo [INFO] Demarrage du serveur sur http://0.0.0.0:8000
+echo [INFO] Demarrage du serveur sur http://10.234.24.30:8000
 echo [INFO] Pour arreter : Ctrl+C
 echo.
 

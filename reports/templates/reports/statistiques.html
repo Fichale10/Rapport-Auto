@@ -67,6 +67,10 @@
   .evo-label { font-size: 11px; color: #aaa; text-align: center; flex: 1; }
   .evo-tooltip { position: absolute; background: #003087; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .15s; white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,48,135,.3); }
   .evo-tooltip::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-bottom: none; border-top-color: #003087; }
+  .evo-point-labels { position: absolute; left: 42px; right: 66px; top: 0; bottom: 0; pointer-events: none; }
+  .evo-pt-lbl { position: absolute; transform: translateX(-50%); font-size: 10px; font-weight: 800; white-space: nowrap; text-shadow: 0 1px 2px #fff, 0 -1px 2px #fff, 1px 0 2px #fff, -1px 0 2px #fff; }
+  .evo-pt-lbl.inc { color: #003087; }
+  .evo-pt-lbl.out { color: #b8860b; }
 
   /* ── Shared card styles ── */
   .stat-card { background:#fff; border-radius:20px; padding:24px; border:1px solid #e8edf5; box-shadow:0 2px 16px rgba(0,48,135,.07); }
@@ -782,6 +786,7 @@
     <div class="evo-axis evo-axis-left" id="evoAxisLeft"></div>
     <div class="evo-axis evo-axis-right" id="evoAxisRight"></div>
     <svg class="evo-svg" id="evoSvg" viewBox="0 0 800 160" preserveAspectRatio="none"></svg>
+    <div class="evo-point-labels" id="evoPointLabels"></div>
   </div>
   <div class="evo-labels" id="evoLabels"></div>
 </div>
@@ -813,6 +818,20 @@
   }
   makePath(ysInc,'#003087','gInc');makePath(ysOut,'#FFC72C','gOut');
   xs.forEach((x,i)=>{const ci=document.createElementNS('http://www.w3.org/2000/svg','circle');ci.setAttribute('cx',x);ci.setAttribute('cy',ysInc[i]);ci.setAttribute('r','5');ci.setAttribute('fill','#003087');ci.setAttribute('stroke','white');ci.setAttribute('stroke-width','2');const co=document.createElementNS('http://www.w3.org/2000/svg','circle');co.setAttribute('cx',x);co.setAttribute('cy',ysOut[i]);co.setAttribute('r','4');co.setAttribute('fill','#FFC72C');co.setAttribute('stroke','white');co.setAttribute('stroke-width','2');const hit=document.createElementNS('http://www.w3.org/2000/svg','rect');hit.setAttribute('x',x-20);hit.setAttribute('y',PT);hit.setAttribute('width',40);hit.setAttribute('height',H-PT-PB);hit.setAttribute('fill','transparent');hit.style.cursor='pointer';hit.addEventListener('mouseenter',function(){const sr=svg.getBoundingClientRect(),wr=svg.parentElement.getBoundingClientRect(),pct=(x-PL)/(W-PL-PR),px=(sr.left-wr.left)+pct*sr.width;tooltip.innerHTML=`<strong>${labels[i]}</strong><br>🔵 ${incidents[i]} incidents<br>🟡 ${outages[i]}h outage`;tooltip.style.opacity='1';tooltip.style.left=(px-60)+'px';tooltip.style.top='-70px';});hit.addEventListener('mouseleave',()=>{tooltip.style.opacity='0';});svg.appendChild(ci);svg.appendChild(co);svg.appendChild(hit);});
+  // Étiquettes de valeurs permanentes sur chaque point (HTML : le viewBox étiré déformerait du texte SVG)
+  const ptLbls=document.getElementById('evoPointLabels');
+  if(ptLbls){
+    const lblStep=Math.max(1,Math.ceil(n/20));   // éclaircit si trop de points
+    xs.forEach((x,i)=>{
+      if(i%lblStep!==0&&i!==n-1)return;
+      const left=(x/W*100)+'%';
+      const incTop=ysInc[i]-16;
+      const li=document.createElement('span');li.className='evo-pt-lbl inc';li.style.left=left;li.style.top=incTop+'px';li.textContent=incidents[i];ptLbls.appendChild(li);
+      let outTop=ysOut[i]-16;
+      if(Math.abs(outTop-incTop)<13)outTop=ysOut[i]+6;   // anti-chevauchement quand les 2 points sont proches
+      const lo=document.createElement('span');lo.className='evo-pt-lbl out';lo.style.left=left;lo.style.top=outTop+'px';lo.textContent=outages[i]+'h';ptLbls.appendChild(lo);
+    });
+  }
   // Étiquettes de dates : espacées quand il y a beaucoup de points (max ~10 visibles)
   const step=Math.max(1,Math.ceil(n/10));
   labels.forEach((l,i)=>{const s=document.createElement('span');s.className='evo-label';s.textContent=(i%step===0||i===n-1)?l:'';labelsEl.appendChild(s);});
