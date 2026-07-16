@@ -54,16 +54,16 @@
   .evo-legend { display: flex; gap: 18px; }
   .evo-leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
   .evo-leg-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .evo-chart-wrap { position: relative; height: 160px; padding: 0 48px 0 42px; }
+  .evo-chart-wrap { position: relative; height: 160px; padding: 0 66px 0 42px; }
   .evo-svg { width: 100%; height: 100%; overflow: visible; }
-  .evo-axis { position: absolute; top: 0; bottom: 0; width: 38px; }
-  .evo-axis-left  { left: 0; }
-  .evo-axis-right { right: 0; }
-  .evo-tick { position: absolute; transform: translateY(-50%); font-size: 10px; font-weight: 700; width: 100%; }
+  .evo-axis { position: absolute; top: 0; bottom: 0; }
+  .evo-axis-left  { left: 0;  width: 38px; }
+  .evo-axis-right { right: 0; width: 62px; }
+  .evo-tick { position: absolute; transform: translateY(-50%); font-size: 10px; font-weight: 700; width: 100%; white-space: nowrap; }
   .evo-axis-left  .evo-tick { color: #003087; text-align: right; padding-right: 8px; box-sizing: border-box; }
   .evo-axis-right .evo-tick { color: #b8860b; text-align: left;  padding-left: 8px;  box-sizing: border-box; }
-  .evo-axis-title { position: absolute; top: -2px; font-size: 9px; font-weight: 700; color: #999; width: 100%; }
-  .evo-labels { display: flex; justify-content: space-between; margin-top: 6px; padding: 0 48px 0 42px; }
+  .evo-axis-title { position: absolute; top: -2px; font-size: 9px; font-weight: 700; color: #999; width: 100%; white-space: nowrap; }
+  .evo-labels { display: flex; justify-content: space-between; margin-top: 6px; padding: 0 66px 0 42px; }
   .evo-label { font-size: 11px; color: #aaa; text-align: center; flex: 1; }
   .evo-tooltip { position: absolute; background: #003087; color: #fff; border-radius: 8px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .15s; white-space: nowrap; z-index: 10; box-shadow: 0 4px 16px rgba(0,48,135,.3); }
   .evo-tooltip::after { content: ''; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-bottom: none; border-top-color: #003087; }
