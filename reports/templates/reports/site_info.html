@@ -7,6 +7,17 @@
 <style>
   :root { --blue:#003087; --yellow:#FFC72C; }
 
+  /* ── Onglets ── */
+  .si-tabs { display:flex; gap:8px; margin-bottom:18px; border-bottom:2px solid #e8edf5; }
+  .si-tab {
+    padding:10px 22px; font-size:13.5px; font-weight:700; color:#6b7a99;
+    text-decoration:none; border-radius:10px 10px 0 0;
+    border:1.5px solid transparent; border-bottom:none; margin-bottom:-2px;
+    transition:background .15s, color .15s;
+  }
+  .si-tab:hover { color:#003087; background:#f2f6ff; }
+  .si-tab.active { color:#003087; background:#fff; border-color:#e8edf5; box-shadow:0 -2px 8px rgba(0,48,135,.05); }
+
   /* ── Search hero ── */
   .search-hero {
     background: linear-gradient(135deg,#003087 0%,#0047cc 60%,#003087 100%);
@@ -249,6 +260,12 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- ── Onglets ── -->
+<div class="si-tabs">
+  <a class="si-tab active" href="{% url 'site_info' %}">🔍 Recherche site</a>
+  <a class="si-tab" href="{% url 'sites_architecture_global' %}">🏗️ Architecture globale</a>
+</div>
 
 <!-- ── Hero search ── -->
 <div class="search-hero">

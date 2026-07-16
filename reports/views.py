@@ -5329,6 +5329,128 @@ def _build_site_architecture(site):
     return {'nodes': nodes, 'edges': edges, 'current': cur}
 
 
+def _build_global_architecture(region=None):
+    """Digraphe global « qui porte qui » couvrant TOUS les sites.
+
+    Mêmes conventions que `_build_site_architecture` mais sans site central :
+    tous les sites reliés (porteur ou porté) sont inclus. `region` restreint
+    aux sites de la région, en remontant leurs porteurs (même hors région)
+    pour conserver des chaînes complètes."""
+    from collections import deque
+    from .models import Site
+
+    def norm(s):
+        return (s or '').strip().upper()
+
+    rows = Site.objects.values_list(
+        'site_name', 'site_parent_1', 'site_parent_2', 'region', 'typ_trans'
+    )
+    info, parents, children = {}, {}, {}
+    for name, p1, p2, reg, typ_trans in rows:
+        nu = norm(name)
+        if not nu:
+            continue
+        info[nu] = {
+            'name': (name or '').strip(),
+            'region': reg or '',
+            'typ_trans': (typ_trans or '').strip().upper(),
+        }
+        ps = []
+        if norm(p1):
+            ps.append((norm(p1), 'primary'))
+        if norm(p2):
+            ps.append((norm(p2), 'secondary'))
+        parents[nu] = ps
+    for nu, ps in parents.items():
+        for p, t in ps:
+            if p in info:
+                children.setdefault(p, []).append((nu, t))
+
+    # ── Sélection : toute la base ou une région (+ porteurs remontés) ──
+    if region:
+        rlow = region.strip().lower()
+        selected = {nu for nu, i in info.items()
+                    if (i['region'] or '').strip().lower() == rlow}
+        dq = deque(selected)
+        while dq:
+            nu = dq.popleft()
+            for p, _t in parents.get(nu, []):
+                if p in info and p not in selected:
+                    selected.add(p)
+                    dq.append(p)
+    else:
+        selected = set(info)
+
+    # On ne garde que les sites reliés à au moins un autre site (les isolés
+    # rendraient le schéma illisible).
+    linked = set()
+    for nu in selected:
+        for p, _t in parents.get(nu, []):
+            if p in selected:
+                linked.add(nu)
+                linked.add(p)
+    selected &= linked
+    if not selected:
+        return None
+
+    # ── Centralité : charge = taille du sous-arbre porté ──
+    load_cache = {}
+
+    def load(nu):
+        if nu in load_cache:
+            return load_cache[nu]
+        load_cache[nu] = 0  # garde anti-cycle
+        tot = 0
+        for ch, _t in children.get(nu, []):
+            if ch in selected:
+                tot += 1 + load(ch)
+                if tot > 4999:
+                    break
+        load_cache[nu] = tot
+        return tot
+
+    nodes = [{
+        'id': nu,
+        'name': info[nu]['name'],
+        'region': info[nu]['region'],
+        'current': False,
+        'load': load(nu),
+    } for nu in sorted(selected)]
+
+    edges = []
+    for nu in sorted(selected):
+        for p, t in parents.get(nu, []):
+            if p in selected:
+                edges.append({
+                    'source': p,
+                    'target': nu,
+                    'type': t,
+                    'trans': info[nu]['typ_trans'],
+                })
+
+    return {'nodes': nodes, 'edges': edges, 'current': None}
+
+
+def sites_architecture_global(request):
+    """Onglet « Architecture globale » : digraphe de tous les sites."""
+    from .models import Site
+    region = request.GET.get('region', '').strip()
+    regions = sorted({
+        r.strip() for r in
+        Site.objects.exclude(region__isnull=True).exclude(region='')
+                    .values_list('region', flat=True)
+        if r and r.strip()
+    })
+    data = _build_global_architecture(region or None)
+    return render(request, 'reports/site_archi_global.html', {
+        'archi_json': data,
+        'regions':    regions,
+        'region':     region,
+        'nb_nodes':   len(data['nodes']) if data else 0,
+        'nb_edges':   len(data['edges']) if data else 0,
+    })
+
+
 def site_search_api(request):
     from .models import Site
     q = request.GET.get('q', '').strip()

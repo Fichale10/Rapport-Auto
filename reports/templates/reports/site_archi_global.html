@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Architecture globale — Rapport Auto | YAS{% endblock %}
+{% block breadcrumb %}Architecture globale{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --blue:#003087; --yellow:#FFC72C; }
+
+  /* ── Onglets ── */
+  .si-tabs { display:flex; gap:8px; margin-bottom:18px; border-bottom:2px solid #e8edf5; }
+  .si-tab {
+    padding:10px 22px; font-size:13.5px; font-weight:700; color:#6b7a99;
+    text-decoration:none; border-radius:10px 10px 0 0;
+    border:1.5px solid transparent; border-bottom:none; margin-bottom:-2px;
+    transition:background .15s, color .15s;
+  }
+  .si-tab:hover { color:#003087; background:#f2f6ff; }
+  .si-tab.active { color:#003087; background:#fff; border-color:#e8edf5; box-shadow:0 -2px 8px rgba(0,48,135,.05); }
+
+  /* ── En-tête ── */
+  .ga-hero {
+    background: linear-gradient(135deg,#003087 0%,#0047cc 60%,#003087 100%);
+    border-radius: 20px; padding: 28px 34px; margin-bottom: 20px;
+    position: relative; overflow: hidden;
+    display:flex; align-items:center; gap:24px; flex-wrap:wrap;
+  }
+  .ga-hero::after {
+    content:'YAS'; font-family:'Bebas Neue',sans-serif;
+    font-size:120px; letter-spacing:12px; color:rgba(255,255,255,.03);
+    position:absolute; bottom:-24px; right:20px; pointer-events:none; line-height:1;
+  }
+  .ga-hero-title { font-family:'Bebas Neue',sans-serif; font-size:34px; color:#fff; letter-spacing:2px; line-height:1.05; }
+  .ga-hero-title span { color:var(--yellow); }
+  .ga-hero-sub { color:rgba(255,255,255,.55); font-size:13px; margin-top:4px; }
+  .ga-hero-stats { display:flex; gap:12px; flex-wrap:wrap; margin-left:auto; }
+  .ga-chip { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); border-radius:8px; padding:6px 14px; font-size:12px; color:rgba(255,255,255,.75); }
+  .ga-chip strong { color:#fff; }
+
+  /* ── Barre d'outils ── */
+  .ga-toolbar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;
+  }
+  .ga-toolbar label { font-size:12px; font-weight:700; color:#003087; }
+  .ga-select {
+    padding:9px 14px; border-radius:10px; border:1.5px solid #d0d8e8;
+    background:#fff; font-size:13px; font-weight:600; color:#003087;
+    font-family:'DM Sans',sans-serif; cursor:pointer; outline:none;
+  }
+  .ga-select:focus { border-color:#003087; }
+  .ga-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:700; padding:8px 14px; border-radius:9px;
+    border:1px solid #d5def0; cursor:pointer;
+    background:#f2f6ff; color:#003087; transition:background .15s, transform .12s;
+  }
+  .ga-btn:hover { background:#e4edff; transform:translateY(-1px); }
+  .ga-zoom { display:inline-flex; align-items:center; gap:4px; margin-left:auto; }
+  .ga-zoom button {
+    width:32px; height:32px; border-radius:9px; border:1px solid #d5def0;
+    background:#f2f6ff; color:#003087; font-size:15px; font-weight:800; cursor:pointer;
+  }
+  .ga-zoom button:hover { background:#e4edff; }
+  .ga-zoom .ga-zoom-val { font-size:12px; font-weight:700; color:#6b7a99; min-width:44px; text-align:center; }
+
+  /* ── Canvas ── */
+  .ga-canvas-wrap { background:#fff; border-radius:16px; border:1px solid #e8edf5; padding:14px; box-shadow:0 2px 12px rgba(0,48,135,.07); }
+  .ga-canvas {
+    height:calc(100vh - 330px); min-height:480px; border-radius:12px; overflow:auto;
+    background:radial-gradient(circle at 30% 20%,#1c3f96 0%,#102a6e 55%,#0b1f55 100%);
+    position:relative; box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  .archi-empty {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:rgba(255,255,255,.55); font-size:13px; font-style:italic; text-align:center; padding:20px;
+  }
+  .archi-legend {
+    display:flex; flex-wrap:wrap; gap:14px; margin-top:10px;
+    font-size:11px; color:#6b7a99;
+  }
+  .archi-legend span { display:inline-flex; align-items:center; gap:6px; }
+  .archi-legend i { width:12px; height:12px; border-radius:50%; display:inline-block; }
+  .archi-legend .lg-root { background:#FFC72C; }
+  .archi-legend .lg-node { background:#3f7bd6; }
+  .archi-legend .lg-leaf { background:#26a35a; }
+  .archi-legend .lg-spof { background:transparent; border:2px dashed #ff5a5a; }
+  .archi-legend .lg-dash { width:18px; height:0; border-top:2px dashed #FFC72C; border-radius:0; }
+  .archi-legend .lg-fo   { width:18px; height:0; border-top:3.5px solid #6b7a99; border-radius:0; }
+  .archi-legend .lg-fh   { width:18px; height:0; border-top:1.4px dashed #6b7a99; border-radius:0; }
+  .archi-legend .lg-fttm { width:18px; height:0; border-top:1.4px solid #6b7a99; border-radius:0; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Onglets ── -->
+<div class="si-tabs">
+  <a class="si-tab" href="{% url 'site_info' %}">🔍 Recherche site</a>
+  <a class="si-tab active" href="{% url 'sites_architecture_global' %}">🏗️ Architecture globale</a>
+</div>
+
+<!-- ── En-tête ── -->
+<div class="ga-hero">
+  <div>
+    <div class="ga-hero-title">Architecture <span>globale</span></div>
+    <div class="ga-hero-sub">Digraphe « qui porte qui » de l'ensemble des sites du réseau{% if region %} — région {{ region }}{% endif %}.</div>
+  </div>
+  <div class="ga-hero-stats">
+    <div class="ga-chip"><strong>{{ nb_nodes }}</strong> sites reliés</div>
+    <div class="ga-chip"><strong>{{ nb_edges }}</strong> liaisons</div>
+  </div>
+</div>
+
+<!-- ── Barre d'outils ── -->
+<div class="ga-toolbar">
+  <form method="get" action="{% url 'sites_architecture_global' %}" style="display:inline-flex; align-items:center; gap:10px;">
+    <label for="regionSel">Région :</label>
+    <select name="region" id="regionSel" class="ga-select" onchange="this.form.submit()">
+      <option value="">Toutes les régions</option>
+      {% for r in regions %}
+      <option value="{{ r }}" {% if r == region %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <button type="button" class="ga-btn" id="gaPngBtn">🖼️ Exporter en image (PNG)</button>
+  <div class="ga-zoom">
+    <button type="button" id="zoomOut" title="Zoom arrière">−</button>
+    <span class="ga-zoom-val" id="zoomVal">100%</span>
+    <button type="button" id="zoomIn" title="Zoom avant">+</button>
+    <button type="button" id="zoomFit" title="Ajuster à la fenêtre" style="width:auto; padding:0 10px; font-size:12px;">Ajuster</button>
+  </div>
+</div>
+
+<!-- ── Canvas ── -->
+<div class="ga-canvas-wrap">
+  <div class="ga-canvas" id="archiCanvas"></div>
+  <div class="archi-legend">
+    <span><i class="lg-root"></i>Racine / IGW</span>
+    <span><i class="lg-node"></i>Nœud porteur</span>
+    <span><i class="lg-leaf"></i>Site terminal</span>
+    <span><i class="lg-spof"></i>Porteur critique (SPOF)</span>
+    <span><i class="lg-dash"></i>Lien secondaire (Parent 2)</span>
+    <span><i class="lg-fo"></i>FO (fibre)</span>
+    <span><i class="lg-fttm"></i>FTTM</span>
+    <span><i class="lg-fh"></i>FH (faisceau hertzien)</span>
+    <span style="margin-left:auto; font-style:italic;">Cliquez sur un site pour ouvrir sa fiche</span>
+  </div>
+</div>
+
+{{ archi_json|json_script:"archiData" }}
+<script>
+(function () {
+  var mount = document.getElementById('archiCanvas');
+  if (!mount) return;
+  var data;
+  try { data = JSON.parse(document.getElementById('archiData').textContent); }
+  catch (e) { data = null; }
+
+  if (!data || !data.nodes || !data.nodes.length) {
+    mount.innerHTML = '<div class="archi-empty">Aucune donnée d\'architecture (colonnes Site Parent 1 / 2 vides).</div>';
+    return;
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var R = 16, X_GAP = 150, Y_GAP = 56, PAD = 40;
+
+  // ── Index ──
+  var byId = {}, childrenOf = {}, parentsOf = {};
+  data.nodes.forEach(function (n) { byId[n.id] = n; });
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    (childrenOf[e.source] = childrenOf[e.source] || []).push(e.target);
+    (parentsOf[e.target] = parentsOf[e.target] || []).push(e.source);
+  });
+
+  // ── Digraphe : niveau = plus long chemin depuis une racine ──
+  var level = {};
+  function setLevel(id, lv, stack) {
+    if (level[id] == null || lv > level[id]) level[id] = lv; else return;
+    if (stack[id]) return;
+    stack[id] = 1;
+    (childrenOf[id] || []).forEach(function (c) { setLevel(c, lv + 1, stack); });
+    stack[id] = 0;
+  }
+  data.nodes.forEach(function (n) {
+    if (!(parentsOf[n.id] && parentsOf[n.id].length)) setLevel(n.id, 0, {});
+  });
+  data.nodes.forEach(function (n) { if (level[n.id] == null) level[n.id] = 0; });
+
+  // ── Regroupe par niveau + ordonne (barycentre) ──
+  var byLevel = {};
+  data.nodes.forEach(function (n) { (byLevel[level[n.id]] = byLevel[level[n.id]] || []).push(n.id); });
+  var levels = Object.keys(byLevel).map(Number).sort(function (a, b) { return a - b; });
+  var row = {};
+  levels.forEach(function (lv) { byLevel[lv].forEach(function (id, i) { row[id] = i; }); });
+  function bary(id) {
+    var ns = (parentsOf[id] || []).concat(childrenOf[id] || []);
+    if (!ns.length) return row[id];
+    var s = 0; ns.forEach(function (x) { s += row[x]; }); return s / ns.length;
+  }
+  for (var it = 0; it < 6; it++) {
+    levels.forEach(function (lv) {
+      byLevel[lv].sort(function (a, b) { return bary(a) - bary(b) || a.localeCompare(b); });
+      byLevel[lv].forEach(function (id, i) { row[id] = i; });
+    });
+  }
+
+  var maxRows = 1;
+  levels.forEach(function (lv) { maxRows = Math.max(maxRows, byLevel[lv].length); });
+  var maxLevel = levels[levels.length - 1] || 0;
+
+  function nx(id) { return PAD + level[id] * X_GAP + R; }
+  function ny(id) {
+    var lv = level[id];
+    var off = (maxRows - byLevel[lv].length) / 2; // centre chaque colonne
+    return PAD + (row[id] + off) * Y_GAP + R;
+  }
+
+  // ── Centralité : seuil SPOF ──
+  var maxLoad = 0;
+  data.nodes.forEach(function (n) { maxLoad = Math.max(maxLoad, n.load || 0); });
+  var spofThreshold = Math.max(5, Math.ceil(maxLoad * 0.5));
+
+  var W = PAD * 2 + maxLevel * X_GAP + 2 * R;
+  var H = PAD * 2 + maxRows * Y_GAP;
+
+  function el(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  var svg = el('svg', { width: W, height: H, viewBox: '0 0 ' + W + ' ' + H });
+  svg.style.display = 'block';
+
+  // Flèches
+  var defs = el('defs', {});
+  ['arrow', 'arrowSec'].forEach(function (idn) {
+    var m = el('marker', {
+      id: idn, viewBox: '0 0 10 10', refX: 8, refY: 5,
+      markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'
+    });
+    m.appendChild(el('path', {
+      d: 'M0,1 L9,5 L0,9 Z',
+      fill: idn === 'arrowSec' ? '#FFC72C' : 'rgba(255,255,255,.75)'
+    }));
+    defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+
+  var g = el('g', {});
+  svg.appendChild(g);
+
+  // ── Répartition des points d'ancrage sur le bord des cercles ──
+  var inCnt = {}, outCnt = {};
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    e._in = (inCnt[e.target] = (inCnt[e.target] || 0)); inCnt[e.target]++;
+    e._out = (outCnt[e.source] = (outCnt[e.source] || 0)); outCnt[e.source]++;
+  });
+  function anchorOffset(idx, total) {
+    if (total <= 1) return 0;
+    var span = (R - 5) * 2;
+    return -span / 2 + (span * idx) / (total - 1);
+  }
+
+  function smoothPath(pts) {
+    if (pts.length < 2) return '';
+    if (pts.length === 2) {
+      var a = pts[0], b = pts[1], mx0 = (a.x + b.x) / 2;
+      return 'M' + a.x + ',' + a.y + ' C' + mx0 + ',' + a.y + ' ' + mx0 + ',' + b.y + ' ' + b.x + ',' + b.y;
+    }
+    var d = 'M' + pts[0].x + ',' + pts[0].y;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1] || pts[i];
+      var p1 = pts[i];
+      var p2 = pts[i + 1];
+      var p3 = pts[i + 2] || p2;
+      var c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+      var c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ' C' + c1x + ',' + c1y + ' ' + c2x + ',' + c2y + ' ' + p2.x + ',' + p2.y;
+    }
+    return d;
+  }
+
+  // ── Arcs ──
+  data.edges.forEach(function (e) {
+    if (!byId[e.source] || !byId[e.target]) return;
+    var targetIsLeaf = !(childrenOf[e.target] || []).length;
+    var oy1 = anchorOffset(e._out, outCnt[e.source]);
+    var oy2 = anchorOffset(e._in, inCnt[e.target]);
+    var x1 = nx(e.source) + R, y1 = ny(e.source) + oy1;
+    var x2 = nx(e.target) - R - (targetIsLeaf ? 6 : 0), y2 = ny(e.target) + oy2;
+
+    var Ls = level[e.source], Lt = level[e.target];
+    var pts = [{ x: x1, y: y1 }];
+    for (var lv = Ls + 1; lv <= Lt - 1; lv++) {
+      var xw = PAD + lv * X_GAP + R;
+      var yLine = y1 + (y2 - y1) * (lv - Ls) / (Lt - Ls);
+      pts.push({ x: xw, y: yLine });
+    }
+    pts.push({ x: x2, y: y2 });
+    var d = smoothPath(pts);
+    var sec = e.type === 'secondary';
+
+    var trans = (e.trans || '').toUpperCase();
+    var width, dash;
+    if (trans === 'FO') { width = 3; dash = '0'; }
+    else if (trans === 'FH') { width = 1.2; dash = '4 4'; }
+    else if (trans === 'FTTM') { width = 1.2; dash = '0'; }
+    else { width = sec ? 1.6 : 2; dash = sec ? '6 5' : '0'; }
+
+    var pathAttrs = {
+      d: d, fill: 'none',
+      stroke: sec ? '#FFC72C' : 'rgba(255,255,255,.45)',
+      'stroke-width': width,
+      'stroke-dasharray': dash,
+      'stroke-linecap': 'round'
+    };
+    if (targetIsLeaf) {
+      pathAttrs['marker-end'] = 'url(#' + (sec ? 'arrowSec' : 'arrow') + ')';
+    }
+    g.appendChild(el('path', pathAttrs));
+  });
+
+  // ── Icône pylône (treillis) ──
+  function tower(cx, cy, color) {
+    var grp = el('g', {});
+    var top = cy - 7, bot = cy + 7, th = 2.6, bh = 6;
+    function lx(t) { return { l: cx - (bh + (th - bh) * t), r: cx + (bh + (th - bh) * t), y: bot + (top - bot) * t }; }
+    grp.appendChild(el('line', { x1: cx - bh, y1: bot, x2: cx - th, y2: top, stroke: color, 'stroke-width': 1.4, 'stroke-linecap': 'round' }));
+    grp.appendChild(el('line', { x1: cx + bh, y1: bot, x2: cx + th, y2: top, stroke: color, 'stroke-width': 1.4, 'stroke-linecap': 'round' }));
+    for (var i = 0; i < 3; i++) {
+      var a = lx(i / 3), b = lx((i + 1) / 3);
+      grp.appendChild(el('line', { x1: a.l, y1: a.y, x2: a.r, y2: a.y, stroke: color, 'stroke-width': 0.9 }));
+      grp.appendChild(el('line', { x1: a.l, y1: a.y, x2: b.r, y2: b.y, stroke: color, 'stroke-width': 0.7 }));
+      grp.appendChild(el('line', { x1: a.r, y1: a.y, x2: b.l, y2: b.y, stroke: color, 'stroke-width': 0.7 }));
+    }
+    grp.appendChild(el('circle', { cx: cx, cy: top - 2.5, r: 1.2, fill: color }));
+    return grp;
+  }
+
+  // ── Nœuds ──
+  var SITE_URL = '{% url "site_info" %}?q=';
+  data.nodes.forEach(function (n) {
+    var cx = nx(n.id), cy = ny(n.id);
+    var hasKids = (childrenOf[n.id] || []).length > 0;
+    var fill = level[n.id] === 0 ? '#FFC72C' : (hasKids ? '#3f7bd6' : '#26a35a');
+    var spof = (n.load || 0) >= spofThreshold && hasKids;
+
+    var node = el('g', { style: 'cursor:pointer' });
+
+    if (spof) node.appendChild(el('circle', { cx: cx, cy: cy, r: R + 7, fill: 'none', stroke: '#ff5a5a', 'stroke-width': 2, 'stroke-dasharray': '3 3' }));
+
+    node.appendChild(el('circle', { cx: cx, cy: cy, r: R, fill: fill, stroke: 'rgba(255,255,255,.9)', 'stroke-width': 1.6 }));
+    node.appendChild(tower(cx, cy, level[n.id] === 0 ? '#102a6e' : '#fff'));
+
+    var t = el('text', {
+      x: cx, y: cy + R + 12, 'text-anchor': 'middle',
+      fill: '#fff', 'font-size': '9.5', 'font-weight': '700',
+      'font-family': 'DM Sans, sans-serif'
+    });
+    t.textContent = n.name.length > 16 ? n.name.slice(0, 15) + '…' : n.name;
+    node.appendChild(t);
+
+    var ttl = el('title', {});
+    ttl.textContent = n.name + (n.region ? ' — ' + n.region : '')
+      + '  •  porte ' + (n.load || 0) + ' site(s)'
+      + (spof ? '  •  Porteur critique (SPOF)' : '')
+      + '  •  Cliquer pour ouvrir la fiche';
+    node.appendChild(ttl);
+
+    node.addEventListener('click', function () {
+      window.location.href = SITE_URL + encodeURIComponent(n.name);
+    });
+
+    g.appendChild(node);
+  });
+
+  mount.appendChild(svg);
+
+  // ── Zoom ── //
+  var zoom = 1;
+  var zoomVal = document.getElementById('zoomVal');
+  function applyZoom() {
+    svg.setAttribute('width', Math.round(W * zoom));
+    svg.setAttribute('height', Math.round(H * zoom));
+    zoomVal.textContent = Math.round(zoom * 100) + '%';
+  }
+  function fit() {
+    var zw = (mount.clientWidth - 20) / W;
+    var zh = (mount.clientHeight - 20) / H;
+    zoom = Math.max(0.05, Math.min(1, Math.min(zw, zh)));
+    applyZoom();
+  }
+  document.getElementById('zoomIn').addEventListener('click', function () {
+    zoom = Math.min(2.5, zoom * 1.25); applyZoom();
+  });
+  document.getElementById('zoomOut').addEventListener('click', function () {
+    zoom = Math.max(0.05, zoom / 1.25); applyZoom();
+  });
+  document.getElementById('zoomFit').addEventListener('click', fit);
+
+  // Zoom initial : ajusté en largeur si le schéma est très grand, sinon 100 %
+  var zInit = Math.min(1, (mount.clientWidth - 20) / W);
+  zoom = Math.max(0.05, zInit);
+  applyZoom();
+
+  // ── Export PNG ──
+  var pngBtn = document.getElementById('gaPngBtn');
+  if (pngBtn) pngBtn.addEventListener('click', function () {
+    var w = W, h = H;
+    var clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', w);
+    clone.setAttribute('height', h);
+
+    var xml = new XMLSerializer().serializeToString(clone);
+    var svgBlob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>' + xml],
+                           { type: 'image/svg+xml;charset=utf-8' });
+    var url = URL.createObjectURL(svgBlob);
+    var img = new Image();
+
+    pngBtn.disabled = true;
+    var oldTxt = pngBtn.textContent;
+    pngBtn.textContent = '⏳ Génération…';
+
+    img.onload = function () {
+      // Limite de sécurité : max ~30 Mpx
+      var scale = Math.min(2, Math.sqrt(30000000 / (w * h)));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      var ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+
+      var grd = ctx.createRadialGradient(w * 0.3, h * 0.2, 0,
+                                         w * 0.3, h * 0.2, Math.max(w, h));
+      grd.addColorStop(0, '#1c3f96');
+      grd.addColorStop(0.55, '#102a6e');
+      grd.addColorStop(1, '#0b1f55');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob(function (blob) {
+        var a = document.createElement('a');
+        var regionSlug = '{{ region|slugify|escapejs }}';
+        a.download = 'Architecture_globale' + (regionSlug ? '_' + regionSlug : '') + '.png';
+        a.href = URL.createObjectURL(blob);
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+        pngBtn.disabled = false;
+        pngBtn.textContent = oldTxt;
+      }, 'image/png');
+    };
+
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      pngBtn.disabled = false;
+      pngBtn.textContent = oldTxt;
+      alert("Échec de la génération de l'image.");
+    };
+
+    img.src = url;
+  });
+})();
+</script>
+
+{% endblock %}
