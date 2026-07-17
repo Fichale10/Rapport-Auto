@@ -903,7 +903,10 @@ def _sauvegarder_orm(df, source_file, regions_map):
         dt = ts.to_pydatetime()
         return tz.make_aware(dt, current_tz) if dt.tzinfo is None else dt
 
-    objs, cles = [], []
+    # Dict clé → objet pour dédupliquer les doublons (site, alarm_time) du
+    # fichier source (sinon Postgres rejette l'ON CONFLICT DO UPDATE :
+    # « cannot affect row a second time »). La dernière occurrence gagne.
+    objs_par_cle = {}
     for name, alarm, cancel, duration, alarm_text, cause, escalade in zip(
             df['Name'], df['Alarm Time'], df['Cancel Time'], df.get('Duration', []),
             df.get('Alarm Text', ['']*len(df)), df.get('Cause', ['']*len(df)),
@@ -912,8 +915,7 @@ def _sauvegarder_orm(df, source_file, regions_map):
         if alarm_time is None:
             continue
         site = str(name).strip()
-        cles.append((site, alarm_time))
-        objs.append(SiteDownAlarm(
+        objs_par_cle[(site, alarm_time)] = SiteDownAlarm(
             site_name=site,
             alarm_time=alarm_time,
             cancel_time=aware(cancel),
@@ -923,7 +925,9 @@ def _sauvegarder_orm(df, source_file, regions_map):
             escalade=_clean_str(escalade)[:80],
             region=(regions_map or {}).get(site.upper(), '')[:50],
             source_file=source_file[:255],
-        ))
+        )
+    objs = list(objs_par_cle.values())
+    cles = list(objs_par_cle.keys())
     if not objs:
         return 0, 0
 
