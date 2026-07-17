@@ -87,6 +87,9 @@ class UploadedReport(models.Model):
     # (top_causes_json est par durée) — évite la relecture du fichier Excel
     # détaillé, inexistant pour les rapports importés par API
     top_causes_count_json = models.JSONField(default=list, blank=True)
+    # Causes ventilées par escalade (filtre des graphes "Incident par Cause") :
+    # {"ENERGIE": {"Coupure secteur": {"count": 12, "duration_sec": 43200}, …}, …}
+    cause_par_escalade_json = models.JSONField(default=dict, blank=True)
 
     # ── Nouveau champ : outage journalier par escalade ──────────────────────
     # Structure :

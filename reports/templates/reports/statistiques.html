@@ -77,6 +77,12 @@
   .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid #f0f4ff; }
   .card-title { font-size:15px; font-weight:800; color:#003087; display:flex; align-items:center; gap:8px; }
   .card-badge { background:#e8f0ff; color:#003087; font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px; border:1px solid #c8d8f8; }
+  .esc-filter-select {
+    font-size:11px; font-weight:600; color:#003087;
+    background:#f5f8ff; border:1px solid #c8d8f8; border-radius:20px;
+    padding:3px 10px; cursor:pointer; outline:none; max-width:150px;
+  }
+  .esc-filter-select:hover { border-color:#003087; }
 
   .bar-list { display:flex; flex-direction:column; gap:12px; }
   .bar-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
@@ -776,9 +782,17 @@
 <div class="evolution-card">
   <div class="evo-header">
     <div class="evo-title">📈 Évolution sur la période</div>
-    <div class="evo-legend">
-      <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#003087"></div>Incidents</div>
-      <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#FFC72C"></div>Outage (h)</div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      {% if evolution_escalades %}
+      <select class="esc-filter-select" id="evoEscFilter" title="Filtrer par escalade">
+        <option value="">Toutes escalades</option>
+        {% for esc in evolution_escalades %}<option value="{{ esc }}">{{ esc }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <div class="evo-legend">
+        <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#003087"></div>Incidents</div>
+        <div class="evo-leg-item"><div class="evo-leg-dot" style="background:#FFC72C"></div>Outage (h)</div>
+      </div>
     </div>
   </div>
   <div class="evo-chart-wrap">
@@ -792,9 +806,14 @@
 </div>
 <script>
 (function(){
-  const incidents={{ evolution_incidents|safe }},outages={{ evolution_outage|safe }},labels={{ evolution_labels|safe }};
+  const EVO={{ evolution_filter_json }};
+  const svg=document.getElementById('evoSvg'),tooltip=document.getElementById('evoTooltip'),labelsEl=document.getElementById('evoLabels');
+  function render(data){
+  const incidents=data.incidents,outages=data.outage,labels=data.labels;
+  const axLc=document.getElementById('evoAxisLeft'),axRc=document.getElementById('evoAxisRight'),ptLblsC=document.getElementById('evoPointLabels');
+  svg.innerHTML='';labelsEl.innerHTML='';if(axLc)axLc.innerHTML='';if(axRc)axRc.innerHTML='';if(ptLblsC)ptLblsC.innerHTML='';tooltip.style.opacity='0';
   if(!incidents.length||incidents.length<2)return;
-  const W=800,H=160,PL=10,PR=10,PT=20,PB=10,svg=document.getElementById('evoSvg'),tooltip=document.getElementById('evoTooltip'),labelsEl=document.getElementById('evoLabels'),n=incidents.length;
+  const W=800,H=160,PL=10,PR=10,PT=20,PB=10,n=incidents.length;
   const xs=incidents.map((_,i)=>PL+i*(W-PL-PR)/(n-1));
   // BOT : plancher 8 px au-dessus de l'axe des abscisses ; SPAN : hauteur utile
   const BOT=H-PB-8,SPAN=BOT-PT;
@@ -835,6 +854,10 @@
   // Étiquettes de dates : espacées quand il y a beaucoup de points (max ~10 visibles)
   const step=Math.max(1,Math.ceil(n/10));
   labels.forEach((l,i)=>{const s=document.createElement('span');s.className='evo-label';s.textContent=(i%step===0||i===n-1)?l:'';labelsEl.appendChild(s);});
+  }
+  render(EVO['']||{incidents:[],outage:[],labels:[]});
+  const sel=document.getElementById('evoEscFilter');
+  if(sel)sel.addEventListener('change',function(){render(EVO[sel.value]||EVO['']);});
 })();
 </script>
 {% endif %}
@@ -872,10 +895,18 @@
     <div class="stat-card">
       <div class="card-header">
         <div class="card-title">🔢 Incident par Cause (Nombre)</div>
-        <span class="card-badge">Top 10</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if causes_escalades %}
+          <select class="esc-filter-select" id="causeCountEscFilter" title="Filtrer par escalade">
+            <option value="">Toutes escalades</option>
+            {% for esc in causes_escalades %}<option value="{{ esc }}">{{ esc }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <span class="card-badge">Top 10</span>
+        </div>
       </div>
-      {% if causes_count_chart %}
-        <div class="bar-list">
+      <div class="bar-list" id="causeCountBarList">
+        {% if causes_count_chart %}
           {% for c in causes_count_chart %}
           <div>
             <div class="bar-meta">
@@ -883,20 +914,31 @@
               <span class="bar-val">{{ c.count }} inc.</span>
             </div>
             <div class="bar-track"><div class="bar-fill" style="width:{{ c.pct }}%; background:linear-gradient(90deg,#9C27B0,#ce93d8);"></div></div>
+            {% if c.esc %}
+            <div class="site-cause-row"><span class="site-cause-text" title="{{ c.esc_detail }}">🏷 {{ c.esc }} ({{ c.esc_pct }}%)</span></div>
+            {% endif %}
           </div>
           {% endfor %}
-        </div>
-      {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+        {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+      </div>
     </div>
 
     <!-- Récurrence des Sites -->
     <div class="stat-card">
       <div class="card-header">
         <div class="card-title">📡 Récurrence des Sites</div>
-        <span class="card-badge">Top 10</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if sites_regions %}
+          <select class="esc-filter-select" id="sitesRegionFilter" title="Filtrer par région">
+            <option value="">Toutes régions</option>
+            {% for reg in sites_regions %}<option value="{{ reg }}">{{ reg }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <span class="card-badge">Top 10</span>
+        </div>
       </div>
-      {% if sites_chart %}
-        <div class="bar-list">
+      <div class="bar-list" id="sitesBarList">
+        {% if sites_chart %}
           {% for s in sites_chart %}
           <div>
             <div class="bar-meta">
@@ -909,8 +951,8 @@
             {% endif %}
           </div>
           {% endfor %}
-        </div>
-      {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+        {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+      </div>
     </div>
 
   </div>
@@ -935,10 +977,18 @@
     <div class="stat-card cause-card">
       <div class="card-header">
         <div class="card-title">🔧 Incident par Cause (Durée)</div>
-        <span class="card-badge">Top 10</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if causes_escalades %}
+          <select class="esc-filter-select" id="causeDureeEscFilter" title="Filtrer par escalade">
+            <option value="">Toutes escalades</option>
+            {% for esc in causes_escalades %}<option value="{{ esc }}">{{ esc }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <span class="card-badge">Top 10</span>
+        </div>
       </div>
-      {% if causes_chart %}
-        <div class="bar-list">
+      <div class="bar-list" id="causeDureeBarList">
+        {% if causes_chart %}
           {% for c in causes_chart %}
           <div>
             <div class="bar-meta">
@@ -946,20 +996,31 @@
               <span class="bar-val">{{ c.duree_h }}h</span>
             </div>
             <div class="bar-track"><div class="bar-fill orange" style="width:{{ c.pct }}%"></div></div>
+            {% if c.esc %}
+            <div class="site-cause-row"><span class="site-cause-text" title="{{ c.esc_detail }}">🏷 {{ c.esc }} ({{ c.esc_pct }}%)</span></div>
+            {% endif %}
           </div>
           {% endfor %}
-        </div>
-      {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+        {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+      </div>
     </div>
 
     <!-- Sites les Plus Dégradés -->
     <div class="stat-card">
       <div class="card-header">
         <div class="card-title">🔴 Sites les Plus Dégradés</div>
-        <span class="card-badge">Top 10</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          {% if sites_regions %}
+          <select class="esc-filter-select" id="degradedRegionFilter" title="Filtrer par région">
+            <option value="">Toutes régions</option>
+            {% for reg in sites_regions %}<option value="{{ reg }}">{{ reg }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <span class="card-badge">Top 10</span>
+        </div>
       </div>
-      {% if degraded_chart %}
-        <div class="bar-list">
+      <div class="bar-list" id="degradedBarList">
+        {% if degraded_chart %}
           {% for d in degraded_chart %}
           <div>
             <div class="bar-meta">
@@ -972,8 +1033,8 @@
             {% endif %}
           </div>
           {% endfor %}
-        </div>
-      {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+        {% else %}<div class="empty-msg">Aucune donnée pour cette période</div>{% endif %}
+      </div>
     </div>
 
   </div>
@@ -1211,6 +1272,105 @@
 })();
 </script>
 <script>
+// ── Filtre par escalade des graphes "Incident par Cause" ──
+(function(){
+  var DATA = {{ causes_filter_json }};
+  function render(listEl, items, mode){
+    if (!items || !items.length){
+      listEl.innerHTML = '<div class="empty-msg">Aucune donnée pour cette escalade</div>';
+      return;
+    }
+    var html = '';
+    items.forEach(function(c, i){
+      var val  = (mode === 'count') ? (c.count + ' inc.') : (c.duree_h + 'h');
+      var fill = (mode === 'count')
+        ? '<div class="bar-fill" style="width:' + c.pct + '%; background:linear-gradient(90deg,#9C27B0,#ce93d8);"></div>'
+        : '<div class="bar-fill orange" style="width:' + c.pct + '%"></div>';
+      html += '<div><div class="bar-meta"><div class="bar-meta-left">'
+            + '<span class="bar-rank r' + (i + 1) + '">' + (i + 1) + '</span>'
+            + '<span class="bar-name"></span></div>'
+            + '<span class="bar-val">' + val + '</span></div>'
+            + '<div class="bar-track">' + fill + '</div>';
+      if (c.esc){
+        // Badge escalade dominante (mode « Toutes escalades » uniquement)
+        html += '<div class="site-cause-row"><span class="site-cause-text"></span></div>';
+      }
+      html += '</div>';
+    });
+    listEl.innerHTML = html;
+    // Noms et badges injectés via textContent (sécurité XSS)
+    listEl.querySelectorAll('.bar-name').forEach(function(el, i){ el.textContent = items[i].name; });
+    var badges = listEl.querySelectorAll('.site-cause-text'), bi = 0;
+    items.forEach(function(c){
+      if (c.esc){
+        var el = badges[bi++];
+        el.textContent = '\ud83c\udff7 ' + c.esc + ' (' + c.esc_pct + '%)';
+        if (c.esc_detail) el.title = c.esc_detail;
+      }
+    });
+  }
+  function bind(selId, listId, mode){
+    var sel  = document.getElementById(selId);
+    var list = document.getElementById(listId);
+    if (!sel || !list) return;
+    sel.addEventListener('change', function(){
+      var d = DATA[sel.value] || {};
+      render(list, d[mode] || [], mode);
+    });
+  }
+  bind('causeCountEscFilter', 'causeCountBarList', 'count');
+  bind('causeDureeEscFilter', 'causeDureeBarList', 'duree');
+})();
+</script>
+<script>
+// ── Filtre par région des graphes "Récurrence des Sites" / "Sites Dégradés" ──
+(function(){
+  var DATA = {{ sites_filter_json }};
+  function render(listEl, items, mode){
+    if (!items || !items.length){
+      listEl.innerHTML = '<div class="empty-msg">Aucune donnée pour cette région</div>';
+      return;
+    }
+    var html = '';
+    items.forEach(function(s, i){
+      var val  = (mode === 'recur') ? (s.count + 'x') : (s.duration_h + 'h');
+      var fill = (mode === 'recur')
+        ? '<div class="bar-fill yellow" style="width:' + s.pct + '%"></div>'
+        : '<div class="bar-fill red" style="width:' + s.pct + '%"></div>';
+      html += '<div><div class="bar-meta"><div class="bar-meta-left">'
+            + '<span class="bar-rank r' + (i + 1) + '">' + (i + 1) + '</span>'
+            + '<span class="bar-name"></span></div>'
+            + '<span class="bar-val">' + val + '</span></div>'
+            + '<div class="bar-track">' + fill + '</div>';
+      if (s.top_cause){
+        html += '<div class="site-cause-row"><span class="site-cause-text"></span></div>';
+      }
+      html += '</div>';
+    });
+    listEl.innerHTML = html;
+    // Noms et badges injectés via textContent (sécurité XSS)
+    listEl.querySelectorAll('.bar-name').forEach(function(el, i){ el.textContent = items[i].name; });
+    var badges = listEl.querySelectorAll('.site-cause-text'), bi = 0;
+    items.forEach(function(s){
+      if (s.top_cause){
+        var el = badges[bi++];
+        el.textContent = '\u26a1 ' + s.top_cause;
+        el.title = s.top_cause;
+      }
+    });
+  }
+  function bind(selId, listId, mode){
+    var sel  = document.getElementById(selId);
+    var list = document.getElementById(listId);
+    if (!sel || !list) return;
+    sel.addEventListener('change', function(){
+      var d = DATA[sel.value] || {};
+      render(list, d[mode] || [], mode);
+    });
+  }
+  bind('sitesRegionFilter',    'sitesBarList',    'recur');
+  bind('degradedRegionFilter', 'degradedBarList', 'deg');
+})();
 </script>
 
 {% endif %}{# end platform != fixe and not transmission #}

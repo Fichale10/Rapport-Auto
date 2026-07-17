@@ -1084,6 +1084,8 @@ def process_report(request, pk):
     if cause_col and 'Duration' in df_export.columns:
         cause_duration = defaultdict(float)
         cause_counts   = defaultdict(int)
+        cause_par_esc: dict = {}
+        esc_col_export = 'Escalade' if 'Escalade' in df_export.columns else None
         for _, row in df_export.iterrows():
             cause = str(row.get(cause_col, '')).strip()
             dur   = _parse_duration(str(row.get('Duration', '')))
@@ -1091,6 +1093,13 @@ def process_report(request, pk):
                 cause_counts[cause] += 1
                 if dur > 0:
                     cause_duration[cause] += dur
+                if esc_col_export:
+                    esc = str(row.get(esc_col_export, '')).strip()
+                    if esc and esc.lower() != 'nan':
+                        _e = cause_par_esc.setdefault(esc, {})
+                        _c = _e.setdefault(cause, {'count': 0, 'duration_sec': 0.0})
+                        _c['count'] += 1
+                        _c['duration_sec'] += dur
         top_causes = sorted(cause_duration.items(), key=lambda x: x[1], reverse=True)[:10]
         report.top_causes_json = json.loads(json.dumps([
             {'name': k, 'duration_sec': v} for k, v in top_causes
@@ -1099,9 +1108,11 @@ def process_report(request, pk):
         report.top_causes_count_json = json.loads(json.dumps([
             {'name': k, 'count': v} for k, v in top_causes_count
         ], cls=_NpEncoder))
+        report.cause_par_escalade_json = json.loads(json.dumps(cause_par_esc, cls=_NpEncoder))
     else:
         report.top_causes_json = []
         report.top_causes_count_json = []
+        report.cause_par_escalade_json = {}
 
     # ── site_duration_json : durée cumulée par site (évite la relecture Excel en vue) ──
     _site_dur_col = next(
@@ -3626,6 +3637,40 @@ def statistiques(request):
         for k, v in degraded_top10
     ]
 
+    # ── Sites par région (filtre des graphes « Récurrence » et « Dégradés ») ──
+    _site_region: dict = {}
+    for r in reports:
+        for _reg, _rsites in (r.region_sites_json or {}).items():
+            _reg = str(_reg).strip()
+            for _s in _rsites:
+                _s = str(_s).strip()
+                if _s and _reg:
+                    _site_region.setdefault(_s, _reg)
+
+    sites_filter_data = {'': {'recur': sites_chart, 'deg': degraded_chart}}
+    sites_regions = sorted(set(_site_region.values()))
+    for _reg in sites_regions:
+        _rec = sorted(
+            ((s, c) for s, c in site_data.items() if _site_region.get(s) == _reg),
+            key=lambda x: x[1], reverse=True)[:10]
+        _max_r = _rec[0][1] if _rec else 1
+        _degl = sorted(
+            ((s, d) for s, d in site_duration.items() if _site_region.get(s) == _reg),
+            key=lambda x: x[1], reverse=True)[:10]
+        _max_g = _degl[0][1] if _degl else 1
+        sites_filter_data[_reg] = {
+            'recur': [
+                {'name': s, 'count': c, 'pct': round(c / _max_r * 100),
+                 'top_cause': _site_top_cause.get(s, '')}
+                for s, c in _rec
+            ],
+            'deg': [
+                {'name': s, 'duration_h': round(d / 3600, 1), 'pct': round(d / _max_g * 100),
+                 'top_cause': _site_top_cause.get(s, '')}
+                for s, d in _degl
+            ],
+        }
+
     # ── Incident par Cause (Durée) ──────────────────────────────────────────
     cause_data = defaultdict(float)
     for r in reports:
@@ -3669,6 +3714,72 @@ def statistiques(request):
         {'name': k, 'count': v, 'pct': round(v / max_cause_count * 100)}
         for k, v in causes_count_top10
     ]
+
+    # ── Causes par escalade (filtre des 2 graphes "Incident par Cause") ─────
+    _cause_esc_agg: dict = {}
+    for r in reports:
+        for _esc, _causes in (r.cause_par_escalade_json or {}).items():
+            _e = _cause_esc_agg.setdefault(_esc, {})
+            for _cn, _v in _causes.items():
+                _c = _e.setdefault(_cn, {'count': 0, 'duration_sec': 0.0})
+                _c['count']        += _v.get('count', 0)
+                _c['duration_sec'] += _v.get('duration_sec', 0.0)
+
+    # ── Inversion cause → escalade(s) : badge « escalade dominante » ────────
+    _esc_of_cause: dict = {}
+    for _esc, _causes in _cause_esc_agg.items():
+        for _cn, _v in _causes.items():
+            _c = _esc_of_cause.setdefault(_cn, {}).setdefault(
+                _esc, {'count': 0, 'duration_sec': 0.0})
+            _c['count']        += _v.get('count', 0)
+            _c['duration_sec'] += _v.get('duration_sec', 0.0)
+
+    def _esc_badge(cause, key):
+        """Escalade dominante d'une cause + répartition complète (tooltip)."""
+        _d = _esc_of_cause.get(cause)
+        if not _d:
+            return {}
+        _tot = sum(v[key] for v in _d.values())
+        if _tot <= 0:
+            return {}
+        _sorted = sorted(_d.items(), key=lambda x: x[1][key], reverse=True)
+        _top_esc, _top_v = _sorted[0]
+
+        def _pct_lbl(v):
+            _p = round(v[key] / _tot * 100)
+            return f"{_p}%" if _p >= 1 else "<1%"
+
+        return {
+            'esc':        _top_esc,
+            'esc_pct':    round(_top_v[key] / _tot * 100),
+            'esc_detail': ' · '.join(
+                f"{e} {_pct_lbl(v)}" for e, v in _sorted if v[key] > 0),
+        }
+
+    for _c in causes_chart:
+        _c.update(_esc_badge(_c['name'], 'duration_sec'))
+    for _c in causes_count_chart:
+        _c.update(_esc_badge(_c['name'], 'count'))
+
+    causes_filter_data = {
+        '': {'duree': causes_chart, 'count': causes_count_chart},
+    }
+    for _esc, _causes in _cause_esc_agg.items():
+        _top_dur = sorted(
+            ((k, v['duration_sec']) for k, v in _causes.items() if v['duration_sec'] > 0),
+            key=lambda x: x[1], reverse=True)[:10]
+        _max_d = _top_dur[0][1] if _top_dur else 1
+        _top_cnt = sorted(
+            ((k, v['count']) for k, v in _causes.items() if v['count'] > 0),
+            key=lambda x: x[1], reverse=True)[:10]
+        _max_c = _top_cnt[0][1] if _top_cnt else 1
+        causes_filter_data[_esc] = {
+            'duree': [{'name': k, 'duree_h': round(v / 3600, 1),
+                       'pct': round(v / _max_d * 100)} for k, v in _top_dur],
+            'count': [{'name': k, 'count': v,
+                       'pct': round(v / _max_c * 100)} for k, v in _top_cnt],
+        }
+    causes_escalades = sorted(_cause_esc_agg.keys())
 
     donut_svg = _make_donut_svg(outage_chart, total_outage_h)
     outage_chart_colored = [
@@ -3714,6 +3825,40 @@ def statistiques(request):
     evolution_labels    = [f"{_d[8:10]}/{_d[5:7]}" for _d in _jours]
     evolution_incidents = [_inc_par_jour.get(_d, 0) for _d in _jours]
     evolution_outage    = [round(_out_par_jour.get(_d, 0.0) / 3600, 1) for _d in _jours]
+
+    # ── Séries journalières PAR ESCALADE (filtre du graphe d'évolution) ──────
+    # Escalades normalisées via ESC_MAPPING (mêmes catégories que la Disponibilité) ;
+    # incidents_journaliers_json a des clés brutes, outage_journalier_json des clés
+    # déjà normalisées — on aligne les deux.
+    _inc_esc_jour = defaultdict(lambda: defaultdict(int))
+    _out_esc_jour = defaultdict(lambda: defaultdict(float))
+    for r in reports:
+        for _esc_raw, _days in (r.incidents_journaliers_json or {}).items():
+            if _esc_raw == 'TOTAL':
+                continue
+            _k = ESC_MAPPING.get(str(_esc_raw).strip())
+            if not _k:
+                continue
+            for _d, _n in _days.items():
+                _inc_esc_jour[_k][_d] += _n
+        for _esc_raw, _days in (r.outage_journalier_json or {}).items():
+            _k = ESC_MAPPING.get(str(_esc_raw).strip(), str(_esc_raw).strip())
+            for _d, _sec in _days.items():
+                _out_esc_jour[_k][_d] += _sec
+
+    evolution_filter = {'': {
+        'labels':    evolution_labels,
+        'incidents': evolution_incidents,
+        'outage':    evolution_outage,
+    }}
+    for _esc in sorted(set(_inc_esc_jour) | set(_out_esc_jour)):
+        _inc_l = [_inc_esc_jour[_esc].get(_d, 0) for _d in _jours]
+        _out_l = [round(_out_esc_jour[_esc].get(_d, 0.0) / 3600, 1) for _d in _jours]
+        if any(_inc_l) or any(_out_l):
+            evolution_filter[_esc] = {
+                'labels': evolution_labels, 'incidents': _inc_l, 'outage': _out_l,
+            }
+    evolution_escalades = [k for k in evolution_filter if k]
 
     # ── Disponibilité dynamique selon filtre ──────────────────────────────
     if period_filter == 'custom':
@@ -3785,6 +3930,12 @@ def statistiques(request):
         'degraded_chart':       degraded_chart,
         'causes_chart':         causes_chart,
         'causes_count_chart':   causes_count_chart,
+        'causes_escalades':     causes_escalades,
+        'causes_filter_json':   mark_safe(json.dumps(causes_filter_data).replace('<', '\\u003c')),
+        'sites_regions':        sites_regions,
+        'sites_filter_json':    mark_safe(json.dumps(sites_filter_data).replace('<', '\\u003c')),
+        'evolution_escalades':  evolution_escalades,
+        'evolution_filter_json': mark_safe(json.dumps(evolution_filter).replace('<', '\\u003c')),
         'total_outage_h':       total_outage_h,
         'total_reports':        total_reports,
         'total_sites_impacted': total_sites_impacted,

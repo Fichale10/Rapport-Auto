@@ -346,6 +346,8 @@ def run_import(
     if cause_col_detail and "Duration" in df_detail.columns:
         cause_dur: dict[str, float] = defaultdict(float)
         cause_cnt: dict[str, int] = defaultdict(int)
+        cause_par_esc: dict = {}
+        esc_col_detail = "Escalade" if "Escalade" in df_detail.columns else None
         for _, row in df_detail.iterrows():
             cause = str(row.get(cause_col_detail, "")).strip()
             dur_s = _parse_hms(str(row.get("Duration", "")))
@@ -353,6 +355,13 @@ def run_import(
                 cause_cnt[cause] += 1
                 if dur_s > 0:
                     cause_dur[cause] += dur_s
+                if esc_col_detail:
+                    esc = str(row.get(esc_col_detail, "")).strip()
+                    if esc and esc.lower() != "nan":
+                        _e = cause_par_esc.setdefault(esc, {})
+                        _c = _e.setdefault(cause, {"count": 0, "duration_sec": 0.0})
+                        _c["count"] += 1
+                        _c["duration_sec"] += dur_s
         report.top_causes_json = [
             {"name": k, "duration_sec": v}
             for k, v in sorted(cause_dur.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -361,6 +370,7 @@ def run_import(
             {"name": k, "count": v}
             for k, v in sorted(cause_cnt.items(), key=lambda x: x[1], reverse=True)[:10]
         ]
+        report.cause_par_escalade_json = cause_par_esc
 
     # site_duration_json : durée cumulée par site (depuis df_detail, tous incidents)
     if site_col_detail and "Duration" in df_detail.columns:
