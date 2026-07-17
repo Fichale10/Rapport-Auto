@@ -1120,8 +1120,19 @@ def run_auto():
         summary['fichiers_manquants'] = verifier_fichiers_manquants()
     else:
         summary['fichiers_manquants'] = None
-        summary['messages'].append(
-            "Partage réseau ISOC inaccessible depuis le serveur — collecte impossible.")
+        bases = _network_bases()
+        if not bases:
+            summary['messages'].append(
+                "Collecte automatique désactivée : la variable d'environnement "
+                "SITE_DOWN_NETWORK_BASES n'est pas définie sur ce serveur "
+                r"(ex. \\10.228.15.80\isoc;\\ca-filstorsrv\ISOC).")
+        else:
+            tentes = ' | '.join(_source_alarmes_candidates())
+            summary['messages'].append(
+                "Partage réseau ISOC inaccessible depuis le serveur — collecte "
+                f"impossible. Chemins essayés : {tentes}. Vérifiez la "
+                "connectivité, les droits d'accès du compte exécutant le "
+                "serveur, et l'existence du dossier du mois.")
     if collecte['copied'] == 0 and summary['processed'] == 0:
         # Rien de neuf : rafraîchit quand même Cause/Escalade des fichiers du mois
         refresh = actualiser_fichiers_existants()
