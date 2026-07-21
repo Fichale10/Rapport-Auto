@@ -403,7 +403,7 @@
       <a href="{% url 'statistiques' %}"       class="{% if request.resolver_match.url_name == 'statistiques' %}active{% endif %}">Statistiques</a>
       <a href="{% url 'incident_tracking' %}"  class="{% if request.resolver_match.url_name == 'incident_tracking' %}active{% endif %}">Incident Tracking</a>
       <a href="{% url 'reporting' %}"          class="{% if request.resolver_match.url_name == 'reporting' or request.resolver_match.url_name == 'reporting_network' %}active{% endif %}">Reporting</a>
-      <a href="{% url 'comparer' %}"           class="{% if request.resolver_match.url_name == 'comparer' %}active{% endif %}">Comparer</a>
+      <a href="{% url 'analytics' %}"          class="{% if request.resolver_match.url_name == 'analytics' %}active{% endif %}">Analytics</a>
     </div>
 
     <div class="nav-user">

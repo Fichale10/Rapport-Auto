@@ -967,6 +967,112 @@ def upload(request):
     })
 
 
+# ── Pages de traitement par plateforme (fixe / transmission / core) ──────────
+# Squelettes calqués sur la page /upload/ (mobile). Les processus de calcul
+# spécifiques à chaque plateforme seront branchés ici ultérieurement.
+PLATFORM_TREATMENTS = {
+    'fixe': {
+        'label': 'Fixe',
+        'icon': '🔌',
+        'color': '#0050c8',
+        'subtitle': "Traitement des incidents du réseau Fixe (FTTH / FTTM)",
+    },
+    'transmission': {
+        'label': 'Transmission',
+        'icon': '📶',
+        'color': '#6b46c1',
+        'subtitle': "Traitement des incidents Transmission (FO / FH)",
+    },
+    'core': {
+        'label': 'Core & IGW',
+        'icon': '⚙️',
+        'color': '#2d3748',
+        'subtitle': "Traitement des incidents Core & IGW",
+    },
+}
+
+
+def plateforme_traitement(request, platform):
+    """Page de traitement dédiée à une plateforme (comme /upload/ pour le mobile).
+
+    Pour l'instant : squelette (upload de fichier + période). Le processus de
+    calcul propre à chaque plateforme sera implémenté quand il sera défini.
+    """
+    from datetime import timedelta
+
+    if platform == 'mobile':
+        return redirect('upload')
+
+    cfg = PLATFORM_TREATMENTS.get(platform)
+    if cfg is None:
+        raise Http404
+
+    # ── Transmission : outil « Rapport Hebdomadaire NOC TRANSPORT » ─────────
+    # (déplacé depuis /reporting/transmission/rapport-noc/)
+    if platform == 'transmission':
+        from .reporting_config import PLATFORMS
+        today = date.today()
+        return render(request, 'reports/traitement_transmission.html', {
+            'platform':  platform,
+            'cfg':       PLATFORMS['transmission'],
+            'today':     today,
+            'yesterday': today - timedelta(days=1),
+        })
+
+    if request.method == 'POST':
+        # TODO : brancher ici le processus de calcul spécifique à la plateforme.
+        messages.info(
+            request,
+            f"Le processus de calcul de la plateforme {cfg['label']} n'est pas "
+            "encore défini — le fichier n'a pas été traité.",
+        )
+        return redirect('plateforme_traitement', platform=platform)
+
+    today     = date.today()
+    yesterday = today - timedelta(days=1)
+    return render(request, 'reports/plateforme_traitement.html', {
+        'platform':  platform,
+        'cfg':       cfg,
+        'today':     today,
+        'yesterday': yesterday,
+    })
+
+
+def plateforme_api_fetch(request, platform):
+    """Récupère les données API du réseau de la plateforme (fixe / transmission /
+    core) sur la période demandée et renvoie le fichier Excel brut
+    <NETWORK>_YYYYMMDD_YYYYMMDD.xlsx en téléchargement."""
+    import datetime as _dt
+
+    if platform not in PLATFORM_TREATMENTS:
+        raise Http404
+    if request.method != 'POST':
+        return redirect('plateforme_traitement', platform=platform)
+
+    date_debut = request.POST.get('date_debut', '').strip()
+    date_fin   = request.POST.get('date_fin', '').strip()
+    try:
+        d1 = _dt.date.fromisoformat(date_debut)
+        d2 = _dt.date.fromisoformat(date_fin)
+    except ValueError:
+        messages.error(request, 'Format de date invalide.')
+        return redirect('plateforme_traitement', platform=platform)
+    if d2 < d1:
+        messages.error(request, 'La date de fin doit être ≥ la date de début.')
+        return redirect('plateforme_traitement', platform=platform)
+
+    from .api_import import fetch_api_excel
+    try:
+        buf, filename = fetch_api_excel(d1.isoformat(), d2.isoformat(), network=platform)
+    except Exception as exc:
+        messages.error(request, f"Erreur import API : {exc}")
+        return redirect('plateforme_traitement', platform=platform)
+
+    return FileResponse(
+        buf, as_attachment=True, filename=filename,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 def process_report(request, pk):
     report = get_object_or_404(UploadedReport, pk=pk)
 
@@ -1827,111 +1933,6 @@ def register_view(request):
             return redirect('accounts:login')
 
     return render(request, 'accounts/register.html')
-
-
-def comparer(request):
-    if request.user.is_superuser:
-        all_reports = UploadedReport.objects.filter(processed=True).order_by('-uploaded_at')
-    else:
-        all_reports = UploadedReport.objects.filter(processed=True, user=request.user).order_by('-uploaded_at')
-
-    pk1 = request.GET.get('r1')
-    pk2 = request.GET.get('r2')
-
-    r1 = r2 = None
-    diff = None
-
-    if pk1 and pk2:
-        r1 = get_object_or_404(all_reports, pk=pk1)
-        r2 = get_object_or_404(all_reports, pk=pk2)
-
-        def parse_hms(s):
-            try:
-                parts = str(s).split(':')
-                if len(parts) == 3:
-                    return int(float(parts[0])) * 3600 + int(float(parts[1])) * 60 + int(float(parts[2]))
-            except Exception:
-                pass
-            return 0
-
-        def kpi_diff(v1, v2):
-            if v1 == 0 and v2 == 0:
-                return 0, 'neutral'
-            if v1 == 0:
-                return '+∞', 'worse'
-            delta = v2 - v1
-            pct   = round(delta / v1 * 100, 1)
-            trend = 'better' if delta < 0 else ('worse' if delta > 0 else 'neutral')
-            return (f'+{pct}%' if pct > 0 else f'{pct}%'), trend
-
-        inc_delta,  inc_trend  = kpi_diff(r1.total_incidents,  r2.total_incidents)
-        unr_delta,  unr_trend  = kpi_diff(r1.unresolved_count, r2.unresolved_count)
-        rows_delta, rows_trend = kpi_diff(r1.total_rows,       r2.total_rows)
-        filt_delta, filt_trend = kpi_diff(r1.filtered_rows,    r2.filtered_rows)
-
-        def synth_map(report):
-            m = {}
-            for row in (report.synthesis_json or []):
-                esc = row.get('Escalade', '')
-                if esc and esc != 'TOTAL':
-                    m[esc] = {
-                        'count':      row.get('Inc count', 0),
-                        'outage_sec': parse_hms(row.get('OUTAGE', '0:00:00')),
-                        'status':     row.get('Status', ''),
-                    }
-            return m
-
-        s1, s2   = synth_map(r1), synth_map(r2)
-        all_escs = sorted(set(list(s1.keys()) + list(s2.keys())))
-
-        esc_rows = []
-        for esc in all_escs:
-            v1 = s1.get(esc, {'count': 0, 'outage_sec': 0, 'status': '—'})
-            v2 = s2.get(esc, {'count': 0, 'outage_sec': 0, 'status': '—'})
-            delta = v2['count'] - v1['count']
-            esc_rows.append({
-                'name':       esc,
-                'count1':     v1['count'],
-                'count2':     v2['count'],
-                'outage1_h':  round(v1['outage_sec'] / 3600, 1),
-                'outage2_h':  round(v2['outage_sec'] / 3600, 1),
-                'status1':    v1['status'],
-                'status2':    v2['status'],
-                'delta':      delta,
-                'trend':      'better' if delta < 0 else ('worse' if delta > 0 else 'neutral'),
-            })
-
-        def sites_map(report):
-            return {s['name']: s['count'] for s in (report.top_sites_json or [])}
-
-        ts1, ts2  = sites_map(r1), sites_map(r2)
-        all_sites = sorted(set(list(ts1.keys()) + list(ts2.keys())),
-                           key=lambda s: max(ts1.get(s, 0), ts2.get(s, 0)), reverse=True)[:10]
-
-        site_rows = [{
-            'name':   s,
-            'count1': ts1.get(s, 0),
-            'count2': ts2.get(s, 0),
-            'delta':  ts2.get(s, 0) - ts1.get(s, 0),
-        } for s in all_sites]
-
-        diff = {
-            'inc_delta':  inc_delta,  'inc_trend':  inc_trend,
-            'unr_delta':  unr_delta,  'unr_trend':  unr_trend,
-            'rows_delta': rows_delta, 'rows_trend': rows_trend,
-            'filt_delta': filt_delta, 'filt_trend': filt_trend,
-            'esc_rows':   esc_rows,
-            'site_rows':  site_rows,
-        }
-
-    return render(request, 'reports/comparer.html', {
-        'all_reports': all_reports,
-        'r1':   r1,
-        'r2':   r2,
-        'pk1':  pk1,
-        'pk2':  pk2,
-        'diff': diff,
-    })
 
 
 @gestionnaire_required
@@ -8303,3 +8304,166 @@ def site_down_download(request, filename):
     if not os.path.exists(path):
         raise Http404
     return FileResponse(open(path, 'rb'), as_attachment=True, filename=filename)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ANALYTICS — module d'analyses automatiques (fichier importé ou API NetXcare)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _analytics_dataset_path(request):
+    """Chemin du jeu de données normalisé de l'utilisateur (media/analytics/)."""
+    folder = os.path.join(settings.MEDIA_ROOT, 'analytics')
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, f'analytics_{request.user.pk}.json')
+
+
+def _analytics_load(request):
+    """(df, meta) du jeu de données courant, ou (None, None) si absent."""
+    from . import analytics as an
+
+    meta = request.session.get('analytics_meta')
+    if not meta:
+        return None, None
+    path = _analytics_dataset_path(request)
+    if not os.path.exists(path):
+        request.session.pop('analytics_meta', None)
+        return None, None
+    try:
+        df = an.load_normalized(path)
+    except Exception:
+        request.session.pop('analytics_meta', None)
+        return None, None
+    if df.empty:
+        return None, None
+    return df, meta
+
+
+def _analytics_filters(request):
+    def _multi(name):
+        return [v.strip() for v in request.GET.getlist(name) if v.strip()]
+    return {
+        'date_debut': (request.GET.get('date_debut') or '').strip(),
+        'date_fin':   (request.GET.get('date_fin') or '').strip(),
+        'regions':    _multi('region'),
+        'causes':     _multi('cause'),
+        'sites':      _multi('site'),
+    }
+
+
+def analytics(request):
+    """Page Analytics : tableau de bord d'analyses automatiques."""
+    from . import analytics as an
+
+    df, meta = _analytics_load(request)
+    flt = _analytics_filters(request)
+    res = None
+    if df is not None:
+        try:
+            res = an.compute(df, **flt)
+        except Exception as exc:
+            logging.getLogger(__name__).exception('Analytics: erreur de calcul')
+            messages.error(request, f'Erreur pendant le calcul des analyses : {exc}')
+
+    return render(request, 'reports/analytics.html', {
+        'meta':    meta,
+        'res':     res,
+        'flt':     flt,
+        'has_api': bool(getattr(settings, 'TICKETING_API_URL', '')),
+        'qs':      request.GET.urlencode(),
+    })
+
+
+def analytics_process(request):
+    """Charge une source de données : fichier importé OU export API NetXcare."""
+    from django.utils import timezone
+
+    from . import analytics as an
+
+    if request.method != 'POST':
+        return redirect('analytics')
+
+    mode = request.POST.get('mode') or 'file'
+    try:
+        if mode == 'api':
+            date_debut = (request.POST.get('api_debut') or '').strip()
+            date_fin   = (request.POST.get('api_fin') or '').strip()
+            network    = (request.POST.get('api_network') or 'mobile').strip()
+            if not date_debut or not date_fin:
+                raise ValueError('Renseignez la date de début et la date de fin.')
+            raw = an.fetch_api_dataframe(date_debut, date_fin, network=network)
+            source = f'NetXcare API — {network} ({date_debut} → {date_fin})'
+        else:
+            up = request.FILES.get('data_file')
+            if not up:
+                raise ValueError('Sélectionnez un fichier .xlsx, .xls ou .csv.')
+            if up.size > 50 * 1024 * 1024:
+                raise ValueError('Fichier trop volumineux (max 50 Mo).')
+            raw = an.read_uploaded(up)
+            # Export NetXcare brut → même préparation que l'API (bornage + dédup)
+            raw = an.prepare_source_dataframe(raw, up.name)
+            source = f'Fichier — {up.name}'
+
+        df = an.normalize_dataframe(raw)
+        an.save_normalized(df, _analytics_dataset_path(request))
+        request.session['analytics_meta'] = {
+            'source':    source,
+            'rows':      int(len(df)),
+            'loaded_at': timezone.localtime().strftime('%d/%m/%Y %H:%M'),
+        }
+        messages.success(
+            request,
+            f'Source chargée : {source} — {len(df)} incident(s) analysé(s).')
+    except Exception as exc:
+        logging.getLogger(__name__).exception('Analytics: échec du chargement de la source')
+        messages.error(request, f'Chargement impossible : {exc}')
+
+    return redirect('analytics')
+
+
+def analytics_reset(request):
+    """Retire le jeu de données courant (retour à l'écran de chargement)."""
+    if request.method == 'POST':
+        request.session.pop('analytics_meta', None)
+        try:
+            path = _analytics_dataset_path(request)
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+    return redirect('analytics')
+
+
+def analytics_export(request, fmt):
+    """Exporte le tableau de bord filtré au format Excel ou PDF."""
+    from django.http import HttpResponse
+    from django.utils import timezone
+
+    from . import analytics as an
+
+    df, meta = _analytics_load(request)
+    if df is None:
+        messages.error(request, 'Aucune donnée chargée — importez une source d’abord.')
+        return redirect('analytics')
+
+    flt = _analytics_filters(request)
+    res = an.compute(df, **flt)
+    if res.get('empty'):
+        messages.warning(request, 'Aucune donnée pour les filtres choisis.')
+        return redirect('analytics')
+
+    stamp = timezone.localtime().strftime('%Y%m%d_%H%M')
+    if fmt == 'xlsx':
+        f = an.apply_filters(df, **flt)
+        buf = an.build_excel(f, res)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = f'attachment; filename="Analytics_{stamp}.xlsx"'
+        return resp
+    if fmt == 'pdf':
+        buf = an.build_pdf(res, meta.get('source', '—'),
+                           timezone.localtime().strftime('%d/%m/%Y %H:%M'))
+        resp = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="Analytics_{stamp}.pdf"'
+        return resp
+    raise Http404

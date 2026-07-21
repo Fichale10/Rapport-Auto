@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Traitement {{ cfg.label }} — Yas NOC{% endblock %}
+{% block breadcrumb %}Traitement {{ cfg.label }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue: #003087; --yas-yellow: #FFC72C; --pf-color: {{ cfg.color }}; }
+
+  .upload-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── Carte principale ── */
+  .upload-card {
+    background: #fff;
+    border-radius: 22px;
+    padding: 36px;
+    border: 1px solid #e8edf5;
+    box-shadow: 0 2px 20px rgba(0,48,135,0.09), 0 1px 4px rgba(0,48,135,0.04);
+  }
+  .upload-card-title {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--yas-blue);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 14px;
+    border-left: 4px solid var(--yas-yellow);
+  }
+  .upload-card-sub { font-size: 13.5px; color: #7a85a0; margin-bottom: 28px; line-height:1.6; }
+
+  /* ── Drop zone ── */
+  .drop-zone {
+    border: 2px dashed #bfcfec;
+    border-radius: 16px;
+    padding: 52px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, box-shadow .2s;
+    background: #f7f9ff;
+    position: relative;
+    margin-bottom: 24px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--yas-blue); background: #edf2ff;
+    box-shadow: 0 0 0 4px rgba(0,48,135,0.06);
+  }
+  .drop-zone.has-file { border-color: #22c55e; border-style:solid; background: #f0fdf4; }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 52px; margin-bottom: 16px; line-height: 1; }
+  .drop-title { font-size: 17px; font-weight: 800; color: var(--yas-blue); margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: #8896b3; margin-bottom: 14px; }
+  .drop-formats { display: inline-flex; gap: 8px; }
+  .fmt-badge {
+    background: #e8f0ff; color: var(--yas-blue); font-size: 12px; font-weight: 700;
+    padding: 4px 12px; border-radius: 20px; letter-spacing: .5px;
+  }
+  .file-selected-info { display: none; align-items: center; gap: 14px; flex-direction: column; }
+  .file-selected-info.show { display: flex; }
+  .file-icon-ok { font-size: 40px; line-height: 1; }
+  .file-name-txt { font-size: 15px; font-weight: 700; color: #166534; word-break: break-all; }
+  .file-size-txt { font-size: 13px; color: #888; }
+  .btn-change {
+    background: none; border: 1.5px solid #c8d6f0; border-radius: 8px;
+    padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--yas-blue);
+    cursor: pointer; transition: border-color .15s;
+    font-family: 'DM Sans', sans-serif; position: relative; z-index: 2;
+  }
+  .btn-change:hover { border-color: var(--yas-blue); }
+
+  /* ── Champs formulaire ── */
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label {
+    font-size: 12px; font-weight: 700; color: var(--yas-blue);
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .form-group input[type="date"] {
+    padding: 11px 14px; background: #f0f4ff; border: 2px solid transparent;
+    border-radius: 10px; font-size: 14px; font-family: 'DM Sans', sans-serif;
+    color: #111; outline: none; transition: border-color .2s, background .2s; width: 100%;
+  }
+  .form-group input[type="date"]:focus { border-color: var(--yas-blue); background: #fff; }
+
+  /* ── Bandeau « en construction » ── */
+  .wip-banner {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 22px; font-size: 13px; color: #92400e;
+    display: flex; align-items: flex-start; gap: 10px; line-height: 1.5;
+  }
+
+  /* ── Bouton submit ── */
+  .btn-submit {
+    width: 100%; padding: 16px; border: none;
+    background: linear-gradient(135deg, #FFC72C, #fdd835);
+    border-radius: 12px; color: var(--yas-blue); font-size: 16px; font-weight: 900;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: transform .15s, box-shadow .15s, opacity .15s;
+    margin-top: 8px; letter-spacing: .3px;
+    box-shadow: 0 4px 18px rgba(255,199,44,.45);
+  }
+  .btn-submit:hover:not(:disabled) {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 32px rgba(255,199,44,.5);
+  }
+  .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+  /* ── Import API ── */
+  .api-divider {
+    display: flex; align-items: center; gap: 14px; margin: 30px 0 24px;
+    font-size: 12px; font-weight: 700; color: #a5b1cb; text-transform: uppercase; letter-spacing: 1px;
+  }
+  .api-divider::before, .api-divider::after {
+    content: ''; flex: 1; height: 1px; background: #e3e9f5;
+  }
+  .api-info-banner {
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 22px; font-size: 13px; color: #1e40af;
+    display: flex; align-items: flex-start; gap: 10px; line-height: 1.5;
+  }
+  .btn-submit-api {
+    width: 100%; padding: 15px; background: var(--yas-blue); border: none;
+    border-radius: 12px; color: #fff; font-size: 16px; font-weight: 800;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: transform .15s, box-shadow .15s;
+    margin-top: 8px; letter-spacing: .3px;
+  }
+  .btn-submit-api:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(0,48,135,.30);
+  }
+
+  /* ── Sidebar ── */
+  .info-card {
+    background: #fff; border-radius: 20px; padding: 24px;
+    border: 1px solid #e8edf5; margin-bottom: 16px;
+    box-shadow: 0 2px 16px rgba(0,48,135,.07);
+  }
+  .info-title {
+    font-size: 14px; font-weight: 800; color: var(--yas-blue);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+  }
+  .info-step { display: flex; gap: 12px; margin-bottom: 14px; }
+  .info-step:last-child { margin-bottom: 0; }
+  .step-num {
+    width: 28px; height: 28px; background: var(--yas-yellow); color: var(--yas-blue);
+    border-radius: 8px; font-size: 12px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(255,199,44,.3);
+  }
+  .step-txt h4 { font-size: 13px; font-weight: 700; color: #1a2340; margin-bottom: 2px; }
+  .step-txt p  { font-size: 12px; color: #8896b3; line-height: 1.55; }
+
+  /* ── Bannière ── */
+  .upload-banner {
+    background: linear-gradient(120deg,#001f5c 0%,#002776 40%,var(--pf-color) 100%);
+    border-radius: 20px; padding: 24px 32px; margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    flex-wrap: wrap; box-shadow: 0 6px 28px rgba(0,48,135,.28);
+    position: relative; overflow: hidden;
+  }
+  .upload-banner::after { content:''; position:absolute; right:-40px; top:-40px;
+    width:200px; height:200px; border-radius:50%;
+    background:rgba(255,199,44,.06); pointer-events:none; }
+  .upload-banner-left { display:flex; align-items:center; gap:16px; position:relative; z-index:1; }
+  .upload-banner-icon { width:54px; height:54px; background:rgba(255,199,44,.16); border-radius:14px;
+    display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;
+    border:1.5px solid rgba(255,199,44,.25); }
+  .upload-banner-tag { font-size:10px; font-weight:800; letter-spacing:2.5px; text-transform:uppercase; color:#FFC72C; margin-bottom:4px; }
+  .upload-banner-ttl { font-size:22px; font-weight:900; color:#fff; line-height:1.1; }
+  .upload-banner-sub { font-size:12px; color:rgba(255,255,255,.5); margin-top:3px; }
+  .upload-banner-right { position:relative; z-index:1; }
+  .upload-banner-hint { font-size:12px; color:rgba(255,255,255,.55); display:flex; align-items:center; gap:6px; }
+  .back-home {
+    display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700;
+    color:#fff; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2);
+    border-radius:8px; padding:7px 14px; text-decoration:none; transition:background .15s;
+  }
+  .back-home:hover { background:rgba(255,255,255,.22); }
+
+  @media(max-width:900px) {
+    .upload-layout { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+    .upload-banner { flex-direction: column; align-items: flex-start; padding: 20px 22px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Bannière -->
+<div class="upload-banner">
+  <div class="upload-banner-left">
+    <div class="upload-banner-icon">{{ cfg.icon }}</div>
+    <div>
+      <div class="upload-banner-tag">Traitement · {{ cfg.label }}</div>
+      <div class="upload-banner-ttl">Plateforme {{ cfg.label }}</div>
+      <div class="upload-banner-sub">{{ cfg.subtitle }}</div>
+    </div>
+  </div>
+  <div class="upload-banner-right">
+    <a href="{% url 'home' %}" class="back-home">← Retour à l'accueil</a>
+  </div>
+</div>
+
+<div class="upload-layout">
+
+  <!-- Panneau gauche -->
+  <div class="upload-card">
+    <div class="upload-card-title">{{ cfg.icon }} Traiter un fichier {{ cfg.label }}</div>
+    <p class="upload-card-sub">Importez le fichier d'incidents de la plateforme {{ cfg.label }} et configurez la période à analyser.</p>
+
+    <div class="wip-banner">
+      <span>🚧</span>
+      <span>Le processus de calcul spécifique à la plateforme <strong>{{ cfg.label }}</strong> sera bientôt disponible. Cette page recevra le traitement dédié (filtres, KPIs, synthèse).</span>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="uploadForm" action="{% url 'plateforme_traitement' platform %}">
+      {% csrf_token %}
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" name="file" accept=".xlsx,.xls" id="fileInput">
+        <div id="dropDefault">
+          <div class="drop-icon">📂</div>
+          <div class="drop-title">Glissez votre fichier ici</div>
+          <div class="drop-sub">ou cliquez pour parcourir vos fichiers</div>
+          <div class="drop-formats">
+            <span class="fmt-badge">.XLSX</span>
+            <span class="fmt-badge">.XLS</span>
+          </div>
+        </div>
+        <div class="file-selected-info" id="fileSelected">
+          <div class="file-icon-ok">✅</div>
+          <div class="file-name-txt" id="fileName">—</div>
+          <div class="file-size-txt" id="fileSize"></div>
+          <button type="button" class="btn-change" id="clearFile">Changer de fichier</button>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="date_debut">Date de début</label>
+          <input type="date" name="date_debut" id="date_debut" value="{{ yesterday|date:'Y-m-d' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="date_fin">Date de fin</label>
+          <input type="date" name="date_fin" id="date_fin" value="{{ today|date:'Y-m-d' }}">
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submitBtn" disabled>
+        ⚙ Lancer le traitement
+      </button>
+    </form>
+
+    <!-- ── Import API ── -->
+    <div class="api-divider">ou</div>
+    <div class="upload-card-title">🌐 Récupérer les données par API</div>
+    <p class="upload-card-sub">Récupère les incidents <strong>{{ cfg.label }}</strong> directement depuis le système de ticketing sur la période choisie.</p>
+    <div class="api-info-banner">
+      <span>ℹ️</span>
+      <span>Le fichier Excel brut <strong>{{ platform|upper }}_AAAAMMJJ_AAAAMMJJ.xlsx</strong> est téléchargé automatiquement — vous pourrez ensuite l'utiliser dans le traitement ci-dessus.</span>
+    </div>
+    <form method="post" action="{% url 'plateforme_api_fetch' platform %}" id="apiForm">
+      {% csrf_token %}
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="api_date_debut">Date de début</label>
+          <input type="date" name="date_debut" id="api_date_debut" required value="{{ yesterday|date:'Y-m-d' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="api_date_fin">Date de fin</label>
+          <input type="date" name="date_fin" id="api_date_fin" required value="{{ today|date:'Y-m-d' }}">
+        </div>
+      </div>
+      <button type="submit" class="btn-submit-api">⬇️ Récupérer depuis l'API</button>
+    </form>
+  </div>
+
+  <!-- Sidebar -->
+  <div>
+    <div class="info-card">
+      <div class="info-title">💡 Comment ça marche</div>
+      <div class="info-step">
+        <div class="step-num">1</div>
+        <div class="step-txt">
+          <h4>Importez le fichier</h4>
+          <p>Fichier d'incidents exporté pour la plateforme {{ cfg.label }}.</p>
+        </div>
+      </div>
+      <div class="info-step">
+        <div class="step-num">2</div>
+        <div class="step-txt">
+          <h4>Choisissez la période</h4>
+          <p>Dates de début et de fin de la période à analyser.</p>
+        </div>
+      </div>
+      <div class="info-step">
+        <div class="step-num">3</div>
+        <div class="step-txt">
+          <h4>Analyse automatique</h4>
+          <p>Le processus de calcul dédié {{ cfg.label }} sera appliqué (à venir).</p>
+        </div>
+      </div>
+      <div class="info-step">
+        <div class="step-num">4</div>
+        <div class="step-txt">
+          <h4>Téléchargez les rapports</h4>
+          <p>Résultats détaillés et synthèse exportables.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var dropZone   = document.getElementById('dropZone');
+  var fileInput  = document.getElementById('fileInput');
+  var dropDef    = document.getElementById('dropDefault');
+  var fileSel    = document.getElementById('fileSelected');
+  var fileNameEl = document.getElementById('fileName');
+  var fileSizeEl = document.getElementById('fileSize');
+  var clearBtn   = document.getElementById('clearFile');
+  var submitBtn  = document.getElementById('submitBtn');
+
+  function showFile(file) {
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = (file.size / 1024 / 1024).toFixed(2) + ' Mo';
+    dropDef.style.display  = 'none';
+    fileSel.classList.add('show');
+    dropZone.classList.add('has-file');
+    submitBtn.disabled = false;
+  }
+
+  function clearFile() {
+    fileInput.value = '';
+    dropDef.style.display = '';
+    fileSel.classList.remove('show');
+    dropZone.classList.remove('has-file');
+    submitBtn.disabled = true;
+  }
+
+  fileInput.addEventListener('change', function(){
+    if (fileInput.files.length) showFile(fileInput.files[0]);
+  });
+  clearBtn.addEventListener('click', function(e){
+    e.preventDefault(); e.stopPropagation(); clearFile();
+  });
+
+  ['dragenter','dragover'].forEach(function(ev){
+    dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.add('drag-over'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.remove('drag-over'); });
+  });
+  dropZone.addEventListener('drop', function(e){
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      showFile(e.dataTransfer.files[0]);
+    }
+  });
+})();
+</script>
+
+{% endblock %}

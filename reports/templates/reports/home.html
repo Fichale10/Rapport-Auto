@@ -565,7 +565,7 @@
   <div class="pf-section-body">
     <div class="platform-cards">
       {% for pf in platform_cards %}
-      <a href="{% url 'statistiques' %}?platform={{ pf.platform }}"
+      <a href="{% if pf.platform == 'mobile' %}{% url 'upload' %}{% else %}{% url 'plateforme_traitement' pf.platform %}{% endif %}"
          class="platform-card" style="--pf-color:{{ pf.color }};">
         <div class="platform-card-header">
           <span class="platform-card-icon">{{ pf.icon }}</span>

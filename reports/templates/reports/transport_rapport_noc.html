@@ -4,7 +4,6 @@
 {% block breadcrumb %}Reporting / Transport / Rapport NOC TRANSPORT{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root { --navy:#0d2461; --navy2:#162d72; --yellow:#f5c000; --yellow2:#ffe066; --bg:#f0f3fa; --white:#fff; --gray1:#e8ecf4; --gray2:#9aa3ba; --text:#1a2340; --green:#22c55e; --red:#ef4444; --blue:#2563eb; --radius:12px; --shadow:0 2px 16px rgba(13,36,97,.10); }
   .tool-banner { border-radius:16px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
@@ -100,73 +99,6 @@
   <a href="{% url 'reporting_platform' platform %}" class="tool-banner-back">&#8592; Retour</a>
 </div>
 
-<div class="page-wrap">
-  <div class="two-col">
-    <div class="card">
-      <div class="card-title">🚇 Générer le Rapport Hebdomadaire NOC TRANSPORT</div>
-      <div class="card-sub">Importez le fichier Excel <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> et générez automatiquement le rapport hebdomadaire NOC de la plateforme TRANSPORT.</div>
-      <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" accept=".xlsx,.xls" />
-        <div class="drop-icon">📊</div>
-        <div class="drop-label">Glissez le fichier ici</div>
-        <div class="drop-hint">ou cliquez pour parcourir — fichier TRANSMISSION_*.xlsx</div>
-        <div class="drop-formats"><span class="fmt-badge">.XLSX</span></div>
-      </div>
-      <div class="file-status" id="fileStatus">
-        <div class="fs-dot"></div>
-        <div class="fs-info">
-          <div class="fs-name">Aucun fichier chargé</div>
-          <div class="fs-sub">En attente du fichier TRANSMISSION_*.xlsx</div>
-        </div>
-      </div>
-      <div class="alert" id="alertBox"></div>
-      <button class="btn-process" id="btnProcess" disabled>⚙ Lancer le traitement</button>
-      <div class="progress-wrap" id="progressWrap">
-        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
-        <div class="progress-text" id="progressText">Traitement en cours…</div>
-      </div>
-      <div class="download-area" id="downloadArea">
-        <div class="dl-title" id="dlTitle">✅ Rapport généré avec succès !</div>
-        <button class="btn-dl" id="btnDownload">⬇ Télécharger le rapport Excel</button>
-      </div>
-      <div class="log-area" id="logArea"></div>
-    </div>
-
-    <div>
-      <div class="card">
-        <div class="panel-title">💡 Comment ça marche</div>
-        <div class="steps">
-          <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> contenant les incidents transport de la semaine.</div></div></div>
-          <div class="step"><div class="step-num">2</div><div><div class="step-head">Traitement automatique</div><div class="step-desc">Suppression des colonnes <em>Région</em> et <em>Durée escalade</em>, calcul des statistiques par domaine d'escalade.</div></div></div>
-          <div class="step"><div class="step-num">3</div><div><div class="step-head">Prévisualisation</div><div class="step-desc">Tableau récapitulatif par domaine et liste des incidents affichés à l'écran.</div></div></div>
-          <div class="step"><div class="step-num">4</div><div><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel formaté : <em>RAPPORT__HEBDO_NOC_S&lt;semaine&gt;-&lt;année&gt;.xlsx</em></div></div></div>
-        </div>
-        <div class="info-box"><b>Domaines d'escalade :</b><br>TRANS FO, TRANS IP, DWDM &amp; OSN - BACKBONE NODE, IGW, PROJET<br><br><b>Colonnes supprimées :</b> Région, Durée escalade</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="stats-section" id="statsSection">
-  <div class="card">
-    <div class="stats-title" id="statsTitle">📊 RAPPORT HEBDOMADAIRE NOC TRANSPORT</div>
-    <div class="kpi-row">
-      <div class="kpi"><div class="kpi-val" id="kpiTotal">0</div><div class="kpi-label">Total TTs</div></div>
-      <div class="kpi"><div class="kpi-val green" id="kpiFerme">0</div><div class="kpi-label">TTs Fermés</div></div>
-      <div class="kpi"><div class="kpi-val red" id="kpiOuvert">0</div><div class="kpi-label">TTs Ouverts</div></div>
-    </div>
-    <div class="domain-table-wrap">
-      <table class="domain-table">
-        <thead><tr><th>Domaine (Escalade)</th><th>Total</th><th>Résolu (Fermé)</th><th>Ouvert</th></tr></thead>
-        <tbody id="domainTableBody"></tbody>
-      </table>
-    </div>
-    <div class="incidents-preview" style="margin-top:20px">
-      <table><thead id="incidentsHead"></thead><tbody id="incidentsBody"></tbody></table>
-    </div>
-  </div>
-</div>
-
 <!-- ════════════ RAPPORTS NOC (serveur) — Image 1 & Image 2 ════════════ -->
 <div class="page-wrap" id="transport-report" style="margin-top:34px">
   <div class="card">
@@ -240,29 +172,3 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}
-<script>
-const MOIS_FR=['JANVIER','FÉVRIER','MARS','AVRIL','MAI','JUIN','JUILLET','AOÛT','SEPTEMBRE','OCTOBRE','NOVEMBRE','DÉCEMBRE'];
-const JOURS_FR=['DIMANCHE','LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI'];
-const DROP_COLS=[/r[ée]gion/i,/dur[ée]e\s*escalade/i];
-const ESCALADE_ORDER=['TRANS FO','TRANS IP','DWDM & OSN - BACKBONE NODE','IGW','PROJET'];
-let loadedWorkbook=null,loadedFilename='',workbookBlob=null;
-const $=id=>document.getElementById(id);
-function log(msg,type=''){const area=$('logArea');area.style.display='block';const line=document.createElement('div');line.className='log-line '+type;line.textContent=new Date().toLocaleTimeString('fr')+'  '+msg;area.appendChild(line);area.scrollTop=area.scrollHeight;}
-function showAlert(msg,type){const el=$('alertBox');el.textContent=msg;el.className='alert '+type;el.style.display='block';}
-function hideAlert(){$('alertBox').style.display='none';}
-function setProgress(pct,text){$('progressWrap').style.display='block';$('progressBar').style.width=pct+'%';$('progressText').textContent=text;}
-function parseYMD(str){str=(str||'').toString().trim();if(/^\d{8}$/.test(str))return new Date(+str.substring(0,4),+str.substring(4,6)-1,+str.substring(6,8));const m=str.match(/^(\d{2})-(\d{2})-(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
-function extractPeriodFromFilename(fname){const m=fname.match(/(\d{8})[_-](\d{8})/);if(m)return{start:parseYMD(m[1]),end:parseYMD(m[2])};return null;}
-function dateLabel(start,end){const sd=`${JOURS_FR[start.getDay()]} ${start.getDate()} ${MOIS_FR[start.getMonth()]}`;const ed=`${JOURS_FR[end.getDay()]} ${end.getDate()} ${MOIS_FR[end.getMonth()]} ${end.getFullYear()}`;return`DATE : DU ${sd} AU ${ed}`;}
-function isoWeek(d){const date=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const dayNum=(date.getUTCDay()+6)%7;date.setUTCDate(date.getUTCDate()-dayNum+3);const firstThursday=date.getTime();date.setUTCMonth(0,1);if(date.getUTCDay()!==4)date.setUTCMonth(0,1+((4-date.getUTCDay())+7)%7);return 1+Math.ceil((firstThursday-date)/604800000);}
-function readExcelFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{resolve(XLSX.read(new Uint8Array(e.target.result),{type:'array'}));}catch(err){reject(err);}};reader.onerror=reject;reader.readAsArrayBuffer(file);});}
-function extractCleanRows(wb){const ws=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});if(data.length<2)throw new Error('Fichier vide ou sans données');const rawHeaders=data[0].map(h=>String(h||'').trim());const keepIdx=rawHeaders.map((h,i)=>({h,i})).filter(({h})=>!DROP_COLS.some(re=>re.test(h))).map(({i})=>i);const headers=keepIdx.map(i=>rawHeaders[i]);const rows=data.slice(1).filter(r=>r.some(c=>c!==''&&c!==null&&c!==undefined)).map(r=>keepIdx.map(i=>r[i]!==undefined?r[i]:''));const dropped=rawHeaders.filter(h=>DROP_COLS.some(re=>re.test(h)));return{headers,rows,dropped};}
-async function handleFile(file){hideAlert();$('logArea').style.display='block';$('logArea').innerHTML='';const status=$('fileStatus');status.className='file-status';$('btnProcess').disabled=true;loadedWorkbook=null;if(!file)return;if(!/\.xlsx?$/i.test(file.name)){status.className='file-status error';status.querySelector('.fs-name').textContent='✗ Format non supporté';status.querySelector('.fs-sub').textContent='Veuillez sélectionner un fichier .xlsx';showAlert('Format de fichier non supporté.','error');return;}try{log(`Lecture de : ${file.name}`);const wb=await readExcelFile(file);const{headers,rows,dropped}=extractCleanRows(wb);loadedWorkbook={headers,rows};loadedFilename=file.name;status.className='file-status loaded';status.querySelector('.fs-name').textContent='✓ '+file.name;status.querySelector('.fs-sub').textContent=`${rows.length} incident(s) — ${headers.length} colonnes`;log(`Fichier chargé : ${rows.length} incident(s)`,'ok');if(dropped.length)log(`Colonnes supprimées : ${dropped.join(', ')}`,'warn');$('btnProcess').disabled=false;hideAlert();}catch(err){status.className='file-status error';status.querySelector('.fs-name').textContent='✗ Erreur de lecture';status.querySelector('.fs-sub').textContent=err.message;log('Erreur : '+err.message,'err');showAlert('Erreur de lecture : '+err.message,'error');}}
-function computeStats(headers,rows){const idxE=headers.findIndex(h=>/^escalade$/i.test(h));const idxS=headers.findIndex(h=>/^status$/i.test(h));const order=ESCALADE_ORDER.slice();const norm=v=>String(v||'').trim().toUpperCase();const orderNorm=order.map(norm);const stats={};order.forEach(d=>{stats[d]={total:0,ferme:0,ouvert:0};});let totalFerme=0,totalOuvert=0;rows.forEach(row=>{const esc=idxE>=0?String(row[idxE]||'').trim():'';const status=idxS>=0?String(row[idxS]||''):'';const ferme=/FERME/i.test(status);if(ferme)totalFerme++;else totalOuvert++;let key=esc||'(NON RENSEIGNÉ)';const pos=orderNorm.indexOf(norm(key));if(pos>=0)key=order[pos];else if(!stats[key]){stats[key]={total:0,ferme:0,ouvert:0};order.push(key);}stats[key].total++;if(ferme)stats[key].ferme++;else stats[key].ouvert++;});return{stats,order,totalFerme,totalOuvert,total:rows.length};}
-function renderStats(headers,rows,label){const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);$('statsTitle').textContent=`📊 RAPPORT HEBDOMADAIRE NOC TRANSPORT — ${label}`;$('kpiTotal').textContent=total;$('kpiFerme').textContent=totalFerme;$('kpiOuvert').textContent=totalOuvert;const tbody=$('domainTableBody');tbody.innerHTML='';order.forEach(domain=>{const s=stats[domain];const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:700">${domain}</td><td>${s.total>0?`<strong>${s.total}</strong>`:'0'}</td><td>${s.ferme>0?`<span class="badge-ferme">${s.ferme} FERMÉ${s.ferme>1?'S':''}</span>`:'—'}</td><td>${s.ouvert>0?`<span class="badge-ouvert">${s.ouvert} OUVERT${s.ouvert>1?'S':''}</span>`:'—'}</td>`;tbody.appendChild(tr);});const showCols=["Numero du ticket","Nature de l'incident","Alarm Time","Plateforme","Escalade","Cause","Duration","Status"];const colIdx=showCols.map(c=>headers.findIndex(h=>h.toLowerCase()===c.toLowerCase()));$('incidentsHead').innerHTML='<tr>'+showCols.map(c=>`<th>${c}</th>`).join('')+'</tr>';const tbody2=$('incidentsBody');tbody2.innerHTML='';rows.forEach(row=>{const tr=document.createElement('tr');showCols.forEach((c,i)=>{const idx=colIdx[i];const val=idx>=0?String(row[idx]||''):'';const td=document.createElement('td');td.textContent=val;if(/^status$/i.test(c))td.className=/FERME/i.test(val)?'status-ferme':'status-ouvert';tr.appendChild(td);});tbody2.appendChild(tr);});$('statsSection').style.display='block';$('statsSection').scrollIntoView({behavior:'smooth',block:'start'});}
-function buildOutputExcel(headers,rows,period){const wb=XLSX.utils.book_new();let start=period&&period.start,end=period&&period.end;if(!start||!end){const idxAT=headers.findIndex(h=>/alarm.*time/i.test(h));if(idxAT>=0){const dates=rows.map(r=>parseYMD(String(r[idxAT]||''))).filter(Boolean).sort((a,b)=>a-b);if(dates.length){start=start||dates[0];end=end||dates[dates.length-1];}}}if(!start)start=new Date();if(!end)end=new Date(start);const dateStr=dateLabel(start,end);const week=isoWeek(end);const year=end.getFullYear();log(`Période : ${dateStr}`,'ok');const C_GREEN='70AD46',C_ORANGE='ED7B30',C_SLATE='4C5A77',C_DATA='72AB43',C_STATS='E5E9EE',C_WHITE='FFFFFF';const S=(font,bgRgb,align)=>({font:font||{},fill:bgRgb?{fgColor:{rgb:bgRgb}}:{},alignment:align||{}});const sTitle=S({bold:true,sz:12},C_GREEN,{horizontal:'left',vertical:'center'});const sDate=S({bold:true,sz:14},C_GREEN,{horizontal:'center',vertical:'center'});const sBanner=S({bold:true,sz:12,color:{rgb:C_WHITE}},C_ORANGE,{horizontal:'center',vertical:'center',wrapText:true});const sColHdr=S({bold:true,sz:11,color:{rgb:C_WHITE}},C_SLATE,{horizontal:'center',vertical:'center',wrapText:true});const sData=S({sz:11},C_DATA,{vertical:'center',wrapText:true});const sSecHdr=S({bold:true,sz:12},C_GREEN,{horizontal:'center',vertical:'center',wrapText:true});const sTotBig=S({bold:true,sz:12},null,{horizontal:'center',vertical:'center'});const sDomain=S({sz:12},C_STATS,{horizontal:'center',vertical:'center',wrapText:true});const sNum=S({bold:true,sz:12},C_STATS,{horizontal:'center',vertical:'center'});const sLabel=S({bold:true,sz:12},C_STATS,{horizontal:'left',vertical:'center',wrapText:true});const ws={};const setCell=(r,c,v,s)=>{const addr=XLSX.utils.encode_cell({r,c});const t=(typeof v==='number')?'n':'s';ws[addr]=s?{v,t,s}:{v,t};};const COLS=headers.length;setCell(3,1,'RAPPORT HEBDOMADAIRE NOC : TRANSPORT',sTitle);setCell(5,1,dateStr,sDate);setCell(7,2,'Incidents de la semaine',sBanner);headers.forEach((h,i)=>setCell(10,i,h,sColHdr));const dataStartR=11;rows.forEach((row,ri)=>{headers.forEach((_,ci)=>{const raw=(row[ci]===null||row[ci]===undefined)?'':row[ci];const num=parseFloat(raw);const isNum=!isNaN(num)&&String(raw).trim()!==''&&/^[-+]?\d*\.?\d+$/.test(String(raw).trim());setCell(dataStartR+ri,ci,isNum?num:String(raw),sData);});});const dataEndR=dataStartR+rows.length-1;const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);const statsTitleR=dataEndR+4;const statsHdrR=statsTitleR+1;const domainStartR=statsTitleR+2;const nDomains=order.length;setCell(statsTitleR,1,'Statistique hebdomadaire des incidents',sSecHdr);setCell(statsHdrR,1,'Incidents',sSecHdr);setCell(statsHdrR,2,'Répartition par Domaine',sSecHdr);setCell(statsHdrR,4,'Résolus',sSecHdr);setCell(statsHdrR,5,'Ouverts',sSecHdr);setCell(domainStartR,1,total,sTotBig);order.forEach((domain,di)=>{const s=stats[domain];const r=domainStartR+di;setCell(r,2,domain,sDomain);setCell(r,3,s.total,sNum);setCell(r,4,s.ferme,sNum);setCell(r,5,s.ouvert,sNum);});const ttR=domainStartR+nDomains+1;setCell(ttR,2,'Nbre des TTs',sLabel);setCell(ttR,3,total,sNum);setCell(ttR+1,2,'Nbre des TTs FERMES',sLabel);setCell(ttR+1,3,totalFerme,sNum);setCell(ttR+2,2,'Nbre des TTs OUVERTS',sLabel);setCell(ttR+2,3,totalOuvert,sNum);ws['!ref']=XLSX.utils.encode_range({r:3,c:0},{r:ttR+2,c:COLS-1});ws['!merges']=[{s:{r:3,c:1},e:{r:3,c:2}},{s:{r:5,c:1},e:{r:5,c:3}},{s:{r:7,c:2},e:{r:7,c:12}},{s:{r:statsTitleR,c:1},e:{r:statsTitleR,c:5}},{s:{r:statsHdrR,c:2},e:{r:statsHdrR,c:3}},{s:{r:domainStartR,c:1},e:{r:domainStartR+nDomains-1,c:1}}];ws['!cols']=[{wch:22},{wch:22},{wch:55},{wch:20},{wch:22},{wch:24},{wch:18},{wch:26},{wch:30},{wch:18},{wch:16},{wch:22},{wch:24},{wch:22},{wch:24},{wch:24},{wch:24},{wch:26},{wch:40},{wch:16},{wch:20},{wch:12},{wch:12}];const rowsMeta=[];rowsMeta[3]={hpt:18};rowsMeta[5]={hpt:20};rowsMeta[7]={hpt:20};rowsMeta[10]={hpt:30};ws['!rows']=rowsMeta;XLSX.utils.book_append_sheet(wb,ws,'Feuil1');const buf=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});return{blob,outName:`RAPPORT__HEBDO_NOC_S${week}-${year}.xlsx`,week,year,dateStr};}
-async function runProcess(){if(!loadedWorkbook)return;$('downloadArea').style.display='none';$('logArea').innerHTML='';$('logArea').style.display='block';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des données…');await new Promise(r=>setTimeout(r,100));const{headers,rows}=loadedWorkbook;log(`${rows.length} incident(s) trouvé(s)`,'ok');setProgress(50,'Calcul des statistiques…');await new Promise(r=>setTimeout(r,100));const period=extractPeriodFromFilename(loadedFilename);const label=period?dateLabel(period.start,period.end).replace('DATE : ',''):'TRANSPORT';log("Classement des incidents par domaine d'escalade…");const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);log(`Total : ${total} | Fermés : ${totalFerme} | Ouverts : ${totalOuvert}`,'ok');order.forEach(d=>{const s=stats[d];if(s.total>0)log(`  ${d} : ${s.total} incident(s) — ${s.ferme} fermé(s) / ${s.ouvert} ouvert(s)`,'ok');});setProgress(75,'Génération du fichier Excel…');await new Promise(r=>setTimeout(r,100));const{blob,outName,week,year}=buildOutputExcel(headers,rows,period);workbookBlob=blob;setProgress(90,'Prévisualisation…');await new Promise(r=>setTimeout(r,100));renderStats(headers,rows,label);setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';$('dlTitle').textContent=`✅ Rapport S${week}-${year} généré avec succès !`;$('btnDownload').onclick=()=>{if(!workbookBlob){log('Blob introuvable.','err');return;}const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=outName;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);log(`Téléchargement : ${outName}`,'ok');};log(`Rapport prêt : ${outName}`,'ok');showAlert('Rapport hebdomadaire TRANSPORT généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur lors du traitement : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
-document.addEventListener('DOMContentLoaded',()=>{$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');const f=e.dataTransfer.files[0];if(f)handleFile(f);});$('btnProcess').addEventListener('click',runProcess);});
-</script>
-{% endblock %}

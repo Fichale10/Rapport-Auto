@@ -158,6 +158,71 @@ def fetch_and_save_api(
     return report
 
 
+def fetch_api_excel(
+    date_debut: str,
+    date_fin: str,
+    network: str,
+) -> "tuple[Any, str]":
+    """
+    Récupère les données API brutes pour la période et le réseau donnés et
+    retourne ``(BytesIO, filename)`` d'un fichier Excel brut nommé
+    ``<NETWORK>_YYYYMMDD_YYYYMMDD.xlsx`` — sans créer d'UploadedReport.
+
+    Utilisé par les pages /traitement/<plateforme>/ (fixe, transmission, core).
+    """
+    import datetime as _dt
+    import io
+
+    api_url  = settings.TICKETING_API_URL
+    api_user = settings.TICKETING_API_USERNAME
+    api_pass = settings.TICKETING_API_PASSWORD
+
+    if not api_url or not api_user or not api_pass:
+        raise RuntimeError(
+            "Identifiants API manquants. Renseignez TICKETING_API_URL, "
+            "TICKETING_API_USERNAME et TICKETING_API_PASSWORD dans .env"
+        )
+
+    client = TicketingApiClient(api_url)
+    client.login(api_user, api_pass)
+    logger.info("API login OK — fetch excel %s → %s (réseau: %s)", date_debut, date_fin, network)
+
+    # Même plage élargie que fetch_and_save_api : -7 j / +1 j
+    _d_start = _dt.date.fromisoformat(date_debut[:10])
+    _d_end   = _dt.date.fromisoformat(date_fin[:10])
+    api_date_debut = (_d_start - _dt.timedelta(days=7)).isoformat()
+    api_date_fin   = (_d_end   + _dt.timedelta(days=1)).isoformat()
+
+    rows = client.export_data(api_date_debut, api_date_fin, network=network)
+    if not rows:
+        raise ValueError(
+            f"Aucune donnée retournée par l'API pour {date_debut} → {date_fin} "
+            f"(réseau: {network})"
+        )
+
+    df = json_to_dataframe(rows)
+
+    # Pré-filtre « tickets actifs pendant la période » (identique à fetch_and_save_api)
+    debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
+    fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
+    if "Alarm Time" in df.columns:
+        at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
+        ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),
+                            dayfirst=True, format="mixed", errors="coerce")
+        mask = at.notna() & (at <= fin_dt) & (ct.isna() | (ct >= debut_dt))
+        df = df[mask].copy()
+
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    buf.seek(0)
+
+    d1 = date_debut[:10].replace("-", "")
+    d2 = date_fin[:10].replace("-", "")
+    filename = f"{network.upper()}_{d1}_{d2}.xlsx"
+    logger.info("Fichier API généré en mémoire : %s (%d lignes)", filename, len(df))
+    return buf, filename
+
+
 def _process_api_dataframe(
     df: "pd.DataFrame",
     date_debut: str,

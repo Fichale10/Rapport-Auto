@@ -84,4 +84,4 @@ echo [INFO] Demarrage du serveur sur http://10.234.24.30:8000
 echo [INFO] Pour arreter : Ctrl+C
 echo.
 
-"%VENV_PY%" -m waitress --host=0.0.0.0 --port=8000 rapport_automatic.wsgi:application
+"%VENV_PY%" -m waitress --host=10.234.24.30 --port=8000 rapport_automatic.wsgi:application
