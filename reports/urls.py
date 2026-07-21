@@ -19,6 +19,7 @@ urlpatterns = [
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('analytics/',                            login_required(views.analytics),         name='analytics'),
     path('analytics/process/',                    login_required(views.analytics_process), name='analytics_process'),
+    path('analytics/status/',                     login_required(views.analytics_status),  name='analytics_status'),
     path('analytics/reset/',                      login_required(views.analytics_reset),   name='analytics_reset'),
     path('analytics/export/<str:fmt>/',           login_required(views.analytics_export),  name='analytics_export'),
     path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),

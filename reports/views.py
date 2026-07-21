@@ -1,4 +1,5 @@
 import calendar
+import io
 import json
 import logging
 import re
@@ -8317,6 +8318,90 @@ def _analytics_dataset_path(request):
     return os.path.join(folder, f'analytics_{request.user.pk}.json')
 
 
+def _analytics_status_path(user_pk):
+    """Fichier de statut du job de chargement en arrière-plan."""
+    folder = os.path.join(settings.MEDIA_ROOT, 'analytics')
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, f'analytics_status_{user_pk}.json')
+
+
+def _analytics_status_read(user_pk):
+    path = _analytics_status_path(user_pk)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _analytics_status_write(user_pk, data):
+    data['ts'] = time.time()
+    with open(_analytics_status_path(user_pk), 'w', encoding='utf-8') as fh:
+        json.dump(data, fh, ensure_ascii=False)
+
+
+def _analytics_status_clear(user_pk):
+    try:
+        os.remove(_analytics_status_path(user_pk))
+    except OSError:
+        pass
+
+
+def _analytics_job(user_pk, dataset_path, mode, params):
+    """Job en arrière-plan : chargement (fichier ou API) + normalisation.
+
+    Écrit le résultat dans le fichier de statut ; la vue analytics l'adopte
+    en session au prochain affichage (un thread n'a pas accès à la session).
+    """
+    from django.db import close_old_connections
+    from django.utils import timezone
+
+    from . import analytics as an
+
+    try:
+        close_old_connections()
+        if mode == 'api':
+            raw = an.fetch_api_dataframe(params['date_debut'], params['date_fin'],
+                                         network=params['network'])
+            source = (f"NetXcare API — {params['network']} "
+                      f"({params['date_debut']} → {params['date_fin']})")
+        else:
+            tmp = params['tmp_path']
+            try:
+                with open(tmp, 'rb') as fh:
+                    buf = io.BytesIO(fh.read())
+                buf.name = params['filename']
+                raw = an.read_uploaded(buf)
+            finally:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            # Export NetXcare brut → même préparation que l'API (bornage + dédup)
+            raw = an.prepare_source_dataframe(raw, params['filename'])
+            source = f"Fichier — {params['filename']}"
+
+        df = an.normalize_dataframe(raw)
+        an.save_normalized(df, dataset_path)
+        outage = float(df['duration_sec'].sum())
+        _analytics_status_write(user_pk, {
+            'state': 'done',
+            'meta': {
+                'source':    source,
+                'rows':      int(len(df)),
+                'outage':    an._fmt(outage),
+                'loaded_at': timezone.localtime().strftime('%d/%m/%Y %H:%M'),
+            },
+        })
+    except Exception as exc:
+        logging.getLogger(__name__).exception('Analytics: échec du chargement de la source')
+        _analytics_status_write(user_pk, {'state': 'error', 'message': str(exc)})
+    finally:
+        close_old_connections()
+
+
 def _analytics_load(request):
     """(df, meta) du jeu de données courant, ou (None, None) si absent."""
     from . import analytics as an
@@ -8354,6 +8439,30 @@ def analytics(request):
     """Page Analytics : tableau de bord d'analyses automatiques."""
     from . import analytics as an
 
+    # Résultat éventuel du job en arrière-plan
+    status = _analytics_status_read(request.user.pk)
+    job_running = False
+    if status:
+        state = status.get('state')
+        if state == 'done':
+            meta_job = status.get('meta') or {}
+            request.session['analytics_meta'] = meta_job
+            _analytics_status_clear(request.user.pk)
+            messages.success(
+                request,
+                f"Source chargée : {meta_job.get('source', '—')} — "
+                f"{meta_job.get('rows', 0)} incident(s), indisponibilité totale "
+                f"détectée : {meta_job.get('outage', '—')}.")
+        elif state == 'error':
+            _analytics_status_clear(request.user.pk)
+            messages.error(request, f"Chargement impossible : {status.get('message', 'erreur inconnue')}")
+        elif state == 'running':
+            if time.time() - float(status.get('ts') or 0) > 1800:   # job zombie (> 30 min)
+                _analytics_status_clear(request.user.pk)
+                messages.error(request, 'Le chargement a été interrompu — relancez-le.')
+            else:
+                job_running = True
+
     df, meta = _analytics_load(request)
     flt = _analytics_filters(request)
     res = None
@@ -8365,21 +8474,26 @@ def analytics(request):
             messages.error(request, f'Erreur pendant le calcul des analyses : {exc}')
 
     return render(request, 'reports/analytics.html', {
-        'meta':    meta,
-        'res':     res,
-        'flt':     flt,
-        'has_api': bool(getattr(settings, 'TICKETING_API_URL', '')),
-        'qs':      request.GET.urlencode(),
+        'meta':        meta,
+        'res':         res,
+        'flt':         flt,
+        'has_api':     bool(getattr(settings, 'TICKETING_API_URL', '')),
+        'qs':          request.GET.urlencode(),
+        'job_running': job_running,
     })
 
 
 def analytics_process(request):
-    """Charge une source de données : fichier importé OU export API NetXcare."""
-    from django.utils import timezone
-
-    from . import analytics as an
+    """Lance le chargement d'une source (fichier ou API NetXcare) en arrière-plan."""
+    import threading
 
     if request.method != 'POST':
+        return redirect('analytics')
+
+    status = _analytics_status_read(request.user.pk)
+    if status and status.get('state') == 'running' \
+            and time.time() - float(status.get('ts') or 0) <= 1800:
+        messages.warning(request, 'Un chargement est déjà en cours — patientez.')
         return redirect('analytics')
 
     mode = request.POST.get('mode') or 'file'
@@ -8390,40 +8504,48 @@ def analytics_process(request):
             network    = (request.POST.get('api_network') or 'mobile').strip()
             if not date_debut or not date_fin:
                 raise ValueError('Renseignez la date de début et la date de fin.')
-            raw = an.fetch_api_dataframe(date_debut, date_fin, network=network)
-            source = f'NetXcare API — {network} ({date_debut} → {date_fin})'
+            params = {'date_debut': date_debut, 'date_fin': date_fin, 'network': network}
         else:
             up = request.FILES.get('data_file')
             if not up:
                 raise ValueError('Sélectionnez un fichier .xlsx, .xls ou .csv.')
             if up.size > 50 * 1024 * 1024:
                 raise ValueError('Fichier trop volumineux (max 50 Mo).')
-            raw = an.read_uploaded(up)
-            # Export NetXcare brut → même préparation que l'API (bornage + dédup)
-            raw = an.prepare_source_dataframe(raw, up.name)
-            source = f'Fichier — {up.name}'
-
-        df = an.normalize_dataframe(raw)
-        an.save_normalized(df, _analytics_dataset_path(request))
-        request.session['analytics_meta'] = {
-            'source':    source,
-            'rows':      int(len(df)),
-            'loaded_at': timezone.localtime().strftime('%d/%m/%Y %H:%M'),
-        }
-        messages.success(
-            request,
-            f'Source chargée : {source} — {len(df)} incident(s) analysé(s).')
+            ext = os.path.splitext(up.name)[1].lower()
+            if ext not in ('.xlsx', '.xls', '.xlsm', '.csv'):
+                raise ValueError('Format non supporté — importez un fichier .xlsx, .xls ou .csv.')
+            folder = os.path.join(settings.MEDIA_ROOT, 'analytics')
+            os.makedirs(folder, exist_ok=True)
+            tmp_path = os.path.join(folder, f'upload_{request.user.pk}{ext}')
+            with open(tmp_path, 'wb') as fh:
+                for chunk in up.chunks():
+                    fh.write(chunk)
+            params = {'tmp_path': tmp_path, 'filename': up.name}
     except Exception as exc:
-        logging.getLogger(__name__).exception('Analytics: échec du chargement de la source')
         messages.error(request, f'Chargement impossible : {exc}')
+        return redirect('analytics')
 
+    request.session.pop('analytics_meta', None)
+    _analytics_status_write(request.user.pk, {'state': 'running'})
+    threading.Thread(
+        target=_analytics_job,
+        args=(request.user.pk, _analytics_dataset_path(request), mode, params),
+        daemon=True,
+    ).start()
     return redirect('analytics')
+
+
+def analytics_status(request):
+    """Statut du job de chargement en arrière-plan (polling AJAX)."""
+    status = _analytics_status_read(request.user.pk) or {}
+    return JsonResponse({'state': status.get('state', 'idle')})
 
 
 def analytics_reset(request):
     """Retire le jeu de données courant (retour à l'écran de chargement)."""
     if request.method == 'POST':
         request.session.pop('analytics_meta', None)
+        _analytics_status_clear(request.user.pk)
         try:
             path = _analytics_dataset_path(request)
             if os.path.exists(path):

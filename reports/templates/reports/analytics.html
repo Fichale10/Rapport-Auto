@@ -88,6 +88,8 @@
   .an-filterbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
   .an-filterbar .an-field { margin-bottom: 0; min-width: 150px; flex: 1; }
   .an-filterbar .an-field.small { max-width: 170px; }
+  .an-presets { display: flex; gap: 6px; }
+  .an-preset { padding: 7px 13px; font-size: 11.5px; border-radius: 8px; }
 
   /* ── Multi-sélection (checkbox dropdown) ── */
   .an-ms { position: relative; }
@@ -251,8 +253,8 @@
   <div class="an-card an-src-card">
     <h3>🛰️ Utiliser NetXcare (API)</h3>
     <p>Interroge directement l'historique des incidents du ticketing sur la période choisie.
-       Les longues périodes sont découpées automatiquement (le chargement peut prendre
-       quelques dizaines de secondes).</p>
+       Le chargement s'exécute en arrière-plan — la page s'actualise automatiquement
+       dès que les données sont prêtes.</p>
     {% if has_api %}
     <form method="post" action="{% url 'analytics_process' %}"
           onsubmit="anShowLoading('Récupération des incidents NetXcare…')">
@@ -294,6 +296,7 @@
 <div class="an-srcbar">
   <span>📌 Source : <b>{{ meta.source }}</b></span>
   <span class="an-badge">{{ meta.rows }} incident(s)</span>
+  {% if meta.outage %}<span class="an-badge">indispo totale : {{ meta.outage }}</span>{% endif %}
   <span class="an-badge">chargé le {{ meta.loaded_at }}</span>
   <span class="spacer"></span>
   {% if res and not res.empty %}
@@ -311,7 +314,15 @@
 <!-- ═══════════ FILTRES DYNAMIQUES ═══════════ -->
 <div class="an-card">
   <div class="an-card-title">🎛️ Filtres dynamiques</div>
-  <form method="get" class="an-filterbar">
+  <form method="get" class="an-filterbar" id="anFilterForm" data-date-max="{{ res.filters.date_max }}">
+    <div class="an-field small">
+      <label>Période rapide</label>
+      <div class="an-presets">
+        <button type="button" class="an-btn ghost an-preset" data-days="1">Jour</button>
+        <button type="button" class="an-btn ghost an-preset" data-days="7">Semaine</button>
+        <button type="button" class="an-btn ghost an-preset" data-days="30">Mois</button>
+      </div>
+    </div>
     <div class="an-field small">
       <label>Du</label>
       <input type="date" name="date_debut" value="{{ flt.date_debut }}"
@@ -559,7 +570,7 @@
     <div class="spin"></div>
     <div style="font-weight:800; color:#003087;" id="anLoadingMsg">Traitement en cours…</div>
     <div style="font-size:11.5px; color:#8794ad; margin-top:6px;">
-      Les gros volumes et les appels NetXcare peuvent prendre un moment.
+      Le chargement se poursuit en arrière-plan — la page s'actualisera automatiquement.
     </div>
   </div>
 </div>
@@ -571,6 +582,34 @@ function anShowLoading(msg) {
   document.getElementById('anLoadingMsg').textContent = msg || 'Traitement en cours…';
   document.getElementById('anLoading').style.display = 'flex';
 }
+
+{% if job_running %}
+/* ── Job de chargement en cours : overlay + polling du statut ── */
+anShowLoading('Chargement de la source en arrière-plan…');
+(function poll() {
+  fetch("{% url 'analytics_status' %}", { headers: { 'Accept': 'application/json' } })
+    .then(r => r.json())
+    .then(st => {
+      if (st.state === 'running') setTimeout(poll, 2500);
+      else window.location.href = "{% url 'analytics' %}";
+    })
+    .catch(() => setTimeout(poll, 5000));
+})();
+{% endif %}
+
+/* ── Presets de période (jour / semaine / mois) ── */
+document.querySelectorAll('.an-preset').forEach(btn => btn.addEventListener('click', () => {
+  const form = document.getElementById('anFilterForm');
+  const pad  = n => String(n).padStart(2, '0');
+  const fmt  = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const maxS = form.dataset.dateMax;
+  const end  = maxS ? new Date(maxS + 'T00:00:00') : new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - (parseInt(btn.dataset.days, 10) - 1));
+  form.querySelector('[name=date_debut]').value = fmt(start);
+  form.querySelector('[name=date_fin]').value   = fmt(end);
+  form.submit();
+}));
 
 /* ── Menus multi-sélection (Régions / Sites / Causes) ── */
 document.querySelectorAll('.an-ms').forEach(ms => {
