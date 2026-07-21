@@ -1,0 +1,847 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Yas NOC{% endblock %}
+{% block breadcrumb %}Analytics{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
+  /* ── Hero ── */
+  .an-hero {
+    background: linear-gradient(120deg,#001f5c 0%,#002776 40%,#003087 70%,#0044bb 100%);
+    border-radius: 20px; padding: 28px 36px; margin-bottom: 24px;
+    position: relative; overflow: hidden; box-shadow: 0 8px 40px rgba(0,48,135,.30);
+  }
+  .an-hero::before {
+    content: '📊'; font-size: 150px; position: absolute; right: 30px; top: -20px;
+    opacity: .06; pointer-events: none; line-height: 1;
+  }
+  .an-hero-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,199,44,.15); border: 1px solid rgba(255,199,44,.35);
+    color: #FFC72C; font-size: 11px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; padding: 4px 14px; border-radius: 20px; margin-bottom: 12px;
+  }
+  .an-hero-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: #fff;
+    letter-spacing: 2px; line-height: 1.05; margin-bottom: 6px;
+  }
+  .an-hero-sub { color: rgba(255,255,255,.55); font-size: 13px; max-width: 720px; }
+
+  /* ── Cartes génériques ── */
+  .an-card {
+    background: #fff; border-radius: 16px; padding: 22px 24px;
+    border: 1px solid #e8edf5; box-shadow: 0 2px 16px rgba(0,48,135,.07);
+    margin-bottom: 20px;
+  }
+  .an-card-title {
+    font-size: 14px; font-weight: 800; color: var(--yas-blue);
+    margin-bottom: 4px; display: flex; align-items: center; gap: 8px;
+  }
+  .an-card-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+    background: var(--yas-blue); color: #fff; font-size: 11px; font-weight: 800;
+  }
+  .an-card-sub { font-size: 11.5px; color: #8794ad; margin-bottom: 14px; }
+
+  /* ── Écran de chargement de source ── */
+  .an-src-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .an-src-grid { grid-template-columns: 1fr; } }
+  .an-src-card h3 { font-size: 15px; color: var(--yas-blue); font-weight: 800; margin-bottom: 8px; }
+  .an-src-card p  { font-size: 12.5px; color: #6b7a99; margin-bottom: 14px; line-height: 1.5; }
+  .an-field { margin-bottom: 12px; }
+  .an-field label { display: block; font-size: 11px; font-weight: 700; color: #56637f;
+                    text-transform: uppercase; letter-spacing: .6px; margin-bottom: 5px; }
+  .an-field :is(input,select) {
+    width: 100%; padding: 9px 12px; border: 1.5px solid #dbe3f0; border-radius: 10px;
+    font-size: 13px; background: #f8faff; color: #1d2b4f; outline: none;
+  }
+  .an-field :is(input,select):focus { border-color: var(--yas-blue); background: #fff; }
+  .an-btn {
+    display: inline-flex; align-items: center; gap: 8px; border: none; cursor: pointer;
+    background: var(--yas-blue); color: #fff; font-weight: 700; font-size: 13px;
+    padding: 10px 22px; border-radius: 10px; transition: .18s;
+    text-decoration: none;
+  }
+  .an-btn:hover { background: #00246b; transform: translateY(-1px); }
+  .an-btn.yellow { background: var(--yas-yellow); color: #002776; }
+  .an-btn.yellow:hover { background: #eab700; }
+  .an-btn.ghost  { background: #eef2fb; color: var(--yas-blue); }
+  .an-btn.ghost:hover { background: #dfe7f8; }
+  .an-btn.danger { background: #fdecec; color: #b02a37; }
+  .an-cols-hint {
+    background: #f5f8ff; border: 1px dashed #c4d2ef; border-radius: 10px;
+    padding: 10px 14px; font-size: 11.5px; color: #56637f; margin-top: 10px; line-height: 1.7;
+  }
+  .an-cols-hint code { background: #e7eefc; padding: 1px 6px; border-radius: 5px; color: #003087; }
+
+  /* ── Barre source + filtres ── */
+  .an-srcbar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: linear-gradient(90deg,#eaf1ff,#f6f9ff); border: 1px solid #d8e3f8;
+    border-radius: 14px; padding: 12px 18px; margin-bottom: 18px; font-size: 12.5px;
+  }
+  .an-srcbar b { color: var(--yas-blue); }
+  .an-srcbar .spacer { flex: 1; }
+  .an-filterbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .an-filterbar .an-field { margin-bottom: 0; min-width: 150px; flex: 1; }
+  .an-filterbar .an-field.small { max-width: 170px; }
+
+  /* ── Multi-sélection (checkbox dropdown) ── */
+  .an-ms { position: relative; }
+  .an-ms-btn {
+    width: 100%; text-align: left; padding: 9px 30px 9px 12px; cursor: pointer;
+    border: 1.5px solid #dbe3f0; border-radius: 10px; font-size: 13px;
+    background: #f8faff; color: #1d2b4f; position: relative; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .an-ms-btn::after {
+    content: '▾'; position: absolute; right: 10px; top: 50%;
+    transform: translateY(-50%); color: #8794ad;
+  }
+  .an-ms.open .an-ms-btn { border-color: var(--yas-blue); background: #fff; }
+  .an-ms-btn .an-ms-count {
+    display: inline-block; background: var(--yas-blue); color: #fff; font-size: 10px;
+    font-weight: 800; border-radius: 10px; padding: 1px 7px; margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .an-ms-panel {
+    display: none; position: absolute; z-index: 500; top: calc(100% + 6px); left: 0;
+    min-width: 100%; width: max-content; max-width: 320px;
+    background: #fff; border: 1px solid #dbe3f0; border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0,48,135,.18); padding: 10px;
+  }
+  .an-ms.open .an-ms-panel { display: block; }
+  .an-ms-search {
+    width: 100%; padding: 7px 10px; border: 1.5px solid #dbe3f0; border-radius: 8px;
+    font-size: 12.5px; background: #f8faff; outline: none; margin-bottom: 8px;
+  }
+  .an-ms-actions { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .an-ms-actions span {
+    font-size: 11px; font-weight: 700; color: var(--yas-blue); cursor: pointer;
+  }
+  .an-ms-actions span:hover { text-decoration: underline; }
+  .an-ms-list { max-height: 230px; overflow: auto; }
+  .an-ms-opt {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border-radius: 7px; cursor: pointer; font-size: 12.5px; color: #2b3a5e;
+  }
+  .an-ms-opt:hover { background: #eef4ff; }
+  .an-ms-opt input { accent-color: var(--yas-blue); flex-shrink: 0; }
+  .an-ms-opt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── KPIs ── */
+  .an-kpis { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 14px; margin-bottom: 20px; }
+  .an-kpi {
+    background: #fff; border: 1px solid #e8edf5; border-radius: 14px; padding: 16px 18px;
+    box-shadow: 0 2px 12px rgba(0,48,135,.06); position: relative; overflow: hidden;
+  }
+  .an-kpi::after { content:''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+                   background: linear-gradient(180deg,var(--yas-blue),var(--yas-yellow)); }
+  .an-kpi-lbl { font-size: 10.5px; font-weight: 700; color: #8794ad; text-transform: uppercase; letter-spacing: .8px; }
+  .an-kpi-val { font-size: 22px; font-weight: 800; color: var(--yas-blue); margin-top: 4px; word-break: break-word; }
+  .an-kpi-val.small { font-size: 15px; }
+
+  /* ── Grille de sections ── */
+  .an-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 1100px) { .an-grid2 { grid-template-columns: 1fr; } }
+  .an-chart-wrap { position: relative; height: 320px; }
+  .an-chart-wrap.tall { height: 420px; }
+
+  /* ── Tables ── */
+  .an-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .an-table th {
+    background: var(--yas-blue); color: #fff; text-align: left; padding: 8px 10px;
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; white-space: nowrap;
+  }
+  .an-table td { padding: 7px 10px; border-bottom: 1px solid #eef2f9; color: #2b3a5e; }
+  .an-table tr:nth-child(even) td { background: #f8faff; }
+  .an-table tr:hover td { background: #eef4ff; }
+  .an-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .an-scroll { max-height: 360px; overflow: auto; border-radius: 10px; border: 1px solid #e8edf5; }
+  .an-badge {
+    display: inline-block; background: #eef2fb; color: #003087; font-size: 10.5px;
+    font-weight: 700; padding: 2px 10px; border-radius: 12px; white-space: nowrap;
+  }
+
+  /* ── Drill-down ── */
+  .an-drill { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .an-drill .an-field { flex: 1; min-width: 180px; margin-bottom: 0; }
+
+  .an-export-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* ── Overlay de chargement ── */
+  #anLoading {
+    display: none; position: fixed; inset: 0; z-index: 3000;
+    background: rgba(10,18,40,.55); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+  }
+  #anLoading .box { background: #fff; border-radius: 16px; padding: 28px 40px; text-align: center; }
+  #anLoading .spin {
+    width: 42px; height: 42px; margin: 0 auto 14px; border-radius: 50%;
+    border: 4px solid #dbe6ff; border-top-color: var(--yas-blue); animation: anspin 1s linear infinite;
+  }
+  @keyframes anspin { to { transform: rotate(360deg); } }
+
+  /* ── Dark theme ── */
+  html[data-theme="dark"] .an-card,
+  html[data-theme="dark"] .an-kpi { background: #101828; border-color: #24365a; }
+  html[data-theme="dark"] .an-card-title, html[data-theme="dark"] .an-kpi-val { color: #9db6ff; }
+  html[data-theme="dark"] .an-srcbar { background: #101828; border-color: #24365a; color: #c7d3e8; }
+  html[data-theme="dark"] .an-srcbar b { color: #9db6ff; }
+  html[data-theme="dark"] .an-field :is(input,select) { background: #0a0f1c; border-color: #24365a; color: #c7d3e8; }
+  html[data-theme="dark"] .an-table td { color: #c7d3e8; border-color: #1c2a47; }
+  html[data-theme="dark"] .an-table tr:nth-child(even) td { background: #0d1425; }
+  html[data-theme="dark"] .an-table tr:hover td { background: #16234a; }
+  html[data-theme="dark"] .an-scroll { border-color: #24365a; }
+  html[data-theme="dark"] .an-cols-hint { background: #0d1425; border-color: #24365a; color: #8fa3c8; }
+  html[data-theme="dark"] .an-src-card p { color: #8fa3c8; }
+  html[data-theme="dark"] .an-badge { background: #16234a; color: #9db6ff; }
+  html[data-theme="dark"] .an-ms-btn,
+  html[data-theme="dark"] .an-ms-search { background: #0a0f1c; border-color: #24365a; color: #c7d3e8; }
+  html[data-theme="dark"] .an-ms-panel { background: #101828; border-color: #24365a; }
+  html[data-theme="dark"] .an-ms-opt { color: #c7d3e8; }
+  html[data-theme="dark"] .an-ms-opt:hover { background: #16234a; }
+  html[data-theme="dark"] .an-ms-actions span { color: #9db6ff; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ═══════════ HERO ═══════════ -->
+<div class="an-hero">
+  <span class="an-hero-tag">⚡ Module d'analyses automatiques</span>
+  <div class="an-hero-title">Analytics</div>
+  <div class="an-hero-sub">
+    Importez un fichier d'incidents ou interrogez directement NetXcare pour générer
+    automatiquement KPIs, tableaux croisés et visualisations : régions, sites, causes,
+    équipements, classifications, escalades et bases.
+  </div>
+</div>
+
+{% if not meta %}
+<!-- ═══════════ ÉCRAN DE CHARGEMENT DE SOURCE ═══════════ -->
+<div class="an-src-grid">
+
+  <div class="an-card an-src-card">
+    <h3>📂 Importer un fichier</h3>
+    <p>Chargez un export d'incidents au format <b>Excel (.xlsx / .xls)</b> ou <b>CSV</b>.
+       Les colonnes sont détectées automatiquement (accents et variantes tolérés).</p>
+    <form method="post" action="{% url 'analytics_process' %}" enctype="multipart/form-data"
+          onsubmit="anShowLoading('Analyse du fichier en cours…')">
+      {% csrf_token %}
+      <input type="hidden" name="mode" value="file">
+      <div class="an-field">
+        <label>Fichier source</label>
+        <input type="file" name="data_file" accept=".xlsx,.xls,.xlsm,.csv" required>
+      </div>
+      <button type="submit" class="an-btn">🚀 Analyser le fichier</button>
+    </form>
+    <div class="an-cols-hint">
+      Colonnes reconnues : <code>Région</code> <code>Base</code> <code>Site</code>
+      <code>Équipement en défaut</code> <code>Cause</code> <code>Classification du site</code>
+      <code>Durée de l'incident</code> <code>Escalade</code> — ainsi que les exports
+      NetXcare (<code>Site Name</code>, <code>Impact Equipement</code>, <code>Duration</code>…).
+      Les champs Région / Base / Classification manquants sont complétés depuis la base Sites.
+    </div>
+  </div>
+
+  <div class="an-card an-src-card">
+    <h3>🛰️ Utiliser NetXcare (API)</h3>
+    <p>Interroge directement l'historique des incidents du ticketing sur la période choisie.
+       Les longues périodes sont découpées automatiquement (le chargement peut prendre
+       quelques dizaines de secondes).</p>
+    {% if has_api %}
+    <form method="post" action="{% url 'analytics_process' %}"
+          onsubmit="anShowLoading('Récupération des incidents NetXcare…')">
+      {% csrf_token %}
+      <input type="hidden" name="mode" value="api">
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <div class="an-field" style="flex:1; min-width:140px;">
+          <label>Du</label>
+          <input type="date" name="api_debut" required>
+        </div>
+        <div class="an-field" style="flex:1; min-width:140px;">
+          <label>Au</label>
+          <input type="date" name="api_fin" required>
+        </div>
+      </div>
+      <div class="an-field">
+        <label>Réseau</label>
+        <select name="api_network">
+          <option value="mobile" selected>Réseau Mobile</option>
+          <option value="fixe">Réseau Fixe</option>
+          <option value="transmission">Transmission</option>
+          <option value="core">Core</option>
+          <option value="energie">Énergie</option>
+          <option value="all">Tous les réseaux</option>
+        </select>
+      </div>
+      <button type="submit" class="an-btn yellow">🛰️ Charger depuis NetXcare</button>
+    </form>
+    {% else %}
+    <p style="color:#b02a37;"><b>API non configurée</b> — renseignez
+       <code>TICKETING_API_URL</code>, <code>TICKETING_API_USERNAME</code> et
+       <code>TICKETING_API_PASSWORD</code> dans le fichier <code>.env</code>.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<!-- ═══════════ BARRE SOURCE ═══════════ -->
+<div class="an-srcbar">
+  <span>📌 Source : <b>{{ meta.source }}</b></span>
+  <span class="an-badge">{{ meta.rows }} incident(s)</span>
+  <span class="an-badge">chargé le {{ meta.loaded_at }}</span>
+  <span class="spacer"></span>
+  {% if res and not res.empty %}
+  <div class="an-export-bar">
+    <a class="an-btn ghost" href="{% url 'analytics_export' 'xlsx' %}{% if qs %}?{{ qs }}{% endif %}">📥 Excel</a>
+    <a class="an-btn ghost" href="{% url 'analytics_export' 'pdf' %}{% if qs %}?{{ qs }}{% endif %}">📄 PDF</a>
+  </div>
+  {% endif %}
+  <form method="post" action="{% url 'analytics_reset' %}" style="margin:0;">
+    {% csrf_token %}
+    <button type="submit" class="an-btn danger">✖ Changer de source</button>
+  </form>
+</div>
+
+<!-- ═══════════ FILTRES DYNAMIQUES ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title">🎛️ Filtres dynamiques</div>
+  <form method="get" class="an-filterbar">
+    <div class="an-field small">
+      <label>Du</label>
+      <input type="date" name="date_debut" value="{{ flt.date_debut }}"
+             min="{{ res.filters.date_min }}" max="{{ res.filters.date_max }}">
+    </div>
+    <div class="an-field small">
+      <label>Au</label>
+      <input type="date" name="date_fin" value="{{ flt.date_fin }}"
+             min="{{ res.filters.date_min }}" max="{{ res.filters.date_max }}">
+    </div>
+    <div class="an-field">
+      <label>Régions</label>
+      <div class="an-ms" data-all="Toutes les régions">
+        <button type="button" class="an-ms-btn">Toutes les régions</button>
+        <div class="an-ms-panel">
+          <input type="text" class="an-ms-search" placeholder="Rechercher…">
+          <div class="an-ms-actions"><span data-act="all">Tout cocher</span><span data-act="none">Tout effacer</span></div>
+          <div class="an-ms-list">
+            {% for r in res.filters.regions %}
+            <label class="an-ms-opt"><input type="checkbox" name="region" value="{{ r }}" {% if r in flt.regions %}checked{% endif %}><span>{{ r }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="an-field">
+      <label>Sites</label>
+      <div class="an-ms" data-all="Tous les sites">
+        <button type="button" class="an-ms-btn">Tous les sites</button>
+        <div class="an-ms-panel">
+          <input type="text" class="an-ms-search" placeholder="Rechercher…">
+          <div class="an-ms-actions"><span data-act="all">Tout cocher</span><span data-act="none">Tout effacer</span></div>
+          <div class="an-ms-list">
+            {% for s in res.filters.sites %}
+            <label class="an-ms-opt"><input type="checkbox" name="site" value="{{ s }}" {% if s in flt.sites %}checked{% endif %}><span>{{ s }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="an-field">
+      <label>Causes</label>
+      <div class="an-ms" data-all="Toutes les causes">
+        <button type="button" class="an-ms-btn">Toutes les causes</button>
+        <div class="an-ms-panel">
+          <input type="text" class="an-ms-search" placeholder="Rechercher…">
+          <div class="an-ms-actions"><span data-act="all">Tout cocher</span><span data-act="none">Tout effacer</span></div>
+          <div class="an-ms-list">
+            {% for c in res.filters.causes %}
+            <label class="an-ms-opt"><input type="checkbox" name="cause" value="{{ c }}" {% if c in flt.causes %}checked{% endif %}><span>{{ c }}</span></label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="an-btn">Appliquer</button>
+    <a href="{% url 'analytics' %}" class="an-btn ghost">Réinitialiser</a>
+  </form>
+</div>
+
+{% if res.empty %}
+<div class="an-card" style="text-align:center; padding:50px;">
+  <div style="font-size:40px;">🔍</div>
+  <div class="an-card-title" style="justify-content:center;">Aucune donnée pour les filtres choisis</div>
+  <div class="an-card-sub">Élargissez la période ou réinitialisez les filtres.</div>
+</div>
+{% else %}
+
+<!-- ═══════════ KPIs ═══════════ -->
+<div class="an-kpis">
+  <div class="an-kpi"><div class="an-kpi-lbl">Incidents</div><div class="an-kpi-val">{{ res.kpi.incidents }}</div></div>
+  <div class="an-kpi"><div class="an-kpi-lbl">Indisponibilité totale</div><div class="an-kpi-val small">{{ res.kpi.outage }}</div></div>
+  <div class="an-kpi"><div class="an-kpi-lbl">MTTR</div><div class="an-kpi-val small">{{ res.kpi.mttr }}</div></div>
+  <div class="an-kpi"><div class="an-kpi-lbl">Sites impactés</div><div class="an-kpi-val">{{ res.kpi.sites }}</div></div>
+  <div class="an-kpi"><div class="an-kpi-lbl">Régions</div><div class="an-kpi-val">{{ res.kpi.regions }}</div></div>
+  <div class="an-kpi"><div class="an-kpi-lbl">Cause dominante</div><div class="an-kpi-val small">{{ res.kpi.top_cause }}</div></div>
+</div>
+
+<!-- ═══════════ 1 & 6 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">1</span> Indisponibilité par Région &amp; Site</div>
+    <div class="an-card-sub">Histogramme empilé — heures d'outage par région, ventilées par site (top 6 + autres).</div>
+    <div class="an-chart-wrap"><canvas id="chartA1"></canvas></div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">6</span> Pareto des causes (80/20)</div>
+    <div class="an-card-sub">Outage par cause (barres) et pourcentage cumulé (courbe).</div>
+    <div class="an-chart-wrap"><canvas id="chartA6"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════ 2 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Site &amp; Cause</div>
+  <div class="an-card-sub">Top 15 des sites par durée totale d'indisponibilité — la cause principale est indiquée dans l'infobulle et le tableau.</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap tall"><canvas id="chartA2"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>#</th><th>Site</th><th class="num">Incidents</th><th class="num">Outage</th><th>Cause principale</th></tr></thead>
+        <tbody>
+        {% for r in res.a2 %}
+          <tr><td>{{ forloop.counter }}</td><td><b>{{ r.site }}</b></td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td><span class="an-badge">{{ r.cause }}</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 3 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">3</span> Corrélation Cause &amp; Site — incidents et indisponibilité</div>
+  <div class="an-card-sub">Barres = nombre d'incidents, courbe = heures d'outage (double axe).</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap tall"><canvas id="chartA3"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Cause</th><th class="num">Incidents</th><th class="num">Outage</th><th>Site le plus impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a3.table %}
+          <tr><td><b>{{ r.cause }}</b></td><td class="num">{{ r.n }}</td>
+              <td class="num">{{ r.outage }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 4 & 10 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">4</span> Synthèse régionale</div>
+    <div class="an-card-sub">Nombre d'incidents et indisponibilité totale par région.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Région</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a4 %}
+          <tr><td><b>{{ r.region }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">10</span> Performance opérationnelle par Base</div>
+    <div class="an-card-sub">Incidents, indisponibilité et MTTR par base technique.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Base</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a10 %}
+          <tr><td><b>{{ r.base }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 5 & 7 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">5</span> Classification du site — incidents &amp; cause principale</div>
+    <div class="an-card-sub">Tableau croisé : volume d'incidents et cause dominante par classification.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Classification</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th>Cause principale</th></tr></thead>
+        <tbody>
+        {% for r in res.a5 %}
+          <tr><td><b>{{ r.classification }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td><span class="an-badge">{{ r.top_cause }}</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">7</span> Top 10 des équipements les moins fiables</div>
+    <div class="an-card-sub">Équipements en défaut classés par nombre d'incidents puis outage.</div>
+    <div class="an-chart-wrap tall"><canvas id="chartA7"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════ 9 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">9</span> Répartition des responsabilités — Escalade &amp; Cause</div>
+  <div class="an-card-sub">Part de l'indisponibilité totale portée par chaque entité d'escalade.</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap"><canvas id="chartA9"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Escalade</th><th>Cause</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">% du total</th></tr></thead>
+        <tbody>
+        {% for r in res.a9.table %}
+          <tr><td><b>{{ r.escalade }}</b></td><td>{{ r.cause }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.pct }} %</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 8 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">8</span> Exploration multi-niveaux — Région &gt; Site &gt; Cause</div>
+  <div class="an-card-sub">Descendez du niveau régional jusqu'à la cause : les listes se filtrent en cascade.</div>
+  <div class="an-drill">
+    <div class="an-field"><label>Région</label><select id="drillRegion"></select></div>
+    <div class="an-field"><label>Site</label><select id="drillSite"></select></div>
+    <div class="an-field"><label>Cause</label><select id="drillCause"></select></div>
+  </div>
+  <div class="an-scroll" style="max-height:300px;">
+    <table class="an-table">
+      <thead><tr><th>Région</th><th>Site</th><th>Cause</th>
+                 <th class="num">Incidents</th><th class="num">Outage</th></tr></thead>
+      <tbody id="drillBody"></tbody>
+    </table>
+  </div>
+</div>
+
+{{ res|json_script:"analyticsData" }}
+{% endif %}{# res.empty #}
+{% endif %}{# meta #}
+
+<!-- Overlay de chargement -->
+<div id="anLoading">
+  <div class="box">
+    <div class="spin"></div>
+    <div style="font-weight:800; color:#003087;" id="anLoadingMsg">Traitement en cours…</div>
+    <div style="font-size:11.5px; color:#8794ad; margin-top:6px;">
+      Les gros volumes et les appels NetXcare peuvent prendre un moment.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function anShowLoading(msg) {
+  document.getElementById('anLoadingMsg').textContent = msg || 'Traitement en cours…';
+  document.getElementById('anLoading').style.display = 'flex';
+}
+
+/* ── Menus multi-sélection (Régions / Sites / Causes) ── */
+document.querySelectorAll('.an-ms').forEach(ms => {
+  const btn    = ms.querySelector('.an-ms-btn');
+  const panel  = ms.querySelector('.an-ms-panel');
+  const search = ms.querySelector('.an-ms-search');
+  const opts   = [...ms.querySelectorAll('.an-ms-opt')];
+  const allLbl = ms.dataset.all || 'Tous';
+
+  function refreshLabel() {
+    const sel = opts.filter(o => o.querySelector('input').checked);
+    if (!sel.length) { btn.textContent = allLbl; return; }
+    btn.innerHTML = '';
+    const badge = document.createElement('span');
+    badge.className = 'an-ms-count'; badge.textContent = sel.length;
+    btn.appendChild(badge);
+    btn.appendChild(document.createTextNode(
+      sel.slice(0, 2).map(o => o.textContent.trim()).join(', ') + (sel.length > 2 ? '…' : '')));
+  }
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const wasOpen = ms.classList.contains('open');
+    document.querySelectorAll('.an-ms.open').forEach(m => m.classList.remove('open'));
+    if (!wasOpen) { ms.classList.add('open'); if (search) { search.value = ''; opts.forEach(o => o.style.display = ''); search.focus(); } }
+  });
+  panel.addEventListener('click', e => e.stopPropagation());
+
+  if (search) search.addEventListener('input', () => {
+    const q = search.value.toLowerCase();
+    opts.forEach(o => { o.style.display = o.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+  });
+
+  ms.querySelectorAll('.an-ms-actions span').forEach(a => a.addEventListener('click', () => {
+    const check = a.dataset.act === 'all';
+    opts.forEach(o => { if (o.style.display !== 'none') o.querySelector('input').checked = check; });
+    refreshLabel();
+  }));
+
+  opts.forEach(o => o.querySelector('input').addEventListener('change', refreshLabel));
+  refreshLabel();
+});
+document.addEventListener('click', () =>
+  document.querySelectorAll('.an-ms.open').forEach(m => m.classList.remove('open')));
+</script>
+{% if res and not res.empty %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById('analyticsData').textContent);
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const ink  = dark ? '#c7d3e8' : '#2b3a5e';
+  const grid = dark ? 'rgba(120,145,200,.15)' : 'rgba(0,48,135,.08)';
+  Chart.defaults.color = ink;
+  Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+  Chart.defaults.font.size = 11;
+
+  const PAL = ['#003087','#FFC72C','#2f7ed8','#e4572e','#17a398','#8093f1',
+               '#c05299','#5c7457','#f18f01','#7b8794'];
+  const col = i => PAL[i % PAL.length];
+
+  /* ── 1. Région & Site — empilé ── */
+  new Chart(document.getElementById('chartA1'), {
+    type: 'bar',
+    data: {
+      labels: D.a1.labels,
+      datasets: D.a1.datasets.map((ds, i) => ({
+        label: ds.label, data: ds.data,
+        backgroundColor: ds.label === 'Autres sites' ? (dark ? '#33487a' : '#c9d4ea') : col(i),
+        borderRadius: 3,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } },
+                 tooltip: { callbacks: { label: c => `${c.dataset.label} : ${c.parsed.y} h` } } },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, grid: { color: grid }, title: { display: true, text: 'Outage (h)' } },
+      },
+    },
+  });
+
+  /* ── 6. Pareto causes ── */
+  new Chart(document.getElementById('chartA6'), {
+    data: {
+      labels: D.a6.labels,
+      datasets: [
+        { type: 'bar', label: 'Outage (h)', data: D.a6.outage_h,
+          backgroundColor: '#003087', borderRadius: 3, yAxisID: 'y' },
+        { type: 'line', label: 'Cumul (%)', data: D.a6.cum_pct,
+          borderColor: '#FFC72C', backgroundColor: '#FFC72C',
+          tension: .3, pointRadius: 3, yAxisID: 'y2' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 60, autoSkip: false } },
+        y:  { grid: { color: grid }, title: { display: true, text: 'Outage (h)' } },
+        y2: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false },
+              ticks: { callback: v => v + ' %' } },
+      },
+    },
+  });
+
+  /* ── 2. Top sites — barres horizontales ── */
+  new Chart(document.getElementById('chartA2'), {
+    type: 'bar',
+    data: {
+      labels: D.a2.map(r => r.site),
+      datasets: [{ label: 'Outage (h)', data: D.a2.map(r => r.outage_h),
+                   backgroundColor: '#003087', borderRadius: 3 }],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: c => {
+            const r = D.a2[c.dataIndex];
+            return [` Outage : ${r.outage}`, ` Incidents : ${r.n}`, ` Cause principale : ${r.cause}`];
+          } } },
+      },
+      scales: { x: { grid: { color: grid }, title: { display: true, text: 'Outage (h)' } },
+                y: { grid: { display: false } } },
+    },
+  });
+
+  /* ── 3. Cause & Site — double axe ── */
+  new Chart(document.getElementById('chartA3'), {
+    data: {
+      labels: D.a3.labels,
+      datasets: [
+        { type: 'bar', label: 'Incidents', data: D.a3.counts,
+          backgroundColor: '#2f7ed8', borderRadius: 3, yAxisID: 'y' },
+        { type: 'line', label: 'Outage (h)', data: D.a3.outage_h,
+          borderColor: '#FFC72C', backgroundColor: '#FFC72C',
+          tension: .3, pointRadius: 3, yAxisID: 'y2' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 60, autoSkip: false } },
+        y:  { grid: { color: grid }, title: { display: true, text: 'Incidents' } },
+        y2: { position: 'right', grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Outage (h)' } },
+      },
+    },
+  });
+
+  /* ── 7. Équipements — barres horizontales doubles ── */
+  new Chart(document.getElementById('chartA7'), {
+    type: 'bar',
+    data: {
+      labels: D.a7.map(r => r.equipement),
+      datasets: [
+        { label: 'Incidents', data: D.a7.map(r => r.n), backgroundColor: '#003087', borderRadius: 3 },
+        { label: 'Outage (h)', data: D.a7.map(r => r.outage_h), backgroundColor: '#FFC72C', borderRadius: 3 },
+      ],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+      scales: { x: { grid: { color: grid } }, y: { grid: { display: false } } },
+    },
+  });
+
+  /* ── 9. Escalade — doughnut ── */
+  new Chart(document.getElementById('chartA9'), {
+    type: 'doughnut',
+    data: {
+      labels: D.a9.labels,
+      datasets: [{ data: D.a9.outage_h, backgroundColor: D.a9.labels.map((_, i) => col(i)),
+                   borderWidth: 2, borderColor: dark ? '#101828' : '#fff' }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 10 } },
+        tooltip: { callbacks: { label: c => ` ${c.label} : ${c.parsed} h` } },
+      },
+    },
+  });
+
+  /* ── 8. Drill-down Région > Site > Cause ── */
+  const drill = D.a8;
+  const selR = document.getElementById('drillRegion');
+  const selS = document.getElementById('drillSite');
+  const selC = document.getElementById('drillCause');
+  const body = document.getElementById('drillBody');
+
+  function fill(sel, items, allLabel) {
+    sel.innerHTML = '';
+    const optAll = document.createElement('option');
+    optAll.value = ''; optAll.textContent = allLabel;
+    sel.appendChild(optAll);
+    items.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      sel.appendChild(o);
+    });
+  }
+
+  function render() {
+    const r0 = selR.value, s0 = selS.value, c0 = selC.value;
+    body.innerHTML = '';
+    const rows = [];
+    Object.keys(drill).sort().forEach(r => {
+      if (r0 && r !== r0) return;
+      Object.keys(drill[r]).sort().forEach(s => {
+        if (s0 && s !== s0) return;
+        Object.keys(drill[r][s]).sort().forEach(c => {
+          if (c0 && c !== c0) return;
+          rows.push([r, s, c, drill[r][s][c]]);
+        });
+      });
+    });
+    rows.sort((a, b) => b[3].outage_h - a[3].outage_h);
+    rows.slice(0, 200).forEach(([r, s, c, v]) => {
+      const tr = document.createElement('tr');
+      [r, s, c].forEach((t, i) => {
+        const td = document.createElement('td');
+        if (i === 1) { const b = document.createElement('b'); b.textContent = t; td.appendChild(b); }
+        else td.textContent = t;
+        tr.appendChild(td);
+      });
+      const tdN = document.createElement('td'); tdN.className = 'num'; tdN.textContent = v.n;
+      const tdO = document.createElement('td'); tdO.className = 'num'; tdO.textContent = v.outage;
+      tr.appendChild(tdN); tr.appendChild(tdO);
+      body.appendChild(tr);
+    });
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5; td.style.textAlign = 'center'; td.textContent = 'Aucun résultat.';
+      tr.appendChild(td); body.appendChild(tr);
+    }
+  }
+
+  function refreshSites() {
+    const r0 = selR.value;
+    const sites = new Set();
+    Object.keys(drill).forEach(r => {
+      if (r0 && r !== r0) return;
+      Object.keys(drill[r]).forEach(s => sites.add(s));
+    });
+    fill(selS, [...sites].sort(), 'Tous les sites');
+  }
+  function refreshCauses() {
+    const r0 = selR.value, s0 = selS.value;
+    const causes = new Set();
+    Object.keys(drill).forEach(r => {
+      if (r0 && r !== r0) return;
+      Object.keys(drill[r]).forEach(s => {
+        if (s0 && s !== s0) return;
+        Object.keys(drill[r][s]).forEach(c => causes.add(c));
+      });
+    });
+    fill(selC, [...causes].sort(), 'Toutes les causes');
+  }
+
+  fill(selR, Object.keys(drill).sort(), 'Toutes les régions');
+  refreshSites(); refreshCauses(); render();
+  selR.addEventListener('change', () => { refreshSites(); refreshCauses(); render(); });
+  selS.addEventListener('change', () => { refreshCauses(); render(); });
+  selC.addEventListener('change', render);
+})();
+</script>
+{% endif %}
+{% endblock %}
