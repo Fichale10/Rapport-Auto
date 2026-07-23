@@ -202,9 +202,17 @@ def fetch_api_excel(
 
     df = json_to_dataframe(rows)
 
-    # Pré-filtre « tickets actifs pendant la période » (identique à fetch_and_save_api)
-    debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
-    fin_dt   = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
+    # Pré-filtre « tickets actifs pendant la période » (identique à fetch_and_save_api).
+    # Si une heure est fournie (YYYY-MM-DDTHH:MM), elle est respectée ; sinon la
+    # période couvre les journées entières (00:00:00 → 23:59:59).
+    if len(date_debut) > 10:
+        debut_dt = pd.Timestamp(date_debut)
+    else:
+        debut_dt = pd.Timestamp(f"{date_debut[:10]} 00:00:00")
+    if len(date_fin) > 10:
+        fin_dt = pd.Timestamp(date_fin)
+    else:
+        fin_dt = pd.Timestamp(f"{date_fin[:10]} 23:59:59")
     if "Alarm Time" in df.columns:
         at = pd.to_datetime(df["Alarm Time"], dayfirst=True, format="mixed", errors="coerce")
         ct = pd.to_datetime(df.get("Cancel Time", pd.Series(dtype="object")),

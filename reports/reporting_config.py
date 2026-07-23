@@ -141,16 +141,6 @@ PLATFORMS = {
             {
                 'num':      1,
                 'title':    'Outil 1',
-                'subtitle': 'Rapport NOC CORE IP',
-                'desc':     'Génération du rapport hebdomadaire ISOC CORE & IGW depuis CORE_ET_IGW_*.xlsx',
-                'url_name': 'igw_rapport_noc',
-                'url_kwargs': {},
-                'icon':     '📋',
-                'badge':    'Interactif',
-            },
-            {
-                'num':      2,
-                'title':    'Outil 2',
                 'subtitle': 'Trafic International',
                 'desc':     'Visualisation du trafic international par lien depuis les fichiers CSV',
                 'url_name': 'igw_trafic_international',

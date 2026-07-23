@@ -1020,6 +1020,30 @@ def plateforme_traitement(request, platform):
             'yesterday': today - timedelta(days=1),
         })
 
+    # ── Core & IGW : outil « Rapport Hebdomadaire NOC CORE IP » ────────────
+    # (déplacé depuis /reporting/igw/rapport-noc-core/) — import manuel OU API
+    if platform == 'core':
+        from .reporting_config import PLATFORMS
+        today = date.today()
+        return render(request, 'reports/traitement_core.html', {
+            'platform':  platform,
+            'cfg':       PLATFORMS['core'],
+            'today':     today,
+            'yesterday': today - timedelta(days=1),
+        })
+
+    # ── Fixe : outil « Rapport Hebdomadaire NOC FIXE » ─────────────────────
+    # (même traitement que core, domaines détectés depuis la colonne Plateforme)
+    if platform == 'fixe':
+        from .reporting_config import PLATFORMS
+        today = date.today()
+        return render(request, 'reports/traitement_fixe.html', {
+            'platform':  platform,
+            'cfg':       PLATFORMS['fixe'],
+            'today':     today,
+            'yesterday': today - timedelta(days=1),
+        })
+
     if request.method == 'POST':
         # TODO : brancher ici le processus de calcul spécifique à la plateforme.
         messages.info(
@@ -1053,8 +1077,9 @@ def plateforme_api_fetch(request, platform):
     date_debut = request.POST.get('date_debut', '').strip()
     date_fin   = request.POST.get('date_fin', '').strip()
     try:
-        d1 = _dt.date.fromisoformat(date_debut)
-        d2 = _dt.date.fromisoformat(date_fin)
+        # Accepte 'YYYY-MM-DD' (input date) ou 'YYYY-MM-DDTHH:MM' (input datetime-local)
+        d1 = _dt.datetime.fromisoformat(date_debut)
+        d2 = _dt.datetime.fromisoformat(date_fin)
     except ValueError:
         messages.error(request, 'Format de date invalide.')
         return redirect('plateforme_traitement', platform=platform)
@@ -1064,7 +1089,7 @@ def plateforme_api_fetch(request, platform):
 
     from .api_import import fetch_api_excel
     try:
-        buf, filename = fetch_api_excel(d1.isoformat(), d2.isoformat(), network=platform)
+        buf, filename = fetch_api_excel(date_debut, date_fin, network=platform)
     except Exception as exc:
         messages.error(request, f"Erreur import API : {exc}")
         return redirect('plateforme_traitement', platform=platform)
@@ -6431,12 +6456,8 @@ def platform_bases_incidents_export(request, platform):
 
 
 # ── Outils interactifs ────────────────────────────────────────────────────────
-
-def igw_rapport_noc(request):
-    from .reporting_config import PLATFORMS
-    cfg = PLATFORMS['igw']
-    return render(request, 'reports/igw_rapport_noc.html', {'cfg': cfg, 'platform': 'igw'})
-
+# NB : le « Rapport NOC CORE IP » (ex /reporting/igw/rapport-noc-core/) a été
+# déplacé sur /traitement/core/ (vue plateforme_traitement, traitement_core.html).
 
 def igw_trafic_international(request):
     from .reporting_config import PLATFORMS

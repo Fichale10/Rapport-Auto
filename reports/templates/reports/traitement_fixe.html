@@ -1,0 +1,225 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Traitement Fixe — ReportXCare{% endblock %}
+{% block breadcrumb %}Traitement Fixe{% endblock %}
+
+{% block extra_css %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --navy:#0d2461; --navy2:#162d72; --yellow:#f5c000; --yellow2:#ffe066; --bg:#f0f3fa; --white:#fff; --gray1:#e8ecf4; --gray2:#9aa3ba; --text:#1a2340; --green:#22c55e; --red:#ef4444; --blue:#2563eb; --radius:12px; --shadow:0 2px 16px rgba(13,36,97,.10); }
+  .tool-banner { border-radius:16px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  .tool-banner-back { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:10px; border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:rgba(255,255,255,.85); font-size:13px; font-weight:600; text-decoration:none; }
+  .tool-banner-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+  .page-wrap { max-width:1200px; margin:0 auto; padding:0 0 32px; }
+  .two-col { display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start; }
+  .card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px 28px 24px; }
+  .card-title { font-size:20px; font-weight:800; color:var(--navy); display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .card-sub { font-size:13.5px; color:var(--gray2); margin-bottom:22px; }
+  .drop-zone { border:2.5px dashed #aab4d4; border-radius:10px; background:#f7f9fd; padding:34px 20px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; position:relative; }
+  .drop-zone.dragging { border-color:var(--yellow); background:#fffbea; }
+  .drop-zone:hover { border-color:var(--blue); background:#f0f4ff; }
+  .drop-zone input[type="file"] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+  .drop-icon { font-size:46px; margin-bottom:10px; line-height:1; }
+  .drop-label { font-size:15px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+  .drop-hint { font-size:12.5px; color:var(--gray2); margin-bottom:12px; }
+  .drop-formats { display:flex; gap:8px; justify-content:center; }
+  .fmt-badge { border:1.5px solid #aab4d4; border-radius:5px; padding:2px 10px; font-size:12px; font-weight:700; color:#6b7a99; }
+  .file-status { margin-top:18px; padding:14px 16px; border-radius:9px; border:1.5px solid var(--gray1); background:#f9fafc; display:flex; align-items:center; gap:12px; }
+  .file-status.loaded { border-color:var(--green); background:#f0faf4; }
+  .file-status.error { border-color:var(--red); background:#fff5f5; }
+  .fs-dot { width:12px; height:12px; border-radius:50%; background:#d1d5e8; flex-shrink:0; }
+  .file-status.loaded .fs-dot { background:var(--green); }
+  .file-status.error .fs-dot { background:var(--red); }
+  .fs-info { flex:1; min-width:0; }
+  .fs-name { font-size:13px; font-weight:700; color:var(--navy); }
+  .fs-sub { font-size:11.5px; color:var(--gray2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .btn-process { display:block; width:100%; margin-top:20px; background:var(--yellow); color:var(--navy); border:none; border-radius:10px; padding:15px 20px; font-size:15px; font-weight:800; cursor:pointer; transition:background .2s,transform .1s,opacity .2s; }
+  .btn-process:hover:not(:disabled) { background:var(--yellow2); transform:translateY(-1px); }
+  .btn-process:disabled { opacity:.45; cursor:not-allowed; }
+  .progress-wrap { margin-top:18px; display:none; }
+  .progress-bar-bg { background:var(--gray1); border-radius:8px; height:8px; overflow:hidden; }
+  .progress-bar { height:100%; background:linear-gradient(90deg,var(--blue),var(--yellow)); border-radius:8px; transition:width .3s; width:0; }
+  .progress-text { font-size:12px; color:var(--gray2); margin-top:6px; text-align:center; }
+  .download-area { margin-top:18px; padding:16px; border-radius:9px; background:#f0faf4; border:1.5px solid var(--green); display:none; text-align:center; }
+  .download-area .dl-title { font-size:14px; font-weight:800; color:#166534; margin-bottom:10px; }
+  .btn-dl { background:var(--green); color:#fff; border:none; border-radius:8px; padding:10px 24px; font-size:13.5px; font-weight:700; cursor:pointer; transition:background .2s; display:inline-flex; align-items:center; gap:7px; }
+  .btn-dl:hover { background:#16a34a; }
+  .alert { margin-top:14px; padding:11px 15px; border-radius:8px; font-size:13px; font-weight:600; display:none; }
+  .alert.error { background:#fff5f5; border:1.5px solid #fca5a5; color:#b91c1c; }
+  .alert.success { background:#f0fdf4; border:1.5px solid #86efac; color:#166534; }
+  .log-area { margin-top:16px; padding:12px; background:#f1f5ff; border-radius:8px; font-size:11.5px; color:#475069; max-height:160px; overflow-y:auto; display:none; }
+  .log-line { padding:2px 0; }
+  .log-line.ok { color:#16a34a; }
+  .log-line.warn { color:#d97706; }
+  .log-line.err { color:#ef4444; }
+  .panel-title { font-size:15px; font-weight:800; color:var(--yellow); margin-bottom:18px; display:flex; align-items:center; gap:7px; }
+  .steps { display:flex; flex-direction:column; gap:14px; margin-bottom:24px; }
+  .step { display:flex; align-items:flex-start; gap:12px; }
+  .step-num { width:26px; height:26px; border-radius:50%; background:var(--yellow); color:var(--navy); font-size:12px; font-weight:900; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+  .step-head { font-size:13px; font-weight:700; color:var(--navy); }
+  .step-desc { font-size:12px; color:var(--gray2); margin-top:2px; }
+  .info-box { background:var(--gray1); border-radius:9px; padding:14px 16px; font-size:12.5px; color:var(--text); }
+  .info-box b { color:var(--navy); }
+  .stats-section { max-width:1200px; margin:0 auto 40px; display:none; }
+  .stats-title { font-size:17px; font-weight:800; color:var(--navy); }
+  .kpi-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px; margin-top:16px; }
+  .kpi { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 24px; flex:1; min-width:140px; text-align:center; }
+  .kpi-val { font-size:32px; font-weight:900; color:var(--navy); }
+  .kpi-val.green { color:#16a34a; }
+  .kpi-val.red { color:#ef4444; }
+  .kpi-label { font-size:12px; color:var(--gray2); margin-top:4px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+  .domain-table-wrap { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+  .domain-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .domain-table thead th { background:var(--navy); color:#fff; padding:11px 16px; text-align:left; font-size:12px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; }
+  .domain-table tbody td { padding:10px 16px; border-bottom:1px solid var(--gray1); }
+  .domain-table tbody tr:last-child td { border-bottom:none; }
+  .domain-table tbody tr:hover { background:#f7f9fd; }
+  .badge-ferme { background:#dcfce7; color:#166534; border-radius:6px; padding:2px 9px; font-size:11px; font-weight:700; }
+  .badge-ouvert { background:#fef9c3; color:#854d0e; border-radius:6px; padding:2px 9px; font-size:11px; font-weight:700; }
+  .incidents-preview { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); margin-top:20px; overflow:auto; }
+  .incidents-preview table { width:100%; border-collapse:collapse; font-size:12px; min-width:1100px; }
+  .incidents-preview thead th { background:var(--navy); color:#fff; padding:9px 12px; text-align:left; font-size:11px; font-weight:700; white-space:nowrap; }
+  .incidents-preview tbody td { padding:8px 12px; border-bottom:1px solid var(--gray1); white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  .incidents-preview tbody tr:hover { background:#f7f9fd; }
+  td.status-ferme { color:#166534; font-weight:700; }
+  td.status-ouvert { color:#b45309; font-weight:700; }
+  @media(max-width:800px){ .two-col{ grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tool-banner" style="background:linear-gradient(135deg,{{ cfg.color }},{{ cfg.color2 }})">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-size:28px;">{{ cfg.icon }}</div>
+    <div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFC72C;">Traitement · Fixe</div>
+      <div style="font-size:18px;font-weight:700;color:#fff;">Rapport NOC FIXE</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Rapport hebdomadaire ISOC FIXE</div>
+    </div>
+  </div>
+  <a href="{% url 'home' %}" class="tool-banner-back">&#8592; Retour à l'accueil</a>
+</div>
+
+{% if messages %}
+<div class="page-wrap" style="padding-bottom:0;">
+  {% for m in messages %}
+    <div class="alert {{ m.tags }}" style="display:block;margin-bottom:14px;">{{ m }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="page-wrap">
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">📋 Générer le Rapport Hebdomadaire NOC FIXE</div>
+      <div class="card-sub">Importez manuellement le fichier Excel <strong>RESEAU_FIXE_YYYYMMDD_YYYYMMDD.xlsx</strong> (ou <strong>FIXE_*.xlsx</strong> issu de l'API ci-dessous) et générez automatiquement le rapport hebdomadaire ISOC FIXE.</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+        <div class="drop-icon">📊</div>
+        <div class="drop-label">Glissez le fichier ici</div>
+        <div class="drop-hint">ou cliquez pour parcourir — fichier RESEAU_FIXE_*.xlsx ou FIXE_*.xlsx</div>
+        <div class="drop-formats"><span class="fmt-badge">.XLSX</span></div>
+      </div>
+      <div class="file-status" id="fileStatus">
+        <div class="fs-dot"></div>
+        <div class="fs-info">
+          <div class="fs-name">Aucun fichier chargé</div>
+          <div class="fs-sub">En attente du fichier RESEAU_FIXE_*.xlsx ou FIXE_*.xlsx</div>
+        </div>
+      </div>
+      <div class="alert" id="alertBox"></div>
+      <button class="btn-process" id="btnProcess" disabled>⚙ Lancer le traitement</button>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-text" id="progressText">Traitement en cours…</div>
+      </div>
+      <div class="download-area" id="downloadArea">
+        <div class="dl-title" id="dlTitle">✅ Rapport généré avec succès !</div>
+        <button class="btn-dl" id="btnDownload">⬇ Télécharger le rapport Excel</button>
+      </div>
+      <div class="log-area" id="logArea"></div>
+
+      <!-- ── Import API ── -->
+      <div style="display:flex;align-items:center;gap:14px;margin:28px 0 20px;font-size:12px;font-weight:700;color:#9aa3ba;text-transform:uppercase;letter-spacing:1px;">
+        <span style="flex:1;height:1px;background:var(--gray1);"></span>ou<span style="flex:1;height:1px;background:var(--gray1);"></span>
+      </div>
+      <div class="card-title" style="font-size:17px">🌐 Récupérer les données par API</div>
+      <div class="card-sub">Récupère les incidents <strong>Fixe</strong> depuis le système de ticketing : le fichier <strong>FIXE_AAAAMMJJ_AAAAMMJJ.xlsx</strong> est téléchargé automatiquement — glissez-le ensuite dans la zone ci-dessus pour générer le rapport.</div>
+      <form method="post" action="{% url 'plateforme_api_fetch' 'fixe' %}"
+            style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+        {% csrf_token %}
+        <div style="flex:1; min-width:200px;">
+          <label for="api_date_debut" style="display:block;font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Date et heure de début</label>
+          <input type="datetime-local" name="date_debut" id="api_date_debut" required value="{{ yesterday|date:'Y-m-d' }}T00:00"
+                 style="width:100%;padding:10px 12px;border:1.5px solid #aab4d4;border-radius:9px;background:#f7f9fd;font-size:13.5px;">
+        </div>
+        <div style="flex:1; min-width:200px;">
+          <label for="api_date_fin" style="display:block;font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Date et heure de fin</label>
+          <input type="datetime-local" name="date_fin" id="api_date_fin" required value="{{ today|date:'Y-m-d' }}T23:59"
+                 style="width:100%;padding:10px 12px;border:1.5px solid #aab4d4;border-radius:9px;background:#f7f9fd;font-size:13.5px;">
+        </div>
+        <button type="submit" class="btn-process" style="width:auto; margin:0; padding:12px 24px; background:var(--navy); color:#fff;">⬇ Récupérer depuis l'API</button>
+      </form>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="panel-title">💡 Comment ça marche</div>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Manuellement (fichier <strong>RESEAU_FIXE_YYYYMMDD_YYYYMMDD.xlsx</strong>) ou via l'<strong>API ticketing</strong> (fichier FIXE_*.xlsx téléchargé automatiquement).</div></div></div>
+          <div class="step"><div class="step-num">2</div><div><div class="step-head">Traitement automatique</div><div class="step-desc">Extraction des incidents, calcul des statistiques par domaine (OLT, ONT…) détecté depuis la colonne Plateforme.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div><div class="step-head">Prévisualisation</div><div class="step-desc">Tableau récapitulatif par domaine et liste des incidents affichés à l'écran.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel formaté : <em>RAPPORT HEBDOMADAIRE ISOC FIXE @ MOIS ANNÉE.xlsx</em></div></div></div>
+        </div>
+        <div class="info-box"><b>Domaines :</b> détectés automatiquement depuis la colonne <b>Plateforme</b> du fichier (ex. OLT, ONT, DWDM…)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stats-section" id="statsSection">
+  <div class="card">
+    <div class="stats-title" id="statsTitle">📊 RAPPORT HEBDOMADAIRE NOC FIXE</div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val" id="kpiTotal">0</div><div class="kpi-label">Total TTs</div></div>
+      <div class="kpi"><div class="kpi-val green" id="kpiFerme">0</div><div class="kpi-label">TTs Fermés</div></div>
+      <div class="kpi"><div class="kpi-val red" id="kpiOuvert">0</div><div class="kpi-label">TTs Ouverts</div></div>
+    </div>
+    <div class="domain-table-wrap">
+      <table class="domain-table">
+        <thead><tr><th>Domaine</th><th>Total</th><th>Résolu (Fermé)</th><th>Ouvert</th></tr></thead>
+        <tbody id="domainTableBody"></tbody>
+      </table>
+    </div>
+    <div class="incidents-preview" style="margin-top:20px">
+      <table><thead id="incidentsHead"></thead><tbody id="incidentsBody"></tbody></table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const MOIS_FR=['JANVIER','FÉVRIER','MARS','AVRIL','MAI','JUIN','JUILLET','AOÛT','SEPTEMBRE','OCTOBRE','NOVEMBRE','DÉCEMBRE'];
+const JOURS_FR=['DIMANCHE','LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI'];
+let DOMAINS=[];
+function classifyDomain(p){if(!p)return null;const s=p.toString().trim().toUpperCase();return s||null;}
+let loadedWorkbook=null,loadedFilename='',workbookBlob=null;
+const $=id=>document.getElementById(id);
+function log(msg,type=''){const area=$('logArea');area.style.display='block';const line=document.createElement('div');line.className='log-line '+type;line.textContent=new Date().toLocaleTimeString('fr')+'  '+msg;area.appendChild(line);area.scrollTop=area.scrollHeight;}
+function showAlert(msg,type){const el=$('alertBox');el.textContent=msg;el.className='alert '+type;el.style.display='block';}
+function hideAlert(){$('alertBox').style.display='none';}
+function setProgress(pct,text){$('progressWrap').style.display='block';$('progressBar').style.width=pct+'%';$('progressText').textContent=text;}
+function parseYMD(str){str=str.toString().trim();if(/^\d{8}$/.test(str))return new Date(+str.substring(0,4),+str.substring(4,6)-1,+str.substring(6,8));const m=str.match(/^(\d{2})-(\d{2})-(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
+function weekLabel(sd){const end=new Date(sd);end.setDate(end.getDate()+6);const s=sd,e=end;const sds=`${JOURS_FR[s.getDay()].substring(0,3)} ${s.getDate()} ${MOIS_FR[s.getMonth()]}`;const eds=`${JOURS_FR[e.getDay()]} ${e.getDate()} ${MOIS_FR[e.getMonth()]} ${e.getFullYear()}`;return{sheet:`${sds} AU ${eds}`,full:`DATE : DU ${sds} AU ${eds}`};}
+function extractStartFromFilename(fname){const m=fname.match(/(\d{8})[_-](\d{8})/);if(m)return parseYMD(m[1]);return null;}
+function readExcelFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=e=>{try{resolve(XLSX.read(new Uint8Array(e.target.result),{type:'array'}));}catch(err){reject(err);}};reader.onerror=reject;reader.readAsArrayBuffer(file);});}
+function extractRows(wb){const ws=wb.Sheets[wb.SheetNames[0]];const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});if(data.length<2)throw new Error('Fichier vide ou sans données');const headers=data[0].map(h=>String(h||'').trim());const rows=data.slice(1).filter(r=>r.some(c=>c!==''&&c!==null&&c!==undefined));return{headers,rows};}
+async function handleFile(file){hideAlert();$('logArea').style.display='block';$('logArea').innerHTML='';const status=$('fileStatus');status.className='file-status';$('btnProcess').disabled=true;loadedWorkbook=null;if(!file)return;if(!/\.xlsx?$/i.test(file.name)){status.className='file-status error';status.querySelector('.fs-name').textContent='✗ Format non supporté';status.querySelector('.fs-sub').textContent='Veuillez sélectionner un fichier .xlsx';showAlert('Format de fichier non supporté.','error');return;}try{log(`Lecture de : ${file.name}`);const wb=await readExcelFile(file);const{headers,rows}=extractRows(wb);loadedWorkbook={wb,headers,rows};loadedFilename=file.name;status.className='file-status loaded';status.querySelector('.fs-name').textContent='✓ '+file.name;status.querySelector('.fs-sub').textContent=`${rows.length} incident(s) — ${headers.length} colonnes`;log(`Fichier chargé : ${rows.length} incident(s)`, 'ok');$('btnProcess').disabled=false;hideAlert();}catch(err){status.className='file-status error';status.querySelector('.fs-name').textContent='✗ Erreur de lecture';status.querySelector('.fs-sub').textContent=err.message;log('Erreur : '+err.message,'err');showAlert('Erreur de lecture : '+err.message,'error');}}
+function computeStats(headers,rows){const idxP=headers.findIndex(h=>/plateforme/i.test(h));const idxS=headers.findIndex(h=>/^status$/i.test(h));const stats={};DOMAINS=[...new Set(rows.map(r=>classifyDomain(idxP>=0?String(r[idxP]||''):'')).filter(Boolean))].sort();DOMAINS.forEach(d=>{stats[d]={total:0,ferme:0,ouvert:0};});let totalFerme=0,totalOuvert=0;rows.forEach(row=>{const p=idxP>=0?String(row[idxP]||''):'';const s=idxS>=0?String(row[idxS]||''):'';const domain=classifyDomain(p);const ferme=/FERME/i.test(s);if(ferme)totalFerme++;else totalOuvert++;if(domain&&stats[domain]!==undefined){stats[domain].total++;if(ferme)stats[domain].ferme++;else stats[domain].ouvert++;}});return{stats,totalFerme,totalOuvert,total:rows.length};}
+function renderStats(headers,rows,dateLabel){const{stats,totalFerme,totalOuvert,total}=computeStats(headers,rows);$('statsTitle').textContent=`📊 RAPPORT HEBDOMADAIRE NOC FIXE — ${dateLabel}`;$('kpiTotal').textContent=total;$('kpiFerme').textContent=totalFerme;$('kpiOuvert').textContent=totalOuvert;const tbody=$('domainTableBody');tbody.innerHTML='';DOMAINS.forEach(domain=>{const s=stats[domain];const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:700">${domain}</td><td>${s.total>0?`<strong>${s.total}</strong>`:'0'}</td><td>${s.ferme>0?`<span class="badge-ferme">${s.ferme} FERMÉ${s.ferme>1?'S':''}</span>`:'—'}</td><td>${s.ouvert>0?`<span class="badge-ouvert">${s.ouvert} OUVERT${s.ouvert>1?'S':''}</span>`:'—'}</td>`;tbody.appendChild(tr);});const showCols=["Ticket","Nature de l'incident","Alarm Time","Plateforme","Technologies","Cause","Duration","Status"];const showLabels=["Numero du ticket","Nature de l'incident","Alarm Time","Plateforme","Technologies","Cause","Duration","Status"];const colIdx=showCols.map(c=>headers.findIndex(h=>h.toLowerCase().includes(c.toLowerCase().split(' ')[0].toLowerCase())));$('incidentsHead').innerHTML='<tr>'+showLabels.map(c=>`<th>${c}</th>`).join('')+'</tr>';const tbody2=$('incidentsBody');tbody2.innerHTML='';rows.forEach(row=>{const tr=document.createElement('tr');showCols.forEach((c,i)=>{const idx=colIdx[i];const val=idx>=0?String(row[idx]||''):'';const td=document.createElement('td');td.textContent=val;if(/^status$/i.test(c))td.className=/FERME/i.test(val)?'status-ferme':'status-ouvert';tr.appendChild(td);});tbody2.appendChild(tr);});$('statsSection').style.display='block';$('statsSection').scrollIntoView({behavior:'smooth',block:'start'});}
+function buildOutputExcel(headers,rows,startDate){const wb=XLSX.utils.book_new();let reportStart=startDate||extractStartFromFilename(loadedFilename);if(!reportStart){const idxAT=headers.findIndex(h=>/alarm.*time/i.test(h));if(idxAT>=0){const dates=rows.map(r=>parseYMD(String(r[idxAT]||''))).filter(Boolean).sort((a,b)=>a-b);if(dates.length)reportStart=dates[0];}}if(!reportStart)reportStart=new Date();const{sheet:sheetName,full:dateStr}=weekLabel(reportStart);const reportEnd=new Date(reportStart);reportEnd.setDate(reportEnd.getDate()+6);const moisAnnee=`${MOIS_FR[reportEnd.getMonth()]} ${reportEnd.getFullYear()}`;log(`Période : ${sheetName}`,'ok');const C_LIME='92D050',C_SLATE='4C5A77',C_DATA='72AB43',C_STATS='E5E9EE',C_WHITE='FFFFFF',C_DARK='222A35';const S=(font,bgRgb,align)=>({font:font?{...font}:{},fill:bgRgb?{fgColor:{rgb:bgRgb}}:{},alignment:align||{}});const sTitleCell=S({bold:true,sz:14},C_LIME,{horizontal:'center',vertical:'center'});const sDateCell=S({bold:true,sz:11},C_LIME,{horizontal:'left',vertical:'center'});const sColHdr=S({bold:true,color:{rgb:C_WHITE},sz:10},C_SLATE,{horizontal:'center',vertical:'center',wrapText:true});const sDataCell=S(null,C_DATA,{vertical:'center'});const sSecHdr=S({bold:true},C_LIME,{horizontal:'center',vertical:'center'});const sStatsBg=S(null,C_STATS,{horizontal:'center',vertical:'center'});const sDomainCell=S({bold:true,color:{rgb:C_DARK}},C_STATS,{horizontal:'left',vertical:'center'});const sNumCell=S(null,C_STATS,{horizontal:'center',vertical:'center'});const sNumBold=S({bold:true},C_STATS,{horizontal:'center',vertical:'center'});const sLabelCell=S({bold:true,color:{rgb:C_DARK}},C_STATS,{horizontal:'left',vertical:'center'});const ws={};const setCell=(r,c,v,s)=>{const addr=XLSX.utils.encode_cell({r,c});const t=(typeof v==='number')?'n':'s';ws[addr]=s?{v,t,s}:{v,t};};const COLS=headers.length;setCell(4,1,'RAPPORT HEBDOMADAIRE NOC FIXE',sTitleCell);setCell(6,1,dateStr,sDateCell);headers.forEach((h,i)=>setCell(11,i+1,h,sColHdr));rows.forEach((row,ri)=>{row.forEach((val,ci)=>{const raw=(val===null||val===undefined)?'':val;const num=parseFloat(raw);const v=(!isNaN(num)&&String(raw).trim()!=='')?num:String(raw);setCell(12+ri,ci+1,v,sDataCell);});});const statsR=Math.max(16,11+rows.length+4);setCell(statsR,1,'Incidents',sSecHdr);setCell(statsR,2,'Répartition par Domaine',sSecHdr);setCell(statsR,4,'Résolu',sSecHdr);setCell(statsR,5,'Ouvert',sSecHdr);const{stats,totalFerme,totalOuvert,total}=computeStats(headers,rows);setCell(statsR+1,1,total,sStatsBg);DOMAINS.forEach((domain,di)=>{const s=stats[domain];const r=statsR+1+di;setCell(r,2,domain,sDomainCell);setCell(r,3,s.total,sNumCell);setCell(r,4,s.ferme,sNumCell);setCell(r,5,s.ouvert,sNumCell);});const ttR=statsR+1+DOMAINS.length+3;setCell(ttR,2,'Nbre des TTs',sLabelCell);setCell(ttR,3,total,sNumBold);setCell(ttR+1,2,'Nbre des TTs FERMES',sLabelCell);setCell(ttR+1,3,totalFerme,sNumBold);setCell(ttR+2,2,'Nbre des TTs OUVERTS',sLabelCell);setCell(ttR+2,3,totalOuvert,sNumBold);const lastRow=ttR+2;ws['!ref']=XLSX.utils.encode_range({r:4,c:1},{r:lastRow,c:COLS});ws['!merges']=[{s:{r:4,c:1},e:{r:4,c:2}},{s:{r:statsR,c:2},e:{r:statsR,c:3}},{s:{r:statsR+1,c:1},e:{r:statsR+DOMAINS.length,c:1}}];ws['!cols']=[{wch:3},{wch:20},{wch:22},{wch:55},{wch:20},{wch:15},{wch:18},{wch:12},{wch:10},{wch:30},{wch:32},{wch:18},{wch:18},{wch:28},{wch:28},{wch:15},{wch:22},{wch:14},{wch:20},{wch:22},{wch:32},{wch:40},{wch:15},{wch:20},{wch:12},{wch:12}];const rowsMeta=[];rowsMeta[4]={hpt:22};rowsMeta[6]={hpt:22};rowsMeta[11]={hpt:30};ws['!rows']=rowsMeta;XLSX.utils.book_append_sheet(wb,ws,sheetName.substring(0,31));const buf=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});return{blob,outName:`RAPPORT HEBDOMADAIRE ISOC FIXE @ ${moisAnnee}.xlsx`,moisAnnee,sheetName};}
+async function runProcess(){if(!loadedWorkbook)return;$('downloadArea').style.display='none';$('logArea').innerHTML='';$('logArea').style.display='block';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des données…');await new Promise(r=>setTimeout(r,100));const{headers,rows}=loadedWorkbook;log(`${rows.length} incident(s) trouvé(s)`,'ok');setProgress(50,'Calcul des statistiques…');await new Promise(r=>setTimeout(r,100));const startDate=extractStartFromFilename(loadedFilename);const{sheet}=startDate?weekLabel(startDate):{sheet:'RAPPORT'};log('Classement des incidents par domaine…');const{stats,totalFerme,totalOuvert,total}=computeStats(headers,rows);log(`Total : ${total} | Fermés : ${totalFerme} | Ouverts : ${totalOuvert}`,'ok');DOMAINS.forEach(d=>{const s=stats[d];if(s.total>0)log(`  ${d} : ${s.total} incident(s) — ${s.ferme} fermé(s)`,'ok');});setProgress(75,'Génération du fichier Excel…');await new Promise(r=>setTimeout(r,100));const{blob,outName,moisAnnee}=buildOutputExcel(headers,rows,startDate);workbookBlob=blob;setProgress(90,'Prévisualisation…');await new Promise(r=>setTimeout(r,100));renderStats(headers,rows,sheet);setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';$('dlTitle').textContent=`✅ Rapport ${moisAnnee} généré avec succès !`;$('btnDownload').onclick=()=>{if(!workbookBlob){log('Blob introuvable, relancez le traitement.','err');return;}const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=outName;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);log(`Téléchargement : ${outName}`,'ok');};log(`Rapport prêt : ${outName}`,'ok');showAlert('Rapport hebdomadaire généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur lors du traitement : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
+document.addEventListener('DOMContentLoaded',()=>{$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');const f=e.dataTransfer.files[0];if(f)handleFile(f);});$('btnProcess').addEventListener('click',runProcess);});
+</script>
+{% endblock %}

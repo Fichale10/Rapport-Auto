@@ -1,5 +1,6 @@
 from django.urls import path
 from django.contrib.auth.decorators import login_required
+from django.views.generic import RedirectView
 from . import views  # noqa
 
 urlpatterns = [
@@ -51,7 +52,10 @@ urlpatterns = [
     path('reporting/import/',                     login_required(views.reporting_import), name='reporting_import'),
 
     # ── Outils interactifs (avant le slug générique) ──────────────────────────
-    path('reporting/igw/rapport-noc-core/',          login_required(views.igw_rapport_noc),          name='igw_rapport_noc'),
+    # Rapport NOC CORE IP déplacé sur /traitement/core/ — redirection rétro-compat
+    path('reporting/igw/rapport-noc-core/',
+         RedirectView.as_view(url='/traitement/core/', permanent=False),
+         name='igw_rapport_noc'),
     path('reporting/igw/trafic-international/',      login_required(views.igw_trafic_international),  name='igw_trafic_international'),
     path('reporting/igw/dispo/process/',            login_required(views.igw_dispo_process),         name='igw_dispo_process'),
     path('reporting/igw/dispo/export/<str:fmt>/',   login_required(views.igw_dispo_export),          name='igw_dispo_export'),
