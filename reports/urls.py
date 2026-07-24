@@ -16,6 +16,7 @@ urlpatterns = [
     path('delete/<uuid:pk>/',                     login_required(views.delete_report),   name='delete_report'),
     path('history/',                              login_required(views.history),         name='history'),
     path('statistiques/',                         login_required(views.statistiques),      name='statistiques'),
+    path('rapport-journalier/',                   login_required(views.rapport_journalier_export), name='rapport_journalier_export'),
     path('statistiques/live/',                    login_required(views.statistiques_live), name='statistiques_live'),
     path('notifications/',                        login_required(views.notifications),   name='notifications'),
     path('analytics/',                            login_required(views.analytics),         name='analytics'),

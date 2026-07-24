@@ -106,6 +106,11 @@ class TicketingApiClient:
         if domaine_id is not None:
             try:
                 plateformes = self.get_all(f"/api/plateformes/?domaine_id={domaine_id}")
+                # ⚠ Certains serveurs IGNORENT le paramètre domaine_id et
+                # renvoient TOUTES les plateformes → toujours re-filtrer côté
+                # client (sinon l'export fixe/transmission/core contient les
+                # tickets de tous les réseaux, mobile inclus).
+                plateformes = [p for p in plateformes if p.get("domaine_id") == domaine_id]
                 if plateformes:
                     if name_filter_u:
                         plateformes = [

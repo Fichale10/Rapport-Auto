@@ -454,6 +454,14 @@
         <a href="{% url 'upload' %}" class="btn-hero">↑ Traiter un fichier</a>
         <a href="{% url 'statistiques' %}" class="btn-hero-ghost">📊 Statistiques</a>
         <a href="{% url 'history' %}" class="btn-hero-ghost">📋 Historique</a>
+        <form method="get" action="{% url 'rapport_journalier_export' %}" id="rjForm"
+              style="display:inline-flex;align-items:center;gap:8px;"
+              onsubmit="var b=this.querySelector('button');b.dataset.txt=b.textContent;b.textContent='⏳ Génération…';b.disabled=true;setTimeout(function(){b.textContent=b.dataset.txt;b.disabled=false;},25000);">
+          <input type="date" name="date" value="{{ rj_default_date }}" required
+                 title="Journée du rapport (J-1)"
+                 style="padding:11px 12px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:13px;font-weight:600;color-scheme:dark;">
+          <button type="submit" class="btn-hero" style="cursor:pointer;border:none;">📥 Rapport journalier</button>
+        </form>
       </div>
     </div>
   </div>

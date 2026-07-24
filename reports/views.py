@@ -929,6 +929,7 @@ def home(request):
         'month_resolved':       month_resolved,
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
+        'rj_default_date':      (date.today() - timedelta(days=1)).isoformat(),
         'evol_period':          period,
         'show_spark_chart':     show_spark_chart,
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
@@ -8610,3 +8611,41 @@ def analytics_export(request, fmt):
         resp['Content-Disposition'] = f'attachment; filename="Analytics_{stamp}.pdf"'
         return resp
     raise Http404
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  RAPPORT JOURNALIER consolidé (Excel)
+# ═══════════════════════════════════════════════════════════════════════
+def rapport_journalier_export(request):
+    """Télécharge le RAPPORT JOURNALIER consolidé (Excel) pour une journée.
+
+    Paramètre GET ``date=YYYY-MM-DD`` — par défaut : hier (J-1).
+    """
+    from datetime import datetime as _dt
+
+    from django.http import HttpResponse
+    from django.utils import timezone
+
+    from .rapport_journalier import build_rapport_journalier
+
+    date_str = (request.GET.get('date') or '').strip()
+    if date_str:
+        try:
+            day = _dt.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return HttpResponse('Date invalide (format attendu : YYYY-MM-DD).', status=400)
+    else:
+        day = timezone.localdate() - timedelta(days=1)
+
+    try:
+        content = build_rapport_journalier(day)
+    except Exception:
+        logging.getLogger(__name__).exception('Erreur génération RAPPORT JOURNALIER %s', day)
+        return HttpResponse('Erreur lors de la génération du rapport.', status=500)
+
+    filename = f"RAPPORT JOURNALIER {day.strftime('%d-%m-%Y')}.xlsx"
+    resp = HttpResponse(
+        content,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp

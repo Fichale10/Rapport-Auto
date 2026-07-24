@@ -10,6 +10,19 @@
   .tool-banner { border-radius:16px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
   .tool-banner-back { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:10px; border:1.5px solid rgba(255,255,255,.3); background:rgba(255,255,255,.08); color:rgba(255,255,255,.85); font-size:13px; font-weight:600; text-decoration:none; }
   .tool-banner-back:hover { border-color:rgba(255,255,255,.6); color:#fff; }
+  /* ── Onglets (design page mobile) ── */
+  .tab-bar { display:flex; gap:4px; background:#f0f4ff; border-radius:12px; padding:4px; margin-bottom:26px; }
+  .tab-btn { flex:1; padding:10px 16px; border:none; border-radius:9px; background:transparent; font-size:14px; font-weight:600; color:#666; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:background .2s,color .2s,box-shadow .2s; font-family:inherit; }
+  .tab-btn.active { background:#fff; color:var(--navy); box-shadow:0 2px 8px rgba(13,36,97,.10); }
+  .tab-btn:hover:not(.active) { background:rgba(255,255,255,.6); color:var(--navy); }
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+  .api-form-row { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .api-form-group { flex:1; min-width:200px; display:flex; flex-direction:column; gap:6px; }
+  .api-form-group label { font-size:11px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.5px; }
+  .api-form-group input { padding:11px 14px; background:#f0f4ff; border:2px solid transparent; border-radius:10px; font-size:14px; color:#111; outline:none; transition:border-color .2s,background .2s; width:100%; font-family:inherit; }
+  .api-form-group input:focus { border-color:var(--navy); background:#fff; }
+  .api-info-banner { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; margin-bottom:20px; font-size:13px; color:#1e40af; display:flex; align-items:flex-start; gap:10px; }
   .page-wrap { max-width:1200px; margin:0 auto; padding:0 0 32px; }
   .two-col { display:grid; grid-template-columns:1fr 320px; gap:24px; align-items:start; }
   .card { background:var(--white); border-radius:var(--radius); box-shadow:var(--shadow); padding:28px 28px 24px; }
@@ -88,7 +101,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="tool-banner" style="background:linear-gradient(135deg,{{ cfg.color }},{{ cfg.color2 }})">
+<div class="tool-banner" style="background:linear-gradient(120deg,#001f5c 0%,#002776 40%,#003087 70%,#0044bb 100%);box-shadow:0 6px 28px rgba(0,48,135,.28);">
   <div style="display:flex;align-items:center;gap:14px;">
     <div style="font-size:28px;">{{ cfg.icon }}</div>
     <div>
@@ -103,24 +116,56 @@
 <div class="page-wrap">
   <div class="two-col">
     <div class="card">
-      <div class="card-title">🚇 Générer le Rapport Hebdomadaire NOC TRANSPORT</div>
-      <div class="card-sub">Importez le fichier Excel <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> et générez automatiquement le rapport hebdomadaire NOC de la plateforme TRANSPORT.</div>
-      <div class="drop-zone" id="dropZone">
-        <input type="file" id="fileInput" accept=".xlsx,.xls" />
-        <div class="drop-icon">📊</div>
-        <div class="drop-label">Glissez le fichier ici</div>
-        <div class="drop-hint">ou cliquez pour parcourir — fichier TRANSMISSION_*.xlsx</div>
-        <div class="drop-formats"><span class="fmt-badge">.XLSX</span></div>
+      <!-- ── Onglets ── -->
+      <div class="tab-bar">
+        <button type="button" class="tab-btn active" id="tabExcel" onclick="switchTab('excel')"><span>📊</span> Fichier Excel</button>
+        <button type="button" class="tab-btn" id="tabApi" onclick="switchTab('api')"><span>🌐</span> Import API</button>
       </div>
-      <div class="file-status" id="fileStatus">
-        <div class="fs-dot"></div>
-        <div class="fs-info">
-          <div class="fs-name">Aucun fichier chargé</div>
-          <div class="fs-sub">En attente du fichier TRANSMISSION_*.xlsx</div>
+
+      <!-- ── Onglet Excel ── -->
+      <div class="tab-panel active" id="panelExcel">
+        <div class="card-title">🚇 Générer le Rapport Hebdomadaire NOC TRANSPORT</div>
+        <div class="card-sub">Importez le fichier Excel <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> et générez automatiquement le rapport hebdomadaire NOC de la plateforme TRANSPORT.</div>
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".xlsx,.xls" />
+          <div class="drop-icon">📊</div>
+          <div class="drop-label">Glissez le fichier ici</div>
+          <div class="drop-hint">ou cliquez pour parcourir — fichier TRANSMISSION_*.xlsx</div>
+          <div class="drop-formats"><span class="fmt-badge">.XLSX</span></div>
         </div>
+        <div class="file-status" id="fileStatus">
+          <div class="fs-dot"></div>
+          <div class="fs-info">
+            <div class="fs-name">Aucun fichier chargé</div>
+            <div class="fs-sub">En attente du fichier TRANSMISSION_*.xlsx</div>
+          </div>
+        </div>
+        <button class="btn-process" id="btnProcess" disabled>⚙ Lancer le traitement</button>
       </div>
+
+      <!-- ── Onglet API ── -->
+      <div class="tab-panel" id="panelApi">
+        <div class="card-title">🌐 Import depuis l'API</div>
+        <div class="card-sub">Récupère les incidents <strong>Transmission</strong> depuis le système de ticketing puis lance <strong>automatiquement le même traitement</strong> que le fichier manuel : statistiques par domaine d'escalade, prévisualisation et rapport Excel téléchargeable.</div>
+        <div class="api-info-banner"><span>ℹ️</span><span>Aucun fichier à manipuler : les données sont récupérées, traitées et affichées directement à l'écran.</span></div>
+        <form method="post" action="{% url 'plateforme_api_fetch' 'transmission' %}" id="apiForm">
+          {% csrf_token %}
+          <div class="api-form-row">
+            <div class="api-form-group">
+              <label for="api_date_debut">Date et heure de début</label>
+              <input type="datetime-local" name="date_debut" id="api_date_debut" required value="{{ yesterday|date:'Y-m-d' }}T00:00">
+            </div>
+            <div class="api-form-group">
+              <label for="api_date_fin">Date et heure de fin</label>
+              <input type="datetime-local" name="date_fin" id="api_date_fin" required value="{{ today|date:'Y-m-d' }}T23:59">
+            </div>
+          </div>
+          <button type="submit" class="btn-process" id="apiBtn" style="margin-top:0;background:var(--navy);color:#fff;">🌐 Récupérer et traiter</button>
+        </form>
+      </div>
+
+      <!-- ── Zone commune : alertes / progression / téléchargement / journal ── -->
       <div class="alert" id="alertBox"></div>
-      <button class="btn-process" id="btnProcess" disabled>⚙ Lancer le traitement</button>
       <div class="progress-wrap" id="progressWrap">
         <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
         <div class="progress-text" id="progressText">Traitement en cours…</div>
@@ -130,40 +175,28 @@
         <button class="btn-dl" id="btnDownload">⬇ Télécharger le rapport Excel</button>
       </div>
       <div class="log-area" id="logArea"></div>
-
-      <!-- ── Import API ── -->
-      <div style="display:flex;align-items:center;gap:14px;margin:28px 0 20px;font-size:12px;font-weight:700;color:#9aa3ba;text-transform:uppercase;letter-spacing:1px;">
-        <span style="flex:1;height:1px;background:var(--gray1);"></span>ou<span style="flex:1;height:1px;background:var(--gray1);"></span>
-      </div>
-      <div class="card-title" style="font-size:17px">🌐 Récupérer les données par API</div>
-      <div class="card-sub">Récupère les incidents <strong>Transmission</strong> depuis le système de ticketing : le fichier <strong>TRANSMISSION_AAAAMMJJ_AAAAMMJJ.xlsx</strong> est téléchargé automatiquement — glissez-le ensuite dans la zone ci-dessus pour générer le rapport.</div>
-      <form method="post" action="{% url 'plateforme_api_fetch' 'transmission' %}"
-            style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
-        {% csrf_token %}
-        <div style="flex:1; min-width:160px;">
-          <label for="api_date_debut" style="display:block;font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Date de début</label>
-          <input type="date" name="date_debut" id="api_date_debut" required value="{{ yesterday|date:'Y-m-d' }}"
-                 style="width:100%;padding:10px 12px;border:1.5px solid #aab4d4;border-radius:9px;background:#f7f9fd;font-size:13.5px;">
-        </div>
-        <div style="flex:1; min-width:160px;">
-          <label for="api_date_fin" style="display:block;font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Date de fin</label>
-          <input type="date" name="date_fin" id="api_date_fin" required value="{{ today|date:'Y-m-d' }}"
-                 style="width:100%;padding:10px 12px;border:1.5px solid #aab4d4;border-radius:9px;background:#f7f9fd;font-size:13.5px;">
-        </div>
-        <button type="submit" class="btn-process" style="width:auto; margin:0; padding:12px 24px; background:var(--navy); color:#fff;">⬇ Récupérer depuis l'API</button>
-      </form>
     </div>
 
     <div>
-      <div class="card">
+      <div class="card" id="sidebarExcel">
         <div class="panel-title">💡 Comment ça marche</div>
         <div class="steps">
-          <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> contenant les incidents transport de la semaine.</div></div></div>
+          <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> exporté manuellement, ou utilisez l'onglet <strong>Import API</strong>.</div></div></div>
           <div class="step"><div class="step-num">2</div><div><div class="step-head">Traitement automatique</div><div class="step-desc">Suppression des colonnes <em>Région</em> et <em>Durée escalade</em>, calcul des statistiques par domaine d'escalade.</div></div></div>
           <div class="step"><div class="step-num">3</div><div><div class="step-head">Prévisualisation</div><div class="step-desc">Tableau récapitulatif par domaine et liste des incidents affichés à l'écran.</div></div></div>
           <div class="step"><div class="step-num">4</div><div><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel formaté : <em>RAPPORT__HEBDO_NOC_S&lt;semaine&gt;-&lt;année&gt;.xlsx</em></div></div></div>
         </div>
         <div class="info-box"><b>Domaines d'escalade :</b><br>TRANS FO, TRANS IP, DWDM &amp; OSN - BACKBONE NODE, IGW, PROJET<br><br><b>Colonnes supprimées :</b> Région, Durée escalade</div>
+      </div>
+      <div class="card" id="sidebarApi" style="display:none;">
+        <div class="panel-title">🔌 Comment ça marche</div>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div><div class="step-head">Récupération API</div><div class="step-desc">Connexion au système de ticketing et téléchargement des incidents <strong>Transmission</strong> sur la période choisie.</div></div></div>
+          <div class="step"><div class="step-num">2</div><div><div class="step-head">Traitement automatique</div><div class="step-desc">Le même traitement que le fichier manuel est lancé immédiatement — aucun fichier à glisser.</div></div></div>
+          <div class="step"><div class="step-num">3</div><div><div class="step-head">Résultats affichés</div><div class="step-desc">KPIs, tableau par domaine d'escalade et liste des incidents s'affichent directement.</div></div></div>
+          <div class="step"><div class="step-num">4</div><div><div class="step-head">Téléchargez le rapport</div><div class="step-desc">Fichier Excel formaté : <em>RAPPORT__HEBDO_NOC_S&lt;semaine&gt;-&lt;année&gt;.xlsx</em></div></div></div>
+        </div>
+        <div class="info-box"><b>Source :</b> API ticketing NetXcare — réseau <b>Transmission</b> (DWDM, LIEN FH…)</div>
       </div>
     </div>
   </div>
@@ -222,6 +255,8 @@ function computeStats(headers,rows){const idxE=headers.findIndex(h=>/^escalade$/
 function renderStats(headers,rows,label){const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);$('statsTitle').textContent=`📊 RAPPORT HEBDOMADAIRE NOC TRANSPORT — ${label}`;$('kpiTotal').textContent=total;$('kpiFerme').textContent=totalFerme;$('kpiOuvert').textContent=totalOuvert;const tbody=$('domainTableBody');tbody.innerHTML='';order.forEach(domain=>{const s=stats[domain];const tr=document.createElement('tr');tr.innerHTML=`<td style="font-weight:700">${domain}</td><td>${s.total>0?`<strong>${s.total}</strong>`:'0'}</td><td>${s.ferme>0?`<span class="badge-ferme">${s.ferme} FERMÉ${s.ferme>1?'S':''}</span>`:'—'}</td><td>${s.ouvert>0?`<span class="badge-ouvert">${s.ouvert} OUVERT${s.ouvert>1?'S':''}</span>`:'—'}</td>`;tbody.appendChild(tr);});const showCols=["Numero du ticket","Nature de l'incident","Alarm Time","Plateforme","Escalade","Cause","Duration","Status"];const colIdx=showCols.map(c=>headers.findIndex(h=>h.toLowerCase()===c.toLowerCase()));$('incidentsHead').innerHTML='<tr>'+showCols.map(c=>`<th>${c}</th>`).join('')+'</tr>';const tbody2=$('incidentsBody');tbody2.innerHTML='';rows.forEach(row=>{const tr=document.createElement('tr');showCols.forEach((c,i)=>{const idx=colIdx[i];const val=idx>=0?String(row[idx]||''):'';const td=document.createElement('td');td.textContent=val;if(/^status$/i.test(c))td.className=/FERME/i.test(val)?'status-ferme':'status-ouvert';tr.appendChild(td);});tbody2.appendChild(tr);});$('statsSection').style.display='block';$('statsSection').scrollIntoView({behavior:'smooth',block:'start'});}
 function buildOutputExcel(headers,rows,period){const wb=XLSX.utils.book_new();let start=period&&period.start,end=period&&period.end;if(!start||!end){const idxAT=headers.findIndex(h=>/alarm.*time/i.test(h));if(idxAT>=0){const dates=rows.map(r=>parseYMD(String(r[idxAT]||''))).filter(Boolean).sort((a,b)=>a-b);if(dates.length){start=start||dates[0];end=end||dates[dates.length-1];}}}if(!start)start=new Date();if(!end)end=new Date(start);const dateStr=dateLabel(start,end);const week=isoWeek(end);const year=end.getFullYear();log(`Période : ${dateStr}`,'ok');const C_GREEN='70AD46',C_ORANGE='ED7B30',C_SLATE='4C5A77',C_DATA='72AB43',C_STATS='E5E9EE',C_WHITE='FFFFFF';const S=(font,bgRgb,align)=>({font:font||{},fill:bgRgb?{fgColor:{rgb:bgRgb}}:{},alignment:align||{}});const sTitle=S({bold:true,sz:12},C_GREEN,{horizontal:'left',vertical:'center'});const sDate=S({bold:true,sz:14},C_GREEN,{horizontal:'center',vertical:'center'});const sBanner=S({bold:true,sz:12,color:{rgb:C_WHITE}},C_ORANGE,{horizontal:'center',vertical:'center',wrapText:true});const sColHdr=S({bold:true,sz:11,color:{rgb:C_WHITE}},C_SLATE,{horizontal:'center',vertical:'center',wrapText:true});const sData=S({sz:11},C_DATA,{vertical:'center',wrapText:true});const sSecHdr=S({bold:true,sz:12},C_GREEN,{horizontal:'center',vertical:'center',wrapText:true});const sTotBig=S({bold:true,sz:12},null,{horizontal:'center',vertical:'center'});const sDomain=S({sz:12},C_STATS,{horizontal:'center',vertical:'center',wrapText:true});const sNum=S({bold:true,sz:12},C_STATS,{horizontal:'center',vertical:'center'});const sLabel=S({bold:true,sz:12},C_STATS,{horizontal:'left',vertical:'center',wrapText:true});const ws={};const setCell=(r,c,v,s)=>{const addr=XLSX.utils.encode_cell({r,c});const t=(typeof v==='number')?'n':'s';ws[addr]=s?{v,t,s}:{v,t};};const COLS=headers.length;setCell(3,1,'RAPPORT HEBDOMADAIRE NOC : TRANSPORT',sTitle);setCell(5,1,dateStr,sDate);setCell(7,2,'Incidents de la semaine',sBanner);headers.forEach((h,i)=>setCell(10,i,h,sColHdr));const dataStartR=11;rows.forEach((row,ri)=>{headers.forEach((_,ci)=>{const raw=(row[ci]===null||row[ci]===undefined)?'':row[ci];const num=parseFloat(raw);const isNum=!isNaN(num)&&String(raw).trim()!==''&&/^[-+]?\d*\.?\d+$/.test(String(raw).trim());setCell(dataStartR+ri,ci,isNum?num:String(raw),sData);});});const dataEndR=dataStartR+rows.length-1;const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);const statsTitleR=dataEndR+4;const statsHdrR=statsTitleR+1;const domainStartR=statsTitleR+2;const nDomains=order.length;setCell(statsTitleR,1,'Statistique hebdomadaire des incidents',sSecHdr);setCell(statsHdrR,1,'Incidents',sSecHdr);setCell(statsHdrR,2,'Répartition par Domaine',sSecHdr);setCell(statsHdrR,4,'Résolus',sSecHdr);setCell(statsHdrR,5,'Ouverts',sSecHdr);setCell(domainStartR,1,total,sTotBig);order.forEach((domain,di)=>{const s=stats[domain];const r=domainStartR+di;setCell(r,2,domain,sDomain);setCell(r,3,s.total,sNum);setCell(r,4,s.ferme,sNum);setCell(r,5,s.ouvert,sNum);});const ttR=domainStartR+nDomains+1;setCell(ttR,2,'Nbre des TTs',sLabel);setCell(ttR,3,total,sNum);setCell(ttR+1,2,'Nbre des TTs FERMES',sLabel);setCell(ttR+1,3,totalFerme,sNum);setCell(ttR+2,2,'Nbre des TTs OUVERTS',sLabel);setCell(ttR+2,3,totalOuvert,sNum);ws['!ref']=XLSX.utils.encode_range({r:3,c:0},{r:ttR+2,c:COLS-1});ws['!merges']=[{s:{r:3,c:1},e:{r:3,c:2}},{s:{r:5,c:1},e:{r:5,c:3}},{s:{r:7,c:2},e:{r:7,c:12}},{s:{r:statsTitleR,c:1},e:{r:statsTitleR,c:5}},{s:{r:statsHdrR,c:2},e:{r:statsHdrR,c:3}},{s:{r:domainStartR,c:1},e:{r:domainStartR+nDomains-1,c:1}}];ws['!cols']=[{wch:22},{wch:22},{wch:55},{wch:20},{wch:22},{wch:24},{wch:18},{wch:26},{wch:30},{wch:18},{wch:16},{wch:22},{wch:24},{wch:22},{wch:24},{wch:24},{wch:24},{wch:26},{wch:40},{wch:16},{wch:20},{wch:12},{wch:12}];const rowsMeta=[];rowsMeta[3]={hpt:18};rowsMeta[5]={hpt:20};rowsMeta[7]={hpt:20};rowsMeta[10]={hpt:30};ws['!rows']=rowsMeta;XLSX.utils.book_append_sheet(wb,ws,'Feuil1');const buf=XLSX.write(wb,{bookType:'xlsx',type:'array',cellStyles:true});const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});return{blob,outName:`RAPPORT__HEBDO_NOC_S${week}-${year}.xlsx`,week,year,dateStr};}
 async function runProcess(){if(!loadedWorkbook)return;$('downloadArea').style.display='none';$('logArea').innerHTML='';$('logArea').style.display='block';hideAlert();const btn=$('btnProcess');btn.disabled=true;btn.textContent='⏳ Traitement en cours…';try{setProgress(20,'Lecture des données…');await new Promise(r=>setTimeout(r,100));const{headers,rows}=loadedWorkbook;log(`${rows.length} incident(s) trouvé(s)`,'ok');setProgress(50,'Calcul des statistiques…');await new Promise(r=>setTimeout(r,100));const period=extractPeriodFromFilename(loadedFilename);const label=period?dateLabel(period.start,period.end).replace('DATE : ',''):'TRANSPORT';log("Classement des incidents par domaine d'escalade…");const{stats,order,totalFerme,totalOuvert,total}=computeStats(headers,rows);log(`Total : ${total} | Fermés : ${totalFerme} | Ouverts : ${totalOuvert}`,'ok');order.forEach(d=>{const s=stats[d];if(s.total>0)log(`  ${d} : ${s.total} incident(s) — ${s.ferme} fermé(s) / ${s.ouvert} ouvert(s)`,'ok');});setProgress(75,'Génération du fichier Excel…');await new Promise(r=>setTimeout(r,100));const{blob,outName,week,year}=buildOutputExcel(headers,rows,period);workbookBlob=blob;setProgress(90,'Prévisualisation…');await new Promise(r=>setTimeout(r,100));renderStats(headers,rows,label);setProgress(100,'Terminé !');const area=$('downloadArea');area.style.display='block';$('dlTitle').textContent=`✅ Rapport S${week}-${year} généré avec succès !`;$('btnDownload').onclick=()=>{if(!workbookBlob){log('Blob introuvable.','err');return;}const url=URL.createObjectURL(workbookBlob);const a=document.createElement('a');a.href=url;a.download=outName;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);log(`Téléchargement : ${outName}`,'ok');};log(`Rapport prêt : ${outName}`,'ok');showAlert('Rapport hebdomadaire TRANSPORT généré avec succès !','success');}catch(err){log('ERREUR : '+err.message,'err');showAlert('Erreur lors du traitement : '+err.message,'error');setProgress(0,'Erreur');}finally{btn.disabled=false;btn.textContent='⚙ Lancer le traitement';}}
-document.addEventListener('DOMContentLoaded',()=>{$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');const f=e.dataTransfer.files[0];if(f)handleFile(f);});$('btnProcess').addEventListener('click',runProcess);});
+document.addEventListener('DOMContentLoaded',()=>{$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');const f=e.dataTransfer.files[0];if(f)handleFile(f);});$('btnProcess').addEventListener('click',runProcess);$('apiForm').addEventListener('submit',fetchApiAndProcess);});
+function switchTab(t){const ex=t==='excel';$('tabExcel').classList.toggle('active',ex);$('tabApi').classList.toggle('active',!ex);$('panelExcel').classList.toggle('active',ex);$('panelApi').classList.toggle('active',!ex);const sx=$('sidebarExcel'),sa=$('sidebarApi');if(sx&&sa){sx.style.display=ex?'':'none';sa.style.display=ex?'none':'';}}
+async function fetchApiAndProcess(e){e.preventDefault();const form=e.target;const btn=$('apiBtn');const lbl=btn.innerHTML;btn.disabled=true;btn.innerHTML='⏳ Récupération API en cours…';hideAlert();$('downloadArea').style.display='none';$('logArea').innerHTML='';$('logArea').style.display='block';log("Connexion à l'API ticketing…");try{const resp=await fetch(form.action,{method:'POST',body:new FormData(form),credentials:'same-origin'});const ct=resp.headers.get('Content-Type')||'';if(!resp.ok||!ct.includes('spreadsheetml')){throw new Error("l'API n'a pas renvoyé de fichier Excel — vérifiez la connexion au système de ticketing.");}const cd=resp.headers.get('Content-Disposition')||'';const m=cd.match(/filename="?([^";]+)/);const fname=m?m[1]:'TRANSMISSION_API.xlsx';const blob=await resp.blob();log('Données reçues : '+fname,'ok');const file=new File([blob],fname,{type:blob.type});await handleFile(file);if($('btnProcess').disabled)throw new Error('les données API sont illisibles.');await runProcess();}catch(err){showAlert('Erreur API : '+err.message,'error');log('ERREUR : '+err.message,'err');}finally{btn.disabled=false;btn.innerHTML=lbl;}}
 </script>
 {% endblock %}
