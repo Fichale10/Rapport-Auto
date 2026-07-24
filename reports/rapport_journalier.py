@@ -95,15 +95,46 @@ COMPIL_DR2_HEADERS = ['N°', 'DATE DR2 ', 'Numero ticket', 'SITE PARENT',
 
 # ─────────────────────────── Helpers données ───────────────────────────
 def _parse_hms(val) -> timedelta | None:
-    """'95:56:00' / '0:00:00' → timedelta (heures possiblement > 24)."""
+    """'95:56:00' / '0:00:00' / '95:56' / secondes numériques → timedelta."""
+    if val is None:
+        return None
+    if isinstance(val, timedelta):
+        return val
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return timedelta(seconds=int(val)) if val >= 0 else None
     try:
         parts = str(val).strip().split(':')
-        if len(parts) != 3:
+        if len(parts) == 3:
+            h, m, s = int(float(parts[0])), int(parts[1]), int(float(parts[2]))
+        elif len(parts) == 2:
+            h, m, s = int(float(parts[0])), int(float(parts[1])), 0
+        else:
             return None
-        h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
         return timedelta(hours=h, minutes=m, seconds=s)
     except (ValueError, TypeError):
         return None
+
+
+def _synth_is_valid(synth_list) -> bool:
+    """Vrai si la synthèse contient une ligne TOTAL exploitable : dès que
+    Inc count > 0, DUREE / OUTAGE doivent être lisibles et > 0 (les anciennes
+    versions de l'import API stockaient une synthèse sans durées)."""
+    if not synth_list:
+        return False
+    total = next((r for r in synth_list
+                  if str(r.get('Escalade', '')).strip() == 'TOTAL'), None)
+    if total is None:
+        return False
+    try:
+        count = int(total.get('Inc count') or 0)
+    except (TypeError, ValueError):
+        count = 0
+    if count == 0:
+        return False         # suspect (jour sans aucun incident — à recalculer)
+    duree  = _parse_hms(total.get('DUREE'))
+    outage = _parse_hms(total.get('OUTAGE'))
+    return bool(duree and duree.total_seconds() > 0
+                and outage and outage.total_seconds() > 0)
 
 
 def _mobile_reports_of_month(year: int, month: int):
@@ -334,14 +365,29 @@ def build_rapport_journalier(day: date) -> bytes:
         return api_month[0]
 
     def _synth_of(d: date) -> list | None:
-        """synthesis_json du rapport en base, sinon recalcul depuis l'API."""
+        """synthesis_json du rapport en base (si complet — avec durées),
+        sinon recalcul depuis les données brutes ; base en dernier recours."""
         if d not in synth_cache:
             rep = reports.get(d)
-            synth = rep.synthesis_json if (rep and rep.synthesis_json) else None
+            db_synth = rep.synthesis_json if (rep and rep.synthesis_json) else None
+            synth = db_synth if (db_synth and _synth_is_valid(db_synth)) else None
+            if db_synth and not synth:
+                logger.warning('RJ: synthèse en base incomplète pour %s '
+                               '(DUREE/OUTAGE manquants) → recalcul', d)
             if not synth:
-                raw = _mobile_api_raw()
-                if raw is not None:
-                    synth = _synthesis_from_df(raw, d)
+                # 1) fichier stocké du rapport, 2) données API du mois
+                src = None
+                if rep is not None and rep.file:
+                    try:
+                        src = pd.read_excel(rep.file.path)
+                    except Exception:
+                        src = None
+                if src is None:
+                    src = _mobile_api_raw()
+                if src is not None:
+                    synth = _synthesis_from_df(src, d)
+            if not synth:
+                synth = db_synth   # au pire : la synthèse en base, même incomplète
             synth_cache[d] = synth
         return synth_cache[d]
 
