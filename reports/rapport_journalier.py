@@ -203,6 +203,30 @@ def _fetch_api_df(network: str, date_debut: date, date_fin: date) -> pd.DataFram
     return _parse_time_cols(df)
 
 
+def _fetch_api_raw(network: str, date_debut: date, date_fin: date) -> pd.DataFrame | None:
+    """Données brutes (colonnes d'origine, non renommées) via l'API ticketing."""
+    try:
+        from .api_import import fetch_api_excel
+        buf, _ = fetch_api_excel(date_debut.isoformat(), date_fin.isoformat(), network)
+        return pd.read_excel(buf)
+    except Exception as exc:
+        logger.warning('RJ: données brutes %s indisponibles via API : %s', network, exc)
+        return None
+
+
+def _synthesis_from_df(df_raw: pd.DataFrame, d: date) -> list | None:
+    """Recalcule la synthèse journalière (mêmes chiffres que le traitement
+    manuel) depuis les données brutes — secours quand `synthesis_json`
+    est absent en base (ex. serveur de production sans historique)."""
+    try:
+        from treatement import process_file
+        _, _, df_synthese = process_file(df_raw.copy(), d.isoformat())
+        return df_synthese.to_dict('records')
+    except Exception as exc:
+        logger.warning('RJ: synthèse de secours impossible pour %s : %s', d, exc)
+        return None
+
+
 def _cell_str(row, col) -> str:
     val = row.get(col, '')
     if val is None or (isinstance(val, float) and pd.isna(val)) or pd.isna(val):
@@ -287,20 +311,39 @@ def build_rapport_journalier(day: date) -> bytes:
     """Construit le classeur complet pour la journée `day` (J-1)."""
     year, month = day.year, day.month
     reports = _mobile_reports_of_month(year, month)
-    report_j = reports.get(day)
 
     # DataFrames bruts par jour (cache) — utilisés pour INCIDENTS + DR2
     df_cache: dict[date, pd.DataFrame | None] = {}
-    api_month: list = []          # cache paresseux du mois mobile via API
+    api_month: list = []          # cache paresseux du mois mobile via API (parsé)
+    api_raw: list = []            # cache paresseux du mois mobile via API (brut)
+    synth_cache: dict[date, list | None] = {}
+
+    def _mobile_api_raw() -> pd.DataFrame | None:
+        if not api_raw:
+            api_raw.append(_fetch_api_raw('mobile', date(year, month, 1), day))
+        return api_raw[0]
 
     def _mobile_api_month() -> pd.DataFrame | None:
         if not api_month:
-            df = _fetch_api_df('mobile', date(year, month, 1), day)
+            raw = _mobile_api_raw()
+            df = _parse_time_cols(raw) if raw is not None else None
             if df is not None and 'Alarm text' in df.columns:
                 df = df[df['Alarm text'].astype(str).str.strip()
                         .isin(ALARMES_MOBILES)].copy()
             api_month.append(df)
         return api_month[0]
+
+    def _synth_of(d: date) -> list | None:
+        """synthesis_json du rapport en base, sinon recalcul depuis l'API."""
+        if d not in synth_cache:
+            rep = reports.get(d)
+            synth = rep.synthesis_json if (rep and rep.synthesis_json) else None
+            if not synth:
+                raw = _mobile_api_raw()
+                if raw is not None:
+                    synth = _synthesis_from_df(raw, d)
+            synth_cache[d] = synth
+        return synth_cache[d]
 
     def _df_of(d: date):
         if d not in df_cache:
@@ -325,10 +368,10 @@ def build_rapport_journalier(day: date) -> bytes:
     mttr_rows: dict[int, tuple] = {}
     for d in range(1, day.day + 1):
         dt_d = date(year, month, d)
-        rep = reports.get(dt_d)
-        if not rep or not rep.synthesis_json:
+        synth_list = _synth_of(dt_d)
+        if not synth_list:
             continue
-        total = next((r for r in rep.synthesis_json
+        total = next((r for r in synth_list
                       if str(r.get('Escalade', '')).strip() == 'TOTAL'), None)
         if not total:
             continue
@@ -357,7 +400,7 @@ def build_rapport_journalier(day: date) -> bytes:
         c = ws.cell(row=2, column=j, value=h)
         c.fill, c.font = FILL_HEADER, FONT_HDR_11
     synth = {str(r.get('Escalade', '')).strip(): r
-             for r in (report_j.synthesis_json or [])} if report_j else {}
+             for r in (_synth_of(day) or [])}
     i = 3
     for esc in ESCALADES_STAT:
         rec = synth.get(esc, {})
@@ -493,10 +536,10 @@ def build_rapport_journalier(day: date) -> bytes:
     # OUTAGE par escalade / jour depuis les synthesis_json quotidiens
     outages: dict[str, dict[int, timedelta]] = {e: {} for e in ESCALADES_STAT}
     for d in range(1, day.day + 1):
-        rep = reports.get(date(year, month, d))
-        if not rep or not rep.synthesis_json:
+        synth_list = _synth_of(date(year, month, d))
+        if not synth_list:
             continue
-        for rec in rep.synthesis_json:
+        for rec in synth_list:
             esc = str(rec.get('Escalade', '')).strip()
             if esc in outages:
                 outages[esc][d] = _parse_hms(rec.get('OUTAGE')) or timedelta(0)
