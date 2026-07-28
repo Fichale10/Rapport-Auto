@@ -309,6 +309,60 @@ def _exclude_duplicate_periods(qs):
     return qs.exclude(pk__in=dup_ids) if dup_ids else qs
 
 
+def _platform_summary_cards(user):
+    """Cartes « Résumé par plateforme » (mois en cours) + fraîcheur des données.
+
+    Utilisé par la page /reporting/ (section déplacée depuis l'accueil).
+    """
+    from django.db.models import Q as _Qpf, Sum as _Spf
+
+    if user.is_superuser:
+        qs = UploadedReport.objects.filter(processed=True)
+    else:
+        qs = UploadedReport.objects.filter(processed=True, user=user)
+    qs = _exclude_duplicate_periods(qs.order_by('-uploaded_at'))
+
+    _td = date.today()
+    _month_start = date(_td.year, _td.month, 1)
+
+    def _pf_stats(prefix, manual=False):
+        if manual:
+            _qs = qs.filter(
+                (_Qpf(original_filename__startswith=prefix) |
+                 ~_Qpf(original_filename__startswith='API_')),
+                date_rapport__gte=_month_start,
+            )
+        else:
+            _qs = qs.filter(
+                original_filename__startswith=prefix,
+                date_rapport__gte=_month_start,
+            )
+        _agg  = _qs.aggregate(total=_Spf('total_incidents'), unres=_Spf('unresolved_count'))
+        _last = _qs.order_by('-date_rapport').values('date_rapport').first()
+        return {
+            'total':      _agg['total'] or 0,
+            'unresolved': _agg['unres'] or 0,
+            'last_date':  _last['date_rapport'] if _last else None,
+        }
+
+    platform_cards = [
+        {'label': 'Mobile',       'icon': '📡', 'color': '#003087', 'platform': 'mobile',       **_pf_stats('API_MOBILE_', manual=True)},
+        {'label': 'Fixe',         'icon': '🔌', 'color': '#0050c8', 'platform': 'fixe',         **_pf_stats('API_FIXE_')},
+        {'label': 'Transmission', 'icon': '📶', 'color': '#6b46c1', 'platform': 'transmission', **_pf_stats('API_TRANSMISSION_')},
+        {'label': 'Core & IGW',   'icon': '⚙️', 'color': '#2d3748', 'platform': 'core',         **_pf_stats('API_CORE_')},
+    ]
+
+    _first = qs.order_by('date_rapport').values('date_rapport').first()
+    _last  = qs.order_by('-date_rapport').values('date_rapport').first()
+    _fresh = qs.order_by('-uploaded_at').values('uploaded_at').first()
+    return {
+        'platform_cards':      platform_cards,
+        'pf_date_from':        _first['date_rapport'] if _first else None,
+        'pf_date_to':          _last['date_rapport'] if _last else None,
+        'pf_last_update':      _fresh['uploaded_at'] if _fresh else None,
+    }
+
+
 def _exclude_covered_periods(qs):
     """Exclut les rapports dont la période est strictement incluse dans celle
     d'un rapport plus long du même réseau (ex. rapports journaliers couverts
@@ -815,37 +869,6 @@ def home(request):
         _comp_row('Outage',      _cur_comp['outage_h'],   _prev_comp['outage_h'],   unit='h', lower_is_better=True),
     ]
 
-    # ── Résumé multi-plateformes (mois en cours) ──────────────────────────
-    from django.db.models import Q as _Qpf, Sum as _Spf
-    _month_start = date(_td.year, _td.month, 1)
-
-    def _pf_stats(prefix, manual=False):
-        if manual:
-            _qs = all_reports.filter(
-                (_Qpf(original_filename__startswith=prefix) |
-                 ~_Qpf(original_filename__startswith='API_')),
-                date_rapport__gte=_month_start,
-            )
-        else:
-            _qs = all_reports.filter(
-                original_filename__startswith=prefix,
-                date_rapport__gte=_month_start,
-            )
-        _agg  = _qs.aggregate(total=_Spf('total_incidents'), unres=_Spf('unresolved_count'))
-        _last = _qs.order_by('-date_rapport').values('date_rapport').first()
-        return {
-            'total':      _agg['total'] or 0,
-            'unresolved': _agg['unres'] or 0,
-            'last_date':  _last['date_rapport'] if _last else None,
-        }
-
-    platform_cards = [
-        {'label': 'Mobile',       'icon': '📡', 'color': '#003087', 'platform': 'mobile',       **_pf_stats('API_MOBILE_', manual=True)},
-        {'label': 'Fixe',         'icon': '🔌', 'color': '#0050c8', 'platform': 'fixe',         **_pf_stats('API_FIXE_')},
-        {'label': 'Transmission', 'icon': '📶', 'color': '#6b46c1', 'platform': 'transmission', **_pf_stats('API_TRANSMISSION_')},
-        {'label': 'Core & IGW',   'icon': '⚙️', 'color': '#2d3748', 'platform': 'core',         **_pf_stats('API_CORE_')},
-    ]
-
     # ── Top 3 escalades dominants (période sélectionnée) ──────────────────
     top3_escalades = sorted(
         [r for r in synth_rows if not r.get('is_total') and r['inc_count'] > 0],
@@ -914,7 +937,6 @@ def home(request):
         'data_date_from':     data_date_from,
         'data_date_to':       data_date_to,
         'data_last_update':   data_last_update,
-        'platform_cards':     platform_cards,
         'top3_escalades':     top3_escalades,
         'top3_max':           top3_max,
         'comparison_rows':    comparison_rows,
@@ -929,7 +951,6 @@ def home(request):
         'month_resolved':       month_resolved,
         'month_unresolved':     month_unresolved,
         'month_trend_pct':      month_trend_pct,
-        'rj_default_date':      (date.today() - timedelta(days=1)).isoformat(),
         'evol_period':          period,
         'show_spark_chart':     show_spark_chart,
         'spark_labels':         mark_safe(json.dumps(spark_labels)),
@@ -4627,6 +4648,8 @@ def reporting(request):
 
     return render(request, 'reports/reporting.html', {
         'platforms': platforms_ctx,
+        'rj_default_date': (date.today() - timedelta(days=1)).isoformat(),
+        **_platform_summary_cards(request.user),
     })
 
 

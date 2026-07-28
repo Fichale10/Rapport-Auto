@@ -51,6 +51,16 @@
   .rpt-gs-num.yellow { color: #FFC72C; }
   .rpt-gs-lbl { font-size: 10px; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
 
+  /* ── Bouton Rapport journalier (déplacé depuis l'accueil) ── */
+  .btn-rj {
+    background: #FFC72C; color: #003087; padding: 11px 22px; border-radius: 10px;
+    font-weight: 700; font-size: 13.5px; border: none; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn-rj:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,199,44,.4); }
+  .btn-rj:disabled { opacity: .7; cursor: wait; transform: none; box-shadow: none; }
+
   /* ── Grille plateformes ── */
   .platform-grid {
     display: grid;
@@ -167,6 +177,73 @@
 
   /* Empêche le hover-lift pendant l'animation */
   .platform-grid.is-animating .plat-card { pointer-events: none; }
+
+  /* ── Conteneur GDI (Rapport journalier + Résumé par plateforme) ── */
+  .gdi-card {
+    background: #fff; border-radius: 20px;
+    box-shadow: 0 2px 16px rgba(0,48,135,.08);
+    border: 1px solid rgba(0,0,0,.04);
+    padding: 20px 24px; margin-bottom: 28px;
+  }
+  .gdi-head {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding-bottom: 16px; margin-bottom: 16px;
+    border-bottom: 1px solid #eef1f8;
+  }
+  .gdi-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 26px;
+    color: #003087; letter-spacing: 2px; line-height: 1;
+  }
+  .pf-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; margin-bottom: 14px;
+  }
+  .pf-card-title {
+    font-size: 12px; font-weight: 800; color: #003087;
+    text-transform: uppercase; letter-spacing: .6px;
+  }
+  .pf-fresh {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 11.5px; color: #6b7a99;
+    background: #f8faff; border: 1px solid #e8edf5; border-radius: 10px;
+    padding: 6px 12px;
+  }
+  .pf-fresh strong { color: #003087; }
+  .pf-fresh-dot { width: 7px; height: 7px; border-radius: 50%; background: #68d391; flex-shrink: 0; }
+
+  .platform-cards {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 14px;
+  }
+  .platform-card {
+    background: #fff; border-radius: 16px; padding: 18px 20px;
+    border: 1px solid #e8edf5; box-shadow: 0 2px 12px rgba(0,48,135,.06);
+    border-left: 4px solid var(--pf-color);
+    text-decoration: none; display: block;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .platform-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,48,135,.13); }
+  .platform-card-header { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+  .platform-card-icon { font-size: 18px; }
+  .platform-card-label { font-size: 12px; font-weight: 800; color: var(--pf-color); text-transform: uppercase; letter-spacing: .5px; }
+  .platform-card-total { font-family: 'Bebas Neue', sans-serif; font-size: 34px; color: #111; letter-spacing: 1px; line-height: 1; }
+  .platform-card-sub { font-size: 11px; color: #8896b3; margin-top: 5px; }
+  .platform-card-badge {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; font-weight: 700; color: #c53030;
+    background: #fff5f5; border-radius: 6px; padding: 3px 8px;
+  }
+  .platform-card-ok {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; font-weight: 600; color: #276749;
+    background: #f0fff4; border-radius: 6px; padding: 3px 8px;
+  }
+  .platform-card-empty {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    font-size: 11px; color: #adb5bd; background: #f8f9fa; border-radius: 6px; padding: 3px 8px;
+  }
+  @media(max-width:1100px){ .platform-cards { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:600px) { .platform-cards { grid-template-columns: 1fr 1fr; gap:10px; } }
 </style>
 {% endblock %}
 
@@ -197,6 +274,56 @@
       <div class="rpt-gs-lbl">Rapports</div>
     </div>
     {% endif %}{% endfor %}
+  </div>
+</div>
+
+<!-- ── Conteneur GDI : Rapport journalier + Résumé par plateforme ── -->
+<div class="gdi-card">
+  <div class="gdi-head">
+    <div class="gdi-title">📋 GDI</div>
+    <form method="get" action="{% url 'rapport_journalier_export' %}" id="rjForm"
+          style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;"
+          onsubmit="var b=this.querySelector('button');b.dataset.txt=b.textContent;b.textContent='⏳ Génération…';b.disabled=true;setTimeout(function(){b.textContent=b.dataset.txt;b.disabled=false;},25000);">
+      <input type="date" name="date" value="{{ rj_default_date }}" required
+             title="Journée du rapport (J-1)"
+             style="padding:9px 12px;border-radius:10px;border:1.5px solid #d0dcff;background:#f8faff;color:#003087;font-size:13px;font-weight:600;">
+      <button type="submit" class="btn-rj">📥 Rapport journalier</button>
+    </form>
+  </div>
+
+  <div class="pf-card-head">
+    <div class="pf-card-title">Résumé par plateforme</div>
+    {% if pf_date_from and pf_date_to %}
+    <div class="pf-fresh">
+      <span class="pf-fresh-dot"></span>
+      Données du <strong>{{ pf_date_from|date:"d/m/Y" }}</strong> au <strong>{{ pf_date_to|date:"d/m/Y" }}</strong>
+      {% if pf_last_update %}
+      &nbsp;·&nbsp; Dernière MAJ : <strong>{{ pf_last_update|date:"d/m/Y" }}</strong> à <strong>{{ pf_last_update|date:"H:i" }}</strong>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="platform-cards">
+    {% for pf in platform_cards %}
+    <a href="{% if pf.platform == 'mobile' %}{% url 'upload' %}{% else %}{% url 'plateforme_traitement' pf.platform %}{% endif %}"
+       class="platform-card" style="--pf-color:{{ pf.color }};">
+      <div class="platform-card-header">
+        <span class="platform-card-icon">{{ pf.icon }}</span>
+        <span class="platform-card-label">{{ pf.label }}</span>
+      </div>
+      <div class="platform-card-total">{{ pf.total }}</div>
+      <div class="platform-card-sub">
+        incidents ce mois{% if pf.last_date %} · données au {{ pf.last_date|date:"d/m" }}{% endif %}
+      </div>
+      {% if pf.total == 0 %}
+        <div class="platform-card-empty">— Aucune donnée</div>
+      {% elif pf.unresolved > 0 %}
+        <div class="platform-card-badge">⚠ {{ pf.unresolved }} non résolu{{ pf.unresolved|pluralize }}</div>
+      {% else %}
+        <div class="platform-card-ok">✓ Tout résolu</div>
+      {% endif %}
+    </a>
+    {% endfor %}
   </div>
 </div>
 

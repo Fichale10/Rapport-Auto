@@ -143,7 +143,7 @@
   <div class="two-col">
     <div class="card">
       <div class="card-title">🗺️ Rapport Hebdo DCO — Indisponibilité des Liens FO</div>
-      <div class="card-sub">Importez le fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong> puis <strong>votre image de carte</strong>. Le système détecte les coupures de fibre et vous situez chaque incident sur la carte (les positions sont mémorisées).</div>
+      <div class="card-sub">Importez le fichier <strong>TRANSMISSION_YYYYMMDD_YYYYMMDD.xlsx</strong>. La <strong>carte Liens Backbones</strong> est chargée automatiquement — vous situez chaque incident sur la carte (les positions sont mémorisées).</div>
       <div class="drop-zone" id="dropZone">
         <input type="file" id="fileInput" accept=".xlsx,.xls" />
         <div class="drop-icon">🗂️</div>
@@ -154,8 +154,8 @@
       <div class="drop-zone" id="mapDropZone" style="margin-top:14px;">
         <input type="file" id="mapInput" accept="image/*" />
         <div class="drop-icon">🗺️</div>
-        <div class="drop-label">2. Image de la carte</div>
-        <div class="drop-hint">glissez ici ou cliquez — PNG / JPG de la carte backbone</div>
+        <div class="drop-label">2. Image de la carte (optionnel)</div>
+        <div class="drop-hint">la carte Liens Backbones est chargée automatiquement — glissez une image PNG / JPG pour la remplacer</div>
         <div class="drop-formats"><span class="fmt-badge">.PNG</span><span class="fmt-badge">.JPG</span></div>
       </div>
       <div class="file-status" id="fileStatus">
@@ -175,7 +175,7 @@
         <div class="panel-title">💡 Comment ça marche</div>
         <div class="steps">
           <div class="step"><div class="step-num">1</div><div><div class="step-head">Importez le fichier source</div><div class="step-desc">Fichier <strong>TRANSMISSION_*.xlsx</strong> de la semaine.</div></div></div>
-          <div class="step"><div class="step-num">2</div><div><div class="step-head">Importez votre image de carte</div><div class="step-desc">Votre carte backbone/backhaul en <strong>PNG/JPG</strong>.</div></div></div>
+          <div class="step"><div class="step-num">2</div><div><div class="step-head">Carte chargée automatiquement</div><div class="step-desc">La carte <strong>Liens Backbones</strong> s'affiche toute seule. Vous pouvez la remplacer par une image PNG/JPG si besoin.</div></div></div>
           <div class="step"><div class="step-num">3</div><div><div class="step-head">Situez chaque incident</div><div class="step-desc">Cliquez sur une puce puis pointez le lieu sur la carte. Les positions sont <em>mémorisées</em>.</div></div></div>
           <div class="step"><div class="step-num">4</div><div><div class="step-head">Export image ou PPTX</div><div class="step-desc">PNG pour diffusion, PPTX éditable pour présentation.</div></div></div>
         </div>
@@ -212,7 +212,7 @@
       <div class="sl-band" id="bandBackhaul" style="right:140px;top:104px;width:200px;">BACKHAUL</div>
       <div id="mapWrap">
         <img id="mapImg" alt="carte" />
-        <div id="mapPlaceholder">Importez une image de carte (étape 2) pour situer les incidents.</div>
+        <div id="mapPlaceholder">Chargement automatique de la carte Liens Backbones…</div>
         <div id="markerLayer"></div>
       </div>
       <div id="bbZone" style="display:none;"></div>
@@ -250,6 +250,29 @@ let mapPoints=loadPoints(),placingSite=null;
 function loadPoints(){try{return JSON.parse(localStorage.getItem(PTS_KEY))||{};}catch(e){return{};}}
 function savePoints(){try{localStorage.setItem(PTS_KEY,JSON.stringify(mapPoints));}catch(e){}}
 function renderMap(){const img=$('mapImg'),ph=$('mapPlaceholder');if(mapImageData){img.src=mapImageData;img.style.display='block';ph.style.display='none';}else{img.style.display='none';ph.style.display='flex';}}
+/* ── Carte par défaut : SVG statique pré-converti depuis « Cartes Liens Backbones .drawio.xml » ── */
+const DEFAULT_MAP_SVG_URL="{% static 'reports/carte_liens_backbones.svg' %}";
+function applyDefaultMap(dataUrl){if(mapImageData)return;/* une image manuelle a priorité */mapImageData=dataUrl;renderMap();if($('slideSection').style.display==='block'){renderMarkers();requestAnimationFrame(()=>requestAnimationFrame(drawArrows));}log('Carte « Liens Backbones » chargée automatiquement.','ok');}
+function loadDefaultMap(){
+  fetch(DEFAULT_MAP_SVG_URL,{cache:'no-cache'}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();}).then(svgText=>{
+    const svgUrl='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgText);
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const w=img.naturalWidth||827,h=img.naturalHeight||1169;
+        const SCALE=Math.min(3,Math.max(1.2,1700/h));
+        const c=document.createElement('canvas');
+        c.width=Math.round(w*SCALE);c.height=Math.round(h*SCALE);
+        const g=c.getContext('2d');
+        g.fillStyle='#ffffff';g.fillRect(0,0,c.width,c.height);
+        g.drawImage(img,0,0,c.width,c.height);
+        applyDefaultMap(c.toDataURL('image/png'));
+      }catch(e){applyDefaultMap(svgUrl);}
+    };
+    img.onerror=()=>{log('Carte auto : rendu SVG impossible','err');$('mapPlaceholder').textContent='Carte automatique indisponible — importez une image de carte (étape 2).';};
+    img.src=svgUrl;
+  }).catch(err=>{log('Carte auto non chargée : '+err.message,'warn');$('mapPlaceholder').textContent='Carte automatique indisponible — importez une image de carte (étape 2).';});
+}
 let currentIncidents=[];
 function renderMarkers(){const layer=$('markerLayer');layer.innerHTML='';currentIncidents.forEach((inc,idx)=>{const site=inc.site;if(!site)return;const p=mapPoints[site];if(!p)return;const pin=document.createElement('div');pin.className='map-pin';pin.style.left=(p.x*100)+'%';pin.style.top=(p.y*100)+'%';pin.dataset.node=site;pin.innerHTML=`<div class="pin-dot"><span class="pin-num">${idx+1}</span></div><div class="pin-label">${site}</div>`;layer.appendChild(pin);});}
 function renderCalibChips(){const bar=$('calibBar'),chips=$('calibChips');const sites=[...new Set(currentIncidents.map(i=>i.site).filter(Boolean))];if(!sites.length){bar.style.display='none';return;}bar.style.display='block';chips.innerHTML='';sites.forEach(site=>{const placed=!!mapPoints[site];const c=document.createElement('div');c.className='calib-chip'+(placed?' placed':'')+(placingSite===site?' active':'');c.innerHTML=`<span class="cc-state">${placingSite===site?'🎯':(placed?'✓':'📍')}</span>${site}`;c.title=placed?'Cliquez pour repositionner':'Cliquez puis pointez sur la carte';c.addEventListener('click',()=>startPlacing(site));chips.appendChild(c);});}
@@ -341,6 +364,6 @@ async function downloadPptx(){
 }
 let logoPngData=null;
 function buildLogo(){const el=$('slLogo');if(window.YAS_LOGO_DATA){const img=new Image();img.onload=()=>{const w=img.naturalWidth||240,h=img.naturalHeight||200;const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(img,0,0);try{const id=g.getImageData(0,0,w,h);const d=id.data;for(let i=0;i<d.length;i+=4){const r=d[i],gg=d[i+1],b=d[i+2];if(r>225&&gg>225&&b>225)d[i+3]=0;}g.putImageData(id,0,0);logoPngData=c.toDataURL('image/png');}catch(e){logoPngData=window.YAS_LOGO_DATA;}if(el)el.src=logoPngData;};img.onerror=()=>{logoPngData=window.YAS_LOGO_DATA;if(el)el.src=logoPngData;};img.src=window.YAS_LOGO_DATA;return;}const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="180" viewBox="0 0 100 90"><path d="M41.97 25.84 Q50 12 58.03 25.84 L77.97 60.16 Q86 74 70 74 L30 74 Q14 74 22.03 60.16 Z" fill="#142f6e"/><text x="50" y="61" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="30" fill="#f5c000">yas</text></svg>`;const url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=200;c.height=180;c.getContext('2d').drawImage(img,0,0,200,180);try{logoPngData=c.toDataURL('image/png');}catch(e){logoPngData=url;}if(el)el.src=logoPngData;};img.onerror=()=>{if(el)el.src=url;logoPngData=url;};img.src=url;}
-document.addEventListener('DOMContentLoaded',()=>{buildLogo();$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});$('btnProcess').addEventListener('click',runProcess);$('btnDlImg').addEventListener('click',downloadImage);$('btnDlPptx').addEventListener('click',downloadPptx);$('mapInput').addEventListener('change',e=>{if(e.target.files[0])handleMapImage(e.target.files[0]);e.target.value='';});const mdz=$('mapDropZone');mdz.addEventListener('dragover',e=>{e.preventDefault();mdz.classList.add('dragging');});mdz.addEventListener('dragleave',()=>mdz.classList.remove('dragging'));mdz.addEventListener('drop',e=>{e.preventDefault();mdz.classList.remove('dragging');if(e.dataTransfer.files[0])handleMapImage(e.dataTransfer.files[0]);});$('mapWrap').addEventListener('click',onMapClick);$('btnResetPts').addEventListener('click',()=>{if(!confirm('Réinitialiser toutes les positions mémorisées ?'))return;mapPoints={};savePoints();placingSite=null;$('mapWrap').classList.remove('placing');renderMarkers();renderCalibChips();drawArrows();log('Positions réinitialisées.','warn');});window.addEventListener('resize',()=>{if($('slideSection').style.display==='block')drawArrows();});});
+document.addEventListener('DOMContentLoaded',()=>{buildLogo();loadDefaultMap();$('fileInput').addEventListener('change',e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';});const dz=$('dropZone');dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragging');});dz.addEventListener('dragleave',()=>dz.classList.remove('dragging'));dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragging');if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});$('btnProcess').addEventListener('click',runProcess);$('btnDlImg').addEventListener('click',downloadImage);$('btnDlPptx').addEventListener('click',downloadPptx);$('mapInput').addEventListener('change',e=>{if(e.target.files[0])handleMapImage(e.target.files[0]);e.target.value='';});const mdz=$('mapDropZone');mdz.addEventListener('dragover',e=>{e.preventDefault();mdz.classList.add('dragging');});mdz.addEventListener('dragleave',()=>mdz.classList.remove('dragging'));mdz.addEventListener('drop',e=>{e.preventDefault();mdz.classList.remove('dragging');if(e.dataTransfer.files[0])handleMapImage(e.dataTransfer.files[0]);});$('mapWrap').addEventListener('click',onMapClick);$('btnResetPts').addEventListener('click',()=>{if(!confirm('Réinitialiser toutes les positions mémorisées ?'))return;mapPoints={};savePoints();placingSite=null;$('mapWrap').classList.remove('placing');renderMarkers();renderCalibChips();drawArrows();log('Positions réinitialisées.','warn');});window.addEventListener('resize',()=>{if($('slideSection').style.display==='block')drawArrows();});});
 </script>
 {% endblock %}
