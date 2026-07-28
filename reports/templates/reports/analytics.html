@@ -544,19 +544,76 @@
 
 <!-- ═══════════ 8 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">8</span> Exploration multi-niveaux — Région &gt; Site &gt; Cause</div>
-  <div class="an-card-sub">Descendez du niveau régional jusqu'à la cause : les listes se filtrent en cascade.</div>
+  <div class="an-card-title"><span class="an-card-num">8</span> Exploration multi-niveaux — croisement libre</div>
+  <div class="an-card-sub"><b>Croiser par</b> : choisissez les champs qui forment les colonnes du tableau (1 à 3).
+    <b>Filtres</b> : restreignez les données sur n'importe quel champ NetXcare, indépendamment du croisement.</div>
+  <div class="an-card-sub" style="background:#eef4ff; border-left:3px solid #3b6fd4; padding:7px 10px; border-radius:4px;">
+    💡 <b>Aide</b> : « Croiser par » sélectionne des <b>noms de champs</b> (les colonnes du tableau) —
+    les valeurs (régions, sites, causes…) s'affichent <b>dans les lignes du tableau</b>.
+    Pour restreindre à une valeur précise (ex. Région = LOME), utilisez un <b>Filtre</b> ci-dessous.
+    <a href="#" id="drillHelpToggle" style="color:#3b6fd4; font-weight:600; white-space:nowrap;">En savoir plus ▾</a>
+  </div>
+  <div id="drillHelpDoc" style="display:none; background:#f8fafd; border:1px solid #dbe4f0; border-radius:6px;
+       padding:12px 16px; margin:0 0 10px; font-size:12.5px; line-height:1.55; color:#334;">
+    <b style="font-size:13px;">📘 Guide de l'exploration multi-niveaux</b>
+    <p style="margin:8px 0 4px;"><b>1. Croiser par (colonnes du tableau)</b><br>
+      Choisissez 1 à 3 champs : chacun devient une colonne. Le tableau regroupe alors les incidents
+      par combinaison de valeurs et affiche le nombre d'incidents et l'outage cumulé.<br>
+      <i>Exemple :</i> champ 1 = <code>Site</code>, champ 2 = <code>Technologies</code> →
+      une ligne par couple site / technologie.</p>
+    <p style="margin:8px 0 4px;"><b>2. Filtres (restreindre les données)</b><br>
+      Chaque filtre = un champ + une valeur précise. Les filtres s'appliquent avant le croisement
+      et se combinent entre eux (ET logique). La liste « Valeur » ne propose que les valeurs
+      existantes, en tenant compte des autres filtres actifs.<br>
+      <i>Exemple :</i> Filtre 1 : <code>Région = LOME</code> → seuls les incidents de LOME sont croisés.</p>
+    <p style="margin:8px 0 4px;"><b>3. Détail des incidents</b><br>
+      Cliquez sur une ligne du tableau (ou sur « Afficher les incidents ») pour lister chaque incident
+      avec tous les champs NetXcare renseignés : Site Parent, Plateforme, Alarm text, Root Cause,
+      Ticket Number, technicien, observations…</p>
+    <p style="margin:8px 0 4px;"><b>Scénario type</b></p>
+    <ol style="margin:0 0 4px 18px; padding:0;">
+      <li>Filtre 1 : <code>Région = LOME</code> → les listes se limitent à cette région ;</li>
+      <li>Croiser par : champ 1 = <code>Site</code> → tous les sites de LOME apparaissent ;</li>
+      <li>Ajoutez champ 2 = <code>Plateforme</code> ou <code>Alarm text</code> pour affiner ;</li>
+      <li>Cliquez sur une ligne pour le détail complet des incidents.</li>
+    </ol>
+    <p style="margin:8px 0 0; color:#667;"><i>Remarque : la durée (Outage) est toujours calculée
+      automatiquement — inutile de la choisir comme champ. Les champs proposés dépendent des colonnes
+      présentes dans l'export NetXcare chargé.</i></p>
+  </div>
   <div class="an-drill">
-    <div class="an-field"><label>Région</label><select id="drillRegion"></select></div>
-    <div class="an-field"><label>Site</label><select id="drillSite"></select></div>
-    <div class="an-field"><label>Cause</label><select id="drillCause"></select></div>
+    <div class="an-field"><label>Croiser par — champ 1</label><select id="dimSel0"></select></div>
+    <div class="an-field"><label>Champ 2</label><select id="dimSel1"></select></div>
+    <div class="an-field"><label>Champ 3</label><select id="dimSel2"></select></div>
+  </div>
+  <div class="an-drill">
+    <div class="an-field"><label>Filtre 1 — champ</label><select id="fldSel0"></select></div>
+    <div class="an-field"><label>Valeur</label><select id="fvalSel0"></select></div>
+    <div class="an-field"><label>Filtre 2 — champ</label><select id="fldSel1"></select></div>
+    <div class="an-field"><label>Valeur</label><select id="fvalSel1"></select></div>
+    <div class="an-field"><label>Filtre 3 — champ</label><select id="fldSel2"></select></div>
+    <div class="an-field"><label>Valeur</label><select id="fvalSel2"></select></div>
   </div>
   <div class="an-scroll" style="max-height:300px;">
     <table class="an-table">
-      <thead><tr><th>Région</th><th>Site</th><th>Cause</th>
-                 <th class="num">Incidents</th><th class="num">Outage</th></tr></thead>
+      <thead id="drillHead"></thead>
       <tbody id="drillBody"></tbody>
     </table>
+  </div>
+  <div class="an-card-sub" style="margin-top:8px;">
+    Cliquez sur une ligne (ou sur « Afficher les incidents ») pour voir chaque incident
+    avec <b>tous les champs NetXcare renseignés</b> pour la plateforme.
+    <button type="button" class="an-btn ghost" id="drillDetailBtn"
+            style="margin-left:8px; padding:5px 12px; font-size:11.5px;">Afficher les incidents</button>
+  </div>
+  <div id="drillDetail" style="display:none; margin-top:10px;">
+    <div class="an-card-sub" id="drillDetailInfo"></div>
+    <div class="an-scroll" style="max-height:380px;">
+      <table class="an-table" style="white-space:nowrap;">
+        <thead id="drillDetailHead"></thead>
+        <tbody id="drillDetailBody"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -798,88 +855,210 @@ document.addEventListener('click', () =>
     },
   });
 
-  /* ── 8. Drill-down Région > Site > Cause ── */
-  const drill = D.a8;
-  const selR = document.getElementById('drillRegion');
-  const selS = document.getElementById('drillSite');
-  const selC = document.getElementById('drillCause');
-  const body = document.getElementById('drillBody');
+  /* ── 8. Croisement libre — « Croiser par » + « Filtres » indépendants ── */
+  const helpToggle = document.getElementById('drillHelpToggle');
+  const helpDoc    = document.getElementById('drillHelpDoc');
+  helpToggle.addEventListener('click', e => {
+    e.preventDefault();
+    const open = helpDoc.style.display === 'none';
+    helpDoc.style.display = open ? '' : 'none';
+    helpToggle.textContent = open ? 'Réduire ▴' : 'En savoir plus ▾';
+  });
 
-  function fill(sel, items, allLabel) {
+  const NL = 3, NF = 3;
+  const dimSel = [], fldSel = [], fvalSel = [];
+  for (let i = 0; i < NL; i++) dimSel.push(document.getElementById('dimSel' + i));
+  for (let i = 0; i < NF; i++) {
+    fldSel.push(document.getElementById('fldSel' + i));
+    fvalSel.push(document.getElementById('fvalSel' + i));
+  }
+  const head = document.getElementById('drillHead');
+  const body = document.getElementById('drillBody');
+  const drillUrl = "{% url 'analytics_drill' %}";
+  const baseQs   = "{{ qs|escapejs }}";
+  let curDims = ['region', 'site', 'cause'];   // champs de croisement actifs
+  let fieldsLoaded = false;
+
+  function activeDims() {
+    const d = dimSel.map(s => s.value).filter(Boolean);
+    return d.length ? d : curDims;
+  }
+  function activeFilters(withValueOnly) {       // [[champ, valeur], …]
+    const out = [];
+    for (let i = 0; i < NF; i++) {
+      if (!fldSel[i].value) continue;
+      if (withValueOnly && !fvalSel[i].value) continue;
+      out.push([fldSel[i].value, fvalSel[i].value]);
+    }
+    return out;
+  }
+
+  function fillSelect(sel, items, allLabel, keep) {
     sel.innerHTML = '';
     const optAll = document.createElement('option');
     optAll.value = ''; optAll.textContent = allLabel;
     sel.appendChild(optAll);
-    items.forEach(v => {
+    (items || []).forEach(it => {
       const o = document.createElement('option');
-      o.value = v; o.textContent = v;
+      if (typeof it === 'string') { o.value = it; o.textContent = it; }
+      else { o.value = it.key; o.textContent = it.label; }
       sel.appendChild(o);
     });
+    if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
   }
 
-  function render() {
-    const r0 = selR.value, s0 = selS.value, c0 = selC.value;
-    body.innerHTML = '';
-    const rows = [];
-    Object.keys(drill).sort().forEach(r => {
-      if (r0 && r !== r0) return;
-      Object.keys(drill[r]).sort().forEach(s => {
-        if (s0 && s !== s0) return;
-        Object.keys(drill[r][s]).sort().forEach(c => {
-          if (c0 && c !== c0) return;
-          rows.push([r, s, c, drill[r][s][c]]);
-        });
+  function fetchPivot() {
+    const dims = activeDims();
+    const flt  = activeFilters(false);
+    const p = new URLSearchParams(baseQs);
+    p.set('dims', dims.join(','));
+    flt.forEach(([k, v], j) => { p.set('fk' + j, k); if (v) p.set('fv' + j, v); });
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;">Chargement…</td></tr>';
+    fetch(drillUrl + '?' + p.toString(), { headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) {
+          body.innerHTML = '';
+          const tr = document.createElement('tr'); const td = document.createElement('td');
+          td.colSpan = 9; td.style.textAlign = 'center'; td.textContent = 'Erreur : ' + d.error;
+          tr.appendChild(td); body.appendChild(tr);
+          return;
+        }
+        curDims = d.dims;
+        if (d.fields && !fieldsLoaded) {
+          fieldsLoaded = true;
+          for (let i = 0; i < NL; i++)
+            fillSelect(dimSel[i], d.fields, i === 0 ? '— choisir un champ —' : '(aucun)',
+                       d.dims[i] || '');
+          for (let i = 0; i < NF; i++) {
+            fillSelect(fldSel[i], d.fields, '(aucun filtre)');
+            fillSelect(fvalSel[i], [], '—'); fvalSel[i].disabled = true;
+          }
+        }
+        // Valeurs proposées pour chaque filtre actif (cascade souple)
+        let j = 0;
+        for (let i = 0; i < NF; i++) {
+          if (fldSel[i].value) {
+            fillSelect(fvalSel[i], d.filter_options[j] || [], 'Toutes les valeurs', fvalSel[i].value);
+            fvalSel[i].disabled = false; j++;
+          } else {
+            fillSelect(fvalSel[i], [], '—'); fvalSel[i].disabled = true;
+          }
+        }
+        renderPivot(d);
+      })
+      .catch(() => {
+        body.innerHTML = '';
+        const tr = document.createElement('tr'); const td = document.createElement('td');
+        td.colSpan = 9; td.style.textAlign = 'center';
+        td.textContent = 'Erreur de chargement — réessayez.';
+        tr.appendChild(td); body.appendChild(tr);
       });
+  }
+
+  function renderPivot(d) {
+    head.innerHTML = ''; body.innerHTML = '';
+    const trh = document.createElement('tr');
+    d.labels.forEach(l => { const th = document.createElement('th'); th.textContent = l; trh.appendChild(th); });
+    ['Incidents', 'Outage'].forEach(l => {
+      const th = document.createElement('th'); th.className = 'num'; th.textContent = l; trh.appendChild(th);
     });
-    rows.sort((a, b) => b[3].outage_h - a[3].outage_h);
-    rows.slice(0, 200).forEach(([r, s, c, v]) => {
+    head.appendChild(trh);
+
+    d.rows.forEach(row => {
       const tr = document.createElement('tr');
-      [r, s, c].forEach((t, i) => {
+      tr.style.cursor = 'pointer';
+      tr.title = 'Cliquez pour afficher les incidents avec tous les champs NetXcare';
+      tr.addEventListener('click', () => {
+        const pairs = activeFilters(true).concat(d.dims.map((k, i) => [k, row.k[i]]));
+        loadDetail(pairs);
+      });
+      row.k.forEach((v, i) => {
         const td = document.createElement('td');
-        if (i === 1) { const b = document.createElement('b'); b.textContent = t; td.appendChild(b); }
-        else td.textContent = t;
+        if (i === row.k.length - 1 && row.k.length > 1) {
+          const b = document.createElement('b'); b.textContent = v; td.appendChild(b);
+        } else td.textContent = v;
         tr.appendChild(td);
       });
-      const tdN = document.createElement('td'); tdN.className = 'num'; tdN.textContent = v.n;
-      const tdO = document.createElement('td'); tdO.className = 'num'; tdO.textContent = v.outage;
+      const tdN = document.createElement('td'); tdN.className = 'num'; tdN.textContent = row.n;
+      const tdO = document.createElement('td'); tdO.className = 'num'; tdO.textContent = row.outage;
       tr.appendChild(tdN); tr.appendChild(tdO);
       body.appendChild(tr);
     });
-    if (!rows.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 5; td.style.textAlign = 'center'; td.textContent = 'Aucun résultat.';
+    if (!d.rows.length) {
+      const tr = document.createElement('tr'); const td = document.createElement('td');
+      td.colSpan = d.labels.length + 2; td.style.textAlign = 'center'; td.textContent = 'Aucun résultat.';
+      tr.appendChild(td); body.appendChild(tr);
+    } else if (d.total_groups > d.rows.length) {
+      const tr = document.createElement('tr'); const td = document.createElement('td');
+      td.colSpan = d.labels.length + 2; td.style.textAlign = 'center';
+      td.textContent = `${d.total_groups} combinaisons — les ${d.rows.length} plus longues affichées.`;
       tr.appendChild(td); body.appendChild(tr);
     }
   }
 
-  function refreshSites() {
-    const r0 = selR.value;
-    const sites = new Set();
-    Object.keys(drill).forEach(r => {
-      if (r0 && r !== r0) return;
-      Object.keys(drill[r]).forEach(s => sites.add(s));
+  for (let i = 0; i < NL; i++) dimSel[i].addEventListener('change', fetchPivot);
+  for (let i = 0; i < NF; i++) {
+    fldSel[i].addEventListener('change', () => {
+      fillSelect(fvalSel[i], [], fldSel[i].value ? 'Toutes les valeurs' : '—');
+      fvalSel[i].disabled = !fldSel[i].value;
+      fetchPivot();
     });
-    fill(selS, [...sites].sort(), 'Tous les sites');
+    fvalSel[i].addEventListener('change', fetchPivot);
   }
-  function refreshCauses() {
-    const r0 = selR.value, s0 = selS.value;
-    const causes = new Set();
-    Object.keys(drill).forEach(r => {
-      if (r0 && r !== r0) return;
-      Object.keys(drill[r]).forEach(s => {
-        if (s0 && s !== s0) return;
-        Object.keys(drill[r][s]).forEach(c => causes.add(c));
-      });
+  fetchPivot();
+
+  /* ── 8bis. Détail des incidents — tous les champs NetXcare ── */
+  const dWrap = document.getElementById('drillDetail');
+  const dInfo = document.getElementById('drillDetailInfo');
+  const dHead = document.getElementById('drillDetailHead');
+  const dBody = document.getElementById('drillDetailBody');
+
+  function loadDetail(pairs) {
+    dWrap.style.display = '';
+    dHead.innerHTML = ''; dBody.innerHTML = '';
+    dInfo.textContent = 'Chargement des incidents…';
+    dWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const p = new URLSearchParams(baseQs);
+    p.set('mode', 'details');
+    let j = 0;
+    pairs.forEach(([k, v]) => {
+      if (!v) return;
+      p.set('fk' + j, k); p.set('fv' + j, v); j++;
     });
-    fill(selC, [...causes].sort(), 'Toutes les causes');
+    fetch(drillUrl + '?' + p.toString(), { headers: { 'Accept': 'application/json' } })
+      .then(resp => resp.json())
+      .then(d => {
+        if (d.error) { dInfo.textContent = 'Erreur : ' + d.error; return; }
+        const scope = pairs.filter(([, v]) => v).map(([, v]) => v).join(' › ') || 'Toutes les données';
+        dInfo.textContent = `${scope} — ${d.total} incident(s)` +
+          (d.shown < d.total ? ` (les ${d.shown} plus longs affichés)` : '') +
+          ' — champs NetXcare renseignés pour la plateforme.';
+        const trh = document.createElement('tr');
+        d.columns.forEach(cn => {
+          const th = document.createElement('th'); th.textContent = cn; trh.appendChild(th);
+        });
+        dHead.appendChild(trh);
+        d.rows.forEach(row => {
+          const tr = document.createElement('tr');
+          row.forEach(v => {
+            const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+          });
+          dBody.appendChild(tr);
+        });
+        if (!d.rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td');
+          td.colSpan = Math.max(d.columns.length, 1);
+          td.style.textAlign = 'center'; td.textContent = 'Aucun incident.';
+          tr.appendChild(td); dBody.appendChild(tr);
+        }
+      })
+      .catch(() => { dInfo.textContent = 'Erreur de chargement — réessayez.'; });
   }
 
-  fill(selR, Object.keys(drill).sort(), 'Toutes les régions');
-  refreshSites(); refreshCauses(); render();
-  selR.addEventListener('change', () => { refreshSites(); refreshCauses(); render(); });
-  selS.addEventListener('change', () => { refreshCauses(); render(); });
-  selC.addEventListener('change', render);
+  document.getElementById('drillDetailBtn').addEventListener('click', () =>
+    loadDetail(activeFilters(true)));
 })();
 </script>
 {% endif %}

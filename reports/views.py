@@ -8563,6 +8563,41 @@ def analytics_status(request):
     return JsonResponse({'state': status.get('state', 'idle')})
 
 
+def analytics_drill(request):
+    """Croisement libre (section 8) — pivot dynamique sur n'importe quels
+    champs NetXcare + détail des incidents (AJAX).
+
+    Params : ``dims`` (clés séparées par des virgules, max 4), ``fk0..fk7`` /
+    ``fv0..fv7`` (filtres champ / valeur), ``mode=details`` pour le détail.
+    """
+    from . import analytics as an
+
+    df, _meta = _analytics_load(request)
+    if df is None:
+        return JsonResponse({'error': 'Aucune donnée chargée.'}, status=400)
+    flt = _analytics_filters(request)
+    dims = [d.strip() for d in (request.GET.get('dims') or '').split(',') if d.strip()][:4]
+    if not dims:
+        dims = ['region', 'site', 'cause']
+    pairs = []
+    for i in range(8):
+        k = (request.GET.get(f'fk{i}') or '').strip()
+        v = (request.GET.get(f'fv{i}') or '').strip()
+        if k:
+            pairs.append((k, v))
+    try:
+        f = an.apply_filters(df, **flt)
+        if (request.GET.get('mode') or '') == 'details':
+            data = an.drill_details(f, filters=pairs)
+        else:
+            data = an.drill_pivot(f, dims, pairs)
+            data['fields'] = an.drill_fields(df)
+    except Exception as exc:
+        logging.getLogger(__name__).exception('Analytics: erreur drill-down')
+        return JsonResponse({'error': str(exc)}, status=500)
+    return JsonResponse(data)
+
+
 def analytics_reset(request):
     """Retire le jeu de données courant (retour à l'écran de chargement)."""
     if request.method == 'POST':

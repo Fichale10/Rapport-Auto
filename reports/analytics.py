@@ -54,7 +54,8 @@ _ALIASES: dict[str, list[str]] = {
     'site':           ['site', 'site name', 'nom du site', 'nom site', 'site impacte'],
     'equipement':     ['equipement en defaut', 'equipement defaillant', 'impact equipement',
                       'impact equipment', 'equipement en panne', 'equipement', 'equipment'],
-    'cause':          ['cause', 'type de cause', 'cause de l incident'],
+    'cause':          ['cause', 'type de cause', 'cause de l incident', 'root cause',
+                      'cause racine'],
     'classification': ['classification du site', 'classification technique', 'classification',
                       'classif tech', 'classif', 'categorie site'],
     'escalade':       ['escalade', 'escalation', 'entite responsable'],
@@ -142,6 +143,27 @@ def _dur_to_sec(v) -> float:
 _NAN_RE = re.compile(r'(?i)^(nan|nat|none|null|n/?a|<na>|-)$')
 
 
+def _to_display(v) -> str:
+    """Valeur source → chaîne lisible JSON-safe (dates, durées, nombres…)."""
+    if v is None:
+        return ''
+    try:
+        if pd.isna(v):          # NaN, NaT, pd.NA (scalaires uniquement)
+            return ''
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, (pd.Timestamp, _dt.datetime)):
+        return v.strftime('%d/%m/%Y %H:%M:%S')
+    if isinstance(v, _dt.date):
+        return v.strftime('%d/%m/%Y')
+    if isinstance(v, (pd.Timedelta, _dt.timedelta)):
+        return _fmt(v.total_seconds())
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    s = str(v).strip()
+    return '' if _NAN_RE.fullmatch(s) else s
+
+
 def _clean_str_series(s: pd.Series) -> pd.Series:
     # fillna AVANT astype : en pandas 3.x, astype(str) préserve les NaN
     s = s.fillna('').astype(str).str.strip()
@@ -207,11 +229,43 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out['duration_sec'] = (df[mapping['duration']].map(_dur_to_sec)
                            if 'duration' in mapping else 0.0)
 
+    # Cause : repli sur « Root Cause » NetXcare quand la colonne Cause est vide
+    if (out['cause'] == '').any():
+        rc_col = next((c for c in df.columns
+                       if c != mapping.get('cause')
+                       and _norm(c) in ('root cause', 'cause racine')), None)
+        if rc_col is not None:
+            rc = _clean_str_series(df[rc_col])
+            need = out['cause'] == ''
+            out.loc[need, 'cause'] = rc[need]
+
     if 'date' in mapping:
         d = pd.to_datetime(df[mapping['date']], dayfirst=True, format='mixed', errors='coerce')
         out['date'] = d.dt.strftime('%Y-%m-%d').fillna('')
     else:
         out['date'] = ''
+
+    # Champs NetXcare supplémentaires (varient selon la plateforme) : toutes
+    # les colonnes source non mappées et renseignées sont conservées telles
+    # quelles pour l'exploration détaillée (section 8).
+    mapped_srcs = set(mapping.values())
+    # L'horodatage complet (Alarm Time…) reste visible dans le détail — le
+    # champ canonique « date » ne garde que le jour.
+    mapped_srcs.discard(mapping.get('date'))
+    extras_data: dict[str, pd.Series] = {}
+    for c in df.columns:
+        name = str(c).strip()
+        if c in mapped_srcs or not name or name.lower().startswith('unnamed'):
+            continue
+        s = df[c].map(_to_display)
+        if (s != '').any():
+            extras_data[name] = s
+    if extras_data:
+        names = list(extras_data)
+        out['extra'] = [{n: v for n, v in zip(names, vals) if v}
+                        for vals in zip(*extras_data.values())]
+    else:
+        out['extra'] = [{} for _ in range(len(df))]
 
     out = out[out['site'] != ''].copy()
     if out.empty:
@@ -379,6 +433,10 @@ def load_normalized(path: str) -> pd.DataFrame:
         for c in ('site', 'status', 'date'):
             if c in df.columns:
                 df[c] = df[c].fillna('')
+        if 'extra' in df.columns:
+            df['extra'] = df['extra'].map(lambda v: v if isinstance(v, dict) else {})
+        else:
+            df['extra'] = [{} for _ in range(len(df))]
     return df
 
 
@@ -420,6 +478,132 @@ def _top_label_per_group(f: pd.DataFrame, group_col: str, label_col: str,
         g = f.groupby([group_col, label_col])['duration_sec'].sum()
     idx = g.groupby(level=0).idxmax()
     return {k: v[1] for k, v in idx.items()}
+
+
+# Champs canoniques utilisables comme dimension de croisement (section 8)
+_CANON_KEYS = ('date', 'region', 'base', 'site', 'equipement', 'cause',
+               'classification', 'escalade', 'status')
+
+
+def field_series(f: pd.DataFrame, key: str) -> pd.Series:
+    """Série de valeurs (str) d'un champ canonique ou d'un champ NetXcare."""
+    if key in _CANON_KEYS and key in f.columns:
+        return f[key].fillna('').astype(str)
+    if 'extra' in f.columns:
+        return f['extra'].map(
+            lambda d: str(d.get(key, '') or '').strip() if isinstance(d, dict) else '')
+    return pd.Series('', index=f.index, dtype=object)
+
+
+def drill_fields(df: pd.DataFrame) -> list[dict]:
+    """Champs disponibles pour le croisement : canoniques + NetXcare (extra).
+    Les champs de travail usuels (Site Parent, Site, Région, Plateforme…)
+    sont proposés en premier."""
+    fields = [{'key': k, 'label': FR_LABELS.get(k, k)}
+              for k in _CANON_KEYS if k in df.columns]
+    if 'extra' in df.columns:
+        seen: set[str] = set()
+        for d in df['extra']:
+            if isinstance(d, dict):
+                seen.update(str(k) for k in d)
+        fields += [{'key': k, 'label': k} for k in sorted(seen)]
+    priority = ['Site Parent', 'site', 'region', 'Plateforme', 'Technologies',
+                'Alarm text', 'cause', 'escalade', 'Root Cause', 'base',
+                'equipement', 'classification']
+    rank = {k: i for i, k in enumerate(priority)}
+    fields.sort(key=lambda f: (rank.get(f['key'], len(priority)), f['label']))
+    return fields
+
+
+def drill_pivot(f: pd.DataFrame, dims: list[str], filters=(),
+                limit: int = 300) -> dict:
+    """Croisement libre : agrège incidents + outage sur 1 à 4 champs choisis
+    (canoniques ou NetXcare) ; filtres (champ, valeur) indépendants du
+    croisement, applicables à n'importe quel champ."""
+    dims = [d for d in dims if d][:4] or ['region', 'site', 'cause']
+    labels = [FR_LABELS.get(d, d) for d in dims]
+    filters = [(k, v) for k, v in filters if k]
+    base = {'dims': dims, 'labels': labels, 'rows': [], 'total_groups': 0,
+            'filter_options': [[] for _ in filters]}
+    if f.empty:
+        return base
+
+    fseries = {k: field_series(f, k).replace('', EMPTY_LABEL) for k, _ in filters}
+
+    # Valeurs proposées pour chaque filtre : les AUTRES filtres appliqués
+    filter_options: list[list[str]] = []
+    for i, (k, _v) in enumerate(filters):
+        mask = pd.Series(True, index=f.index)
+        for j, (k2, v2) in enumerate(filters):
+            if j != i and v2:
+                mask &= fseries[k2] == v2
+        filter_options.append(sorted(str(x) for x in fseries[k][mask].unique()))
+    base['filter_options'] = filter_options
+
+    mask = pd.Series(True, index=f.index)
+    for k, v in filters:
+        if v:
+            mask &= fseries[k] == v
+    ff = f[mask]
+    if ff.empty:
+        return base
+
+    sub = pd.DataFrame({f'_d{i}': field_series(ff, d).replace('', EMPTY_LABEL)
+                        for i, d in enumerate(dims)})
+    sub['duration_sec'] = pd.to_numeric(ff['duration_sec'], errors='coerce').fillna(0.0).values
+
+    g = (sub.groupby([f'_d{i}' for i in range(len(dims))])['duration_sec']
+         .agg(['size', 'sum']).sort_values('sum', ascending=False))
+    total_groups = int(len(g))
+    rows = []
+    for idx, r in g.head(limit).iterrows():
+        keyvals = list(idx) if isinstance(idx, tuple) else [idx]
+        rows.append({'k': [str(x) for x in keyvals], 'n': int(r['size']),
+                     'outage': _fmt(r['sum']), 'outage_h': _h(r['sum'])})
+    return {**base, 'rows': rows, 'total_groups': total_groups}
+
+
+def drill_details(f: pd.DataFrame, filters=(), limit: int = 300) -> dict:
+    """Incidents individuels correspondant aux filtres (champ, valeur) — avec
+    TOUS les champs NetXcare renseignés, colonnes dynamiques selon la plateforme."""
+    for key, val in filters:
+        if not val:
+            continue
+        s = field_series(f, key).replace('', EMPTY_LABEL)
+        f = f[s == val]
+    total = int(len(f))
+    f = f.sort_values('duration_sec', ascending=False).head(limit)
+
+    rows_d: list[dict] = []
+    extra_keys: list[str] = []
+    seen: set[str] = set()
+    has_extra = 'extra' in f.columns
+    for _, r in f.iterrows():
+        d: dict = {}
+        for k in _CANON_KEYS:
+            v = str(r.get(k) or '')
+            d[FR_LABELS.get(k, k)] = '' if v == EMPTY_LABEL else v
+        d['Durée'] = _fmt(r.get('duration_sec') or 0)
+        extra = r.get('extra') if has_extra else None
+        if isinstance(extra, dict):
+            for k, v in extra.items():
+                v = str(v or '').strip()
+                if not v:
+                    continue
+                d[str(k)] = v
+                if k not in seen:
+                    seen.add(k)
+                    extra_keys.append(str(k))
+        rows_d.append(d)
+
+    columns = [FR_LABELS.get(k, k) for k in _CANON_KEYS] + ['Durée'] + extra_keys
+    columns = [c for c in columns if any(row.get(c) for row in rows_d)]
+    return {
+        'columns': columns,
+        'rows':    [[row.get(c, '') for c in columns] for row in rows_d],
+        'total':   total,
+        'shown':   len(rows_d),
+    }
 
 
 def compute(df: pd.DataFrame, *, date_debut: str = '', date_fin: str = '',
@@ -542,13 +726,7 @@ def compute(df: pd.DataFrame, *, date_debut: str = '', date_fin: str = '',
            'outage': _fmt(row['outage']), 'outage_h': _h(row['outage'])}
           for e, row in g7.iterrows()]
 
-    # ── 8. Région > Site > Cause — drill-down multi-niveaux ─────────────────
-    a8: dict = {}
-    g8 = f.groupby(['region', 'site', 'cause'])['duration_sec'].agg(['size', 'sum'])
-    for (r, s, c), row in g8.iterrows():
-        a8.setdefault(str(r), {}).setdefault(str(s), {})[str(c)] = {
-            'n': int(row['size']), 'outage': _fmt(row['sum']), 'outage_h': _h(row['sum']),
-        }
+    # ── 8. Croisement libre — calculé à la demande via drill_pivot (AJAX) ───
 
     # ── 9. Escalade & Cause — répartition des responsabilités ───────────────
     esc_out = f.groupby('escalade')['duration_sec'].sum().sort_values(ascending=False)
@@ -578,7 +756,7 @@ def compute(df: pd.DataFrame, *, date_debut: str = '', date_fin: str = '',
     return {
         'empty': False, 'filters': filters, 'kpi': kpi,
         'a1': a1, 'a2': a2, 'a3': a3, 'a4': a4, 'a5': a5,
-        'a6': a6, 'a7': a7, 'a8': a8, 'a9': a9, 'a10': a10,
+        'a6': a6, 'a7': a7, 'a9': a9, 'a10': a10,
     }
 
 
