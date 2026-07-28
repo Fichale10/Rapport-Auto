@@ -5514,11 +5514,20 @@ def site_info(request):
 
     archi_data = _build_site_architecture(site) if site else None
 
+    # Géolocalisation : tous les sites avec coordonnées GPS (pour la carte du Togo)
+    sites_geo = []
+    if site:
+        sites_geo = [
+            {'name': s.site_name, 'lat': s.latitude, 'lon': s.longitude, 'region': s.region}
+            for s in Site.objects.exclude(latitude__isnull=True).exclude(longitude__isnull=True)
+        ]
+
     return render(request, 'reports/site_info.html', {
         'query':   query,
         'site':    site,
         'results': results,
         'archi_json': archi_data,
+        'sites_geo_json': mark_safe(json.dumps(sites_geo)),
     })
 
 

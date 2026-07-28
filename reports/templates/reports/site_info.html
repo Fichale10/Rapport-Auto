@@ -4,6 +4,7 @@
 {% block breadcrumb %}Recherche Site{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'reports/leaflet/leaflet.css' %}">
 <style>
   :root { --blue:#003087; --yellow:#FFC72C; }
 
@@ -241,6 +242,50 @@
     font-size:12px; color:#003087; font-weight:600; text-decoration:none;
   }
   .map-link:hover { text-decoration:underline; }
+
+  /* ── Géolocalisation (onglet Carte dans le cadre bleu) ── */
+  .archi-view-tabs { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .archi-vtab {
+    font-size:12px; font-weight:700; padding:7px 15px; border-radius:9px;
+    border:1px solid #d5def0; background:#f2f6ff; color:#003087;
+    cursor:pointer; transition:background .15s;
+  }
+  .archi-vtab:hover { background:#e4edff; }
+  .archi-vtab.active { background:#003087; color:#fff; border-color:#003087; }
+  .archi-vtab-hint { font-size:11.5px; color:#8896b3; }
+  #geoView  { flex:1 1 0; min-height:0; display:flex; flex-direction:column; gap:8px; }
+  #archiView { flex:1 1 0; min-height:0; flex-direction:column; gap:10px; }
+  .geo-actions-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .site-geo-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:12px; font-weight:700; padding:6px 13px; border-radius:9px;
+    border:1px solid #d5def0; cursor:pointer;
+    background:#f2f6ff; color:#003087; transition:background .15s;
+  }
+  .site-geo-btn:hover { background:#e4edff; }
+  .site-geo-btn.active { background:#003087; color:#fff; border-color:#003087; }
+  #geoMap {
+    flex:1 1 0; min-height:420px; border-radius:12px;
+    background:radial-gradient(circle at 30% 20%,#1c3f96 0%,#102a6e 55%,#0b1f55 100%);
+    position:relative; z-index:0; box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  #geoMap .leaflet-container { background:#0b1f55; border-radius:12px; }
+  /* Thème nuit : tuiles OSM inversées (style MAPS.ME sombre) */
+  #geoMap .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(200deg) brightness(.72) contrast(.95) saturate(.55);
+  }
+  .geo-pin-img { filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
+  #geoMap .leaflet-popup-content-wrapper {
+    background:#1a2340; color:#e8ecf8; border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  #geoMap .leaflet-popup-tip { background:#1a2340; }
+  .site-geo-legend { display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:#6b7a99; }
+  .site-geo-legend span { display:inline-flex; align-items:center; gap:5px; }
+  .site-geo-legend i { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .geo-popup-name { font-weight:800; color:#ffd76a; font-size:13px; margin-bottom:2px; }
+  .geo-popup-meta { font-size:11.5px; color:#9aa6c8; margin-bottom:6px; }
+  .geo-popup-link { font-size:12px; font-weight:700; color:#8ab4ff; text-decoration:underline; }
 
   /* ── Empty state ── */
   .search-empty { text-align:center; padding:60px 24px; color:#bbb; }
@@ -545,7 +590,28 @@
     <div class="site-section">
       <div class="site-section-title">📍 Localisation</div>
       <div class="site-archi-display">
-        <div class="site-archi-display-title">🏗️ Architecture du site <span style="font-weight:500;color:#8896b3">— qui porte qui</span></div>
+        <div class="archi-view-tabs">
+          <button type="button" class="archi-vtab active" id="tabCarte">🗺️ Géolocalisation</button>
+          <button type="button" class="archi-vtab" id="tabArchi">🏗️ Dépendance</button>
+          <span class="archi-vtab-hint">— vue au choix</span>
+        </div>
+
+        <!-- Vue Carte (défaut) : site consulté + sites voisins -->
+        <div id="geoView">
+          <div id="geoMap"></div>
+          <div class="geo-actions-row">
+            <button type="button" class="site-geo-btn active" id="geoBtnNear">🎯 {{ site.site_name }} + alentours</button>
+            <button type="button" class="site-geo-btn" id="geoBtnAll">🇹🇬 Tous les sites (<span id="geoCount">0</span>)</button>
+          </div>
+          <div class="site-geo-legend">
+            <span><i style="background:#ff3b30;"></i>Site voisin</span>
+            <span><i style="background:#FFC72C;border:2px solid #003087;width:12px;height:12px;"></i>{{ site.site_name }} (consulté)</span>
+            <span style="color:#aab4c8;">Cliquez sur une épingle pour ouvrir sa fiche</span>
+          </div>
+        </div>
+
+        <!-- Vue Architecture -->
+        <div id="archiView" style="display:none;">
         <div class="site-archi-canvas" id="archiCanvas"></div>
         <div class="archi-legend">
           <span><i class="lg-root"></i>Racine / IGW</span>
@@ -574,6 +640,7 @@
             📥 Exporter la sélection en PPTX
           </a>
         </div>
+        </div><!-- /archiView -->
       </div>
     </div>
 
@@ -613,6 +680,148 @@
     </div>
   </div>
 </div>
+
+<!-- ── Carte de géolocalisation ── -->
+<script src="{% static 'reports/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'reports/togo_geo.js' %}"></script>
+<script>
+(function(){
+  {% load l10n %}{% localize off %}
+  var SITES_GEO = {{ sites_geo_json|default:"[]" }};
+  {% endlocalize %}
+  var CURRENT = '{{ site.site_name|escapejs }}';
+  var mapEl = document.getElementById('geoMap');
+  if (!mapEl || typeof L === 'undefined') return;
+
+  document.getElementById('geoCount').textContent = SITES_GEO.length;
+
+  var TOGO_BOUNDS = [[6.05, -0.15], [11.15, 1.85]];
+  var map = L.map('geoMap', {
+    zoomControl: true, scrollWheelZoom: false, attributionControl: false,
+    preferCanvas: true
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, minZoom: 6,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+  map.fitBounds(TOGO_BOUNDS, { padding: [10, 10] });
+
+  // Togo mis en évidence : remplissage bleu nuit + contour lumineux (style MAPS.ME)
+  if (window.TOGO_GEOJSON) {
+    L.geoJSON(window.TOGO_GEOJSON, {
+      style: { color: '#7d86ff', weight: 2.2, opacity: .95, fillColor: '#1d2a63', fillOpacity: .78 },
+      interactive: false
+    }).addTo(map);
+  }
+
+  // Épingles SVG (style MAPS.ME) — icône partagée, mise en cache par le navigateur
+  function pinIcon(fill, stroke, w, h) {
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 32'>" +
+      "<path d='M12 1C6 1 1.4 5.6 1.4 11.4c0 8.2 10.6 19.2 10.6 19.2s10.6-11 10.6-19.2C22.6 5.6 18 1 12 1z'" +
+      " fill='" + fill + "' stroke='" + stroke + "' stroke-width='1.6'/>" +
+      "<circle cx='12' cy='11.4' r='4.2' fill='#fff'/></svg>";
+    return L.icon({
+      iconUrl: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg),
+      iconSize: [w, h], iconAnchor: [w / 2, h], popupAnchor: [0, -h + 4],
+      className: 'geo-pin-img'
+    });
+  }
+  var ICON_SITE  = pinIcon('#ff3b30', '#8f0d00', 17, 23);
+  var ICON_FOCUS = pinIcon('#FFC72C', '#003087', 30, 40);
+
+  function popupHtml(s) {
+    return '<div class="geo-popup-name">' + s.name + '</div>' +
+           '<div class="geo-popup-meta">' + (s.region || '') + ' — ' +
+             s.lat.toFixed(5) + ', ' + s.lon.toFixed(5) + '</div>' +
+           '<a class="geo-popup-link" href="{% url "site_info" %}?q=' + encodeURIComponent(s.name) + '">Voir la fiche →</a>';
+  }
+
+  // Tri des sites : le site consulté d'abord, puis distance croissante
+  var currentSite = null;
+  var others = [];
+  SITES_GEO.forEach(function(s){
+    if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
+    if (s.name === CURRENT) { currentSite = s; } else { others.push(s); }
+  });
+
+  var NEAR_COUNT = 12; // nombre de sites voisins affichés par défaut
+  var nearSites = [];
+  if (currentSite) {
+    others.forEach(function(s){
+      var dLat = s.lat - currentSite.lat, dLon = s.lon - currentSite.lon;
+      s._d2 = dLat * dLat + dLon * dLon;
+    });
+    nearSites = others.slice().sort(function(a, b){ return a._d2 - b._d2; }).slice(0, NEAR_COUNT);
+  }
+
+  function makeMarker(s) {
+    return L.marker([s.lat, s.lon], { icon: ICON_SITE, keyboard: false }).bindPopup(popupHtml(s));
+  }
+
+  // Couches : voisins (défaut) / tous les sites (à la demande)
+  var nearLayer = L.layerGroup(nearSites.map(makeMarker));
+  var allLayer = null;
+
+  // Site consulté : grande épingle jaune au premier plan (toujours visible)
+  var focusMarker = null;
+  if (currentSite) {
+    focusMarker = L.marker([currentSite.lat, currentSite.lon], {
+      icon: ICON_FOCUS, zIndexOffset: 1000
+    }).addTo(map).bindPopup(popupHtml(currentSite));
+  }
+
+  var btnNear = document.getElementById('geoBtnNear');
+  var btnAll  = document.getElementById('geoBtnAll');
+  function setActive(btn){ btnNear.classList.remove('active'); btnAll.classList.remove('active'); btn.classList.add('active'); }
+
+  function showNear() {
+    setActive(btnNear);
+    if (allLayer) map.removeLayer(allLayer);
+    nearLayer.addTo(map);
+    // Vue sur tout le Togo, mais seuls le site consulté et ses voisins sont épinglés
+    map.fitBounds(TOGO_BOUNDS, { padding: [10, 10] });
+  }
+
+  function showAll() {
+    setActive(btnAll);
+    map.removeLayer(nearLayer);
+    if (!allLayer) allLayer = L.layerGroup(others.map(makeMarker)); // création différée
+    allLayer.addTo(map);
+    map.closePopup();
+    map.fitBounds(TOGO_BOUNDS, { padding: [10, 10] });
+  }
+
+  btnNear.addEventListener('click', showNear);
+  btnAll.addEventListener('click', showAll);
+
+  // Vue par défaut : site consulté + alentours
+  if (currentSite) { showNear(); }
+  else {
+    btnNear.style.opacity = '.45'; btnNear.title = 'Coordonnées GPS non renseignées pour ce site';
+    showAll();
+  }
+
+  // ── Onglets Carte / Architecture dans le cadre ──
+  var tabCarte = document.getElementById('tabCarte');
+  var tabArchi = document.getElementById('tabArchi');
+  var geoView  = document.getElementById('geoView');
+  var archiView = document.getElementById('archiView');
+  tabCarte.addEventListener('click', function(){
+    tabCarte.classList.add('active'); tabArchi.classList.remove('active');
+    archiView.style.display = 'none';
+    geoView.style.display = 'flex';
+    setTimeout(function(){ map.invalidateSize(); }, 60);
+  });
+  tabArchi.addEventListener('click', function(){
+    tabArchi.classList.add('active'); tabCarte.classList.remove('active');
+    geoView.style.display = 'none';
+    archiView.style.display = 'flex';
+  });
+
+  // Leaflet dans un conteneur qui vient d'être affiché : recalcul de taille
+  setTimeout(function(){ map.invalidateSize(); if (currentSite) showNear(); }, 250);
+})();
+</script>
 
 {% elif results %}
 <!-- Liste de résultats multiples -->
