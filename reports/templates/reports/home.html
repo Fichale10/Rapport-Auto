@@ -421,6 +421,8 @@
   }
   .site-cluster .n-on { font-size: 9px; font-weight: 600; opacity: .95; }
   .sites-table tbody tr:not(.sites-total) { cursor: pointer; transition: background .12s; }
+  .sites-table tbody tr.sites-total { cursor: pointer; }
+  .sites-table tbody tr.sites-total:hover td { background: #dbe7ff; }
   .sites-table tbody tr.row-highlight td { background: #e8f0ff !important; }
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
   .empty a { color: #003087; font-weight: 600; text-decoration: none; }
@@ -1387,6 +1389,15 @@
     }
   });
   map.addControl(new ResetControl());
+
+  // Clic sur la ligne « Total » de Statut Sites → réinitialise aussi la carte
+  document.querySelectorAll('.sites-table tbody tr.sites-total').forEach(function (row) {
+    row.title = 'Réinitialiser la carte (vue d\u2019ensemble)';
+    row.addEventListener('click', function () {
+      resetMapView();
+      document.getElementById('togo-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
 
   // Rafraîchit la carte après son affichage
   [0, 200, 600, 1200].forEach(function(delay){
