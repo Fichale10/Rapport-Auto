@@ -5,6 +5,8 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'reports/leaflet/leaflet.css' %}">
+<link rel="stylesheet" href="{% static 'reports/leaflet/MarkerCluster.css' %}">
+<link rel="stylesheet" href="{% static 'reports/leaflet/MarkerCluster.Default.css' %}">
 <style>
   :root { --yas-blue:#003087; --yas-yellow:#FFC72C; }
 
@@ -258,9 +260,11 @@
   .synth-table tr:last-child td { border-bottom: none; }
   .synth-table tr:hover td { background: #fafbff; }
 
-  /* ── Drill-down statut non résolu ── */
+  /* ── Drill-down statut non résolu / résolu ── */
   .unres-click { cursor: pointer; transition: box-shadow .15s, transform .15s; }
   .unres-click:hover { box-shadow: 0 2px 8px rgba(229,62,62,.35); transform: translateY(-1px); }
+  .res-click { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+  .res-click:hover { box-shadow: 0 2px 8px rgba(56,161,105,.4); transform: translateY(-1px); }
   .unres-modal-overlay {
     display: none; position: fixed; inset: 0; z-index: 9999;
     background: rgba(15,23,42,.5); align-items: center; justify-content: center;
@@ -281,6 +285,8 @@
     color: #999; cursor: pointer; padding: 2px 8px; border-radius: 6px;
   }
   .unres-modal-close:hover { background: #f5f7fb; color: #333; }
+  .unres-modal.resolved .unres-modal-head { background: #f0fff4; }
+  .unres-modal.resolved .unres-modal-title { color: #166534; }
   .unres-modal-body { overflow-y: auto; padding: 6px 20px 18px; }
   .unres-detail-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .unres-detail-table th {
@@ -290,7 +296,30 @@
   }
   .unres-detail-table td { padding: 9px 10px; border-bottom: 1px solid #f5f7fb; color: #333; }
   .unres-detail-table tr:hover td { background: #fffaf5; }
+  .unres-site-link {
+    cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;
+  }
+  .unres-site-link:hover { color: #e53e3e !important; }
+  .unres-map-btn {
+    display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 4px;
+    padding: 7px 14px; border: none; border-radius: 8px; cursor: pointer;
+    background: #003087; color: #fff; font: 600 12.5px 'DM Sans', sans-serif;
+    transition: background .15s, transform .15s;
+  }
+  .unres-map-btn:hover { background: #00256b; transform: translateY(-1px); }
+  .unres-dl-btn { background: #fff; color: #003087; border: 1.5px solid #c9d4e8; }
+  .unres-dl-btn:hover { background: #eef3ff; }
+  .synth-dl-btn {
+    padding: 4px 10px; border: 1.5px solid #c9d4e8; border-radius: 8px;
+    background: #fff; color: #003087; cursor: pointer;
+    font: 600 11.5px 'DM Sans', sans-serif; transition: background .15s;
+  }
+  .synth-dl-btn:hover { background: #eef3ff; }
   .unres-empty { padding: 26px 10px; text-align: center; color: #888; font-size: 13px; line-height: 1.6; }
+
+  /* ── Bouton de réinitialisation de la carte ── */
+  .map-reset-btn { font-size: 17px; font-weight: 700; color: #003087 !important; }
+  .map-reset-btn:hover { background: #eef3ff !important; }
   .synth-table tr.synth-total td {
     background: #e8f0ff; font-weight: 700; color: #003087;
     border-top: 2px solid #003087;
@@ -377,6 +406,20 @@
   @media (prefers-reduced-motion: reduce) {
     .pulse-marker .ring { animation: none; display: none; }
   }
+
+  /* ── Bulles de clustering des sites (vert = tout résolu, rouge = ≥1 en cours) ── */
+  .site-cluster {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; border-radius: 50%;
+    background: rgba(56,161,105,.85); border: 2px solid #fff;
+    box-shadow: 0 0 0 4px rgba(56,161,105,.25), 0 1px 4px rgba(0,0,0,.25);
+    color: #fff; font: 700 12px/1 'DM Sans', sans-serif;
+  }
+  .site-cluster.has-ongoing {
+    background: rgba(229,62,62,.9);
+    box-shadow: 0 0 0 4px rgba(229,62,62,.28), 0 1px 4px rgba(0,0,0,.25);
+  }
+  .site-cluster .n-on { font-size: 9px; font-weight: 600; opacity: .95; }
   .sites-table tbody tr:not(.sites-total) { cursor: pointer; transition: background .12s; }
   .sites-table tbody tr.row-highlight td { background: #e8f0ff !important; }
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
@@ -732,6 +775,10 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
         <div class="sec-title" style="margin-bottom:0;flex:1;">📋 Synthèse par Escalade</div>
         {% if synth_total_inc > 0 %}
+        <button type="button" class="synth-dl-btn" data-fmt="xlsx" style="display:none;"
+                title="Télécharger le détail de tous les statuts (Excel)">⬇ Excel</button>
+        <button type="button" class="synth-dl-btn" data-fmt="pdf" style="display:none;"
+                title="Télécharger le détail de tous les statuts (PDF)">⬇ PDF</button>
         <span class="synth-badge">{{ synth_total_inc }} incidents</span>
         {% endif %}
       </div>
@@ -767,7 +814,8 @@
               </td>
               <td>
                 {% if row.status == 'resolved' %}
-                  <span class="badge badge-ok">✓ Résolu</span>
+                  <span class="badge badge-ok res-click" data-esc="{{ row.escalade }}" role="button" tabindex="0"
+                        title="Cliquer pour voir le détail des incidents résolus">✓ Résolu ›</span>
                 {% elif row.status == 'unresolved' %}
                   <span class="badge badge-warn unres-click" data-esc="{{ row.escalade }}" role="button" tabindex="0"
                         title="Cliquer pour voir le détail des incidents non résolus">⚠ {{ row.unresolved }} Non résolu ›</span>
@@ -949,6 +997,7 @@
 </script>
 
 <script src="{% static 'reports/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'reports/leaflet/leaflet.markercluster.js' %}"></script>
 <script src="{% static 'reports/togo_geo.js' %}"></script>
 <script>
 (function(){
@@ -1085,11 +1134,15 @@
     }
     // Marqueurs : région active (ou toutes) ET statut activé dans la légende
     var ak = activeKey ? normKey(activeKey) : null;
+    var toAdd = [], toRemove = [];
     allMarkers.forEach(function(m){
       var show = (!ak || m.key === ak) && (m.ongoing ? legState.ongoing : legState.resolved);
-      if (show && !sitesLayer.hasLayer(m.marker)) { sitesLayer.addLayer(m.marker); }
-      else if (!show && sitesLayer.hasLayer(m.marker)) { sitesLayer.removeLayer(m.marker); }
+      if (show && !sitesLayer.hasLayer(m.marker)) { toAdd.push(m.marker); }
+      else if (!show && sitesLayer.hasLayer(m.marker)) { toRemove.push(m.marker); }
     });
+    // Opérations en masse (Leaflet.markercluster) : un seul re-clustering
+    if (toRemove.length) { sitesLayer.removeLayers ? sitesLayer.removeLayers(toRemove) : toRemove.forEach(function(mk){ sitesLayer.removeLayer(mk); }); }
+    if (toAdd.length)    { sitesLayer.addLayers    ? sitesLayer.addLayers(toAdd)       : toAdd.forEach(function(mk){ sitesLayer.addLayer(mk); }); }
   }
 
   // Calque de surbrillance de la région sélectionnée
@@ -1145,7 +1198,33 @@
   });
 
   // ── Sites impactés (période filtrée) : rouge = en cours, vert = résolu ──
-  var sitesLayer = L.layerGroup();
+  //    Regroupés en bulles (Leaflet.markercluster) : rouge si ≥1 en cours.
+  var markerByName = {};   // nom de site normalisé → marqueur (pont modal → carte)
+  function normSiteName(s) { return (s || '').toString().toUpperCase().trim(); }
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var sitesLayer = (typeof L.markerClusterGroup === 'function')
+    ? L.markerClusterGroup({
+        maxClusterRadius: 45,
+        showCoverageOnHover: false,
+        spiderfyOnMaxZoom: true,
+        disableClusteringAtZoom: 12,
+        animate: !reducedMotion,
+        iconCreateFunction: function (cluster) {
+          var children = cluster.getAllChildMarkers();
+          var nOngoing = 0;
+          children.forEach(function (c) { if (c.options.siteOngoing) nOngoing++; });
+          var n = children.length;
+          var size = n < 10 ? 34 : (n < 50 ? 42 : 50);
+          var inner = '' + n + (nOngoing ? '<span class="n-on">&nbsp;⚠' + nOngoing + '</span>' : '');
+          return L.divIcon({
+            className: '',
+            html: '<div class="site-cluster' + (nOngoing ? ' has-ongoing' : '') + '" title="' +
+                  n + ' site(s)' + (nOngoing ? ' dont ' + nOngoing + ' en cours' : '') + '">' + inner + '</div>',
+            iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+          });
+        }
+      })
+    : L.layerGroup();
   // Dessiner les sites en cours (rouges) au-dessus des résolus (verts)
   SITES_GEO.sort(function(a, b){ return (a.ongoing ? 1 : 0) - (b.ongoing ? 1 : 0); });
 
@@ -1172,11 +1251,11 @@
     var marker;
     if (s.ongoing) {
       // Marqueur DOM animé (pulse) pour les incidents en cours
-      marker = L.marker([s.lat, s.lon], { icon: pulseIcon });
+      marker = L.marker([s.lat, s.lon], { icon: pulseIcon, siteOngoing: true });
     } else {
       marker = L.circleMarker([s.lat, s.lon], {
         radius: 6, color: '#fff', weight: 1.5,
-        fillColor: col, fillOpacity: 0.92
+        fillColor: col, fillOpacity: 0.92, siteOngoing: false
       });
     }
     var extra = '';
@@ -1200,8 +1279,12 @@
       if (s.region) highlightRegion(normKey(s.region));
     });
     allMarkers.push({ marker: marker, key: normKey(s.region), ongoing: !!s.ongoing });
-    sitesLayer.addLayer(marker);
+    markerByName[normSiteName(s.name)] = marker;
   });
+  // Ajout en masse (un seul clustering initial)
+  var _initial = allMarkers.map(function(m){ return m.marker; });
+  if (sitesLayer.addLayers) { sitesLayer.addLayers(_initial); }
+  else { _initial.forEach(function(mk){ sitesLayer.addLayer(mk); }); }
   sitesLayer.addTo(map);
 
   // ── Légende interactive : compteurs + toggle en cours / résolu ─────────
@@ -1229,6 +1312,82 @@
   var lc = document.querySelector('#togo-map .leaflet-container');
   if (lc) lc.style.background = '#f8fafc';
 
+  // ── Pont modal « Non résolu » → carte : focus sur un ou plusieurs sites ──
+  function ensureAllVisible() {
+    legState.ongoing = true; legState.resolved = true;
+    ['legOngoing', 'legResolved'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('off');
+    });
+    if (activeKey) {
+      activeKey = null;
+      highlightLayer.clearLayers();
+      drawMask(TOGO_HOLES);
+      document.querySelectorAll('.sites-table tbody tr[data-region]').forEach(function(row){
+        row.classList.remove('row-highlight');
+      });
+    }
+    applyRegionFilter();
+  }
+  function scrollToMap() {
+    document.getElementById('togo-map').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  window.TogoMap = {
+    hasSite: function (name) { return !!markerByName[normSiteName(name)]; },
+    focusSite: function (name) {
+      var mk = markerByName[normSiteName(name)];
+      if (!mk) return false;
+      ensureAllVisible();
+      scrollToMap();
+      setTimeout(function () {
+        if (sitesLayer.zoomToShowLayer) {
+          sitesLayer.zoomToShowLayer(mk, function () { mk.openPopup(); });
+        } else {
+          map.flyTo(mk.getLatLng(), 13, { duration: 0.6 });
+          setTimeout(function () { mk.openPopup(); }, 700);
+        }
+      }, 350);
+      return true;
+    },
+    focusSites: function (names) {
+      var mks = (names || []).map(function (n) { return markerByName[normSiteName(n)]; }).filter(Boolean);
+      if (!mks.length) return false;
+      if (mks.length === 1) { return window.TogoMap.focusSite(names.filter(function(n){ return markerByName[normSiteName(n)]; })[0]); }
+      ensureAllVisible();
+      scrollToMap();
+      var b = L.latLngBounds(mks.map(function (m) { return m.getLatLng(); }));
+      setTimeout(function () {
+        map.flyToBounds(b, { padding: [40, 40], maxZoom: 12, duration: 0.7 });
+      }, 350);
+      return true;
+    }
+  };
+
+  // ── Réinitialisation : retour à la vue d'ensemble (bouton ⟲ sur la carte) ──
+  function resetMapView() {
+    map.closePopup();
+    ensureAllVisible();   // légende + région + marqueurs à l'état initial
+    map.flyToBounds([[6.05, -0.15], [11.15, 1.85]], { padding: [10, 10], duration: 0.6 });
+  }
+  var ResetControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      var div = L.DomUtil.create('div', 'leaflet-bar');
+      var btn = L.DomUtil.create('a', 'map-reset-btn', div);
+      btn.href = '#';
+      btn.title = 'Réinitialiser la carte (vue d\u2019ensemble)';
+      btn.setAttribute('role', 'button');
+      btn.setAttribute('aria-label', 'Réinitialiser la carte');
+      btn.innerHTML = '⟲';
+      L.DomEvent.on(btn, 'click', function (e) {
+        L.DomEvent.stop(e);
+        resetMapView();
+      });
+      return div;
+    }
+  });
+  map.addControl(new ResetControl());
+
   // Rafraîchit la carte après son affichage
   [0, 200, 600, 1200].forEach(function(delay){
     setTimeout(function(){ map.invalidateSize(); }, delay);
@@ -1246,13 +1405,15 @@
 </script>
 
 <script>
-/* ── Drill-down « Non résolu » : détail des incidents par escalade ── */
+/* ── Drill-down Statut : détail des incidents (résolus / non résolus) par escalade ── */
 (function () {
   var UNRES_DETAILS = {{ unresolved_details_json|default:"[]" }};
+  var RES_DETAILS   = {{ resolved_details_json|default:"[]" }};
   var overlay = document.getElementById('unresModal');
   var titleEl = document.getElementById('unresModalTitle');
   var bodyEl  = document.getElementById('unresModalBody');
   if (!overlay) return;
+  var modalEl = overlay.querySelector('.unres-modal');
   // Hors de .main-content : un transform CSS parent casserait position:fixed
   document.body.appendChild(overlay);
 
@@ -1262,22 +1423,70 @@
     });
   }
 
-  function openModal(escalade, count) {
-    var rows = UNRES_DETAILS.filter(function (d) {
+  // Soumission POST vers l'export serveur (Excel / PDF)
+  function submitExport(fmt, kind, escalade, rowsArr) {
+    var f = document.createElement('form');
+    f.method = 'POST';
+    f.action = '{% url "status_details_export" %}';
+    f.style.display = 'none';
+    var fields = {
+      csrfmiddlewaretoken: '{{ csrf_token }}',
+      fmt:      fmt,
+      kind:     kind,
+      escalade: escalade || '',
+      rows:     JSON.stringify(rowsArr)
+    };
+    Object.keys(fields).forEach(function (name) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = name; inp.value = fields[name];
+      f.appendChild(inp);
+    });
+    document.body.appendChild(f);
+    f.submit();
+    f.remove();
+  }
+
+  // ── Export global (boutons à côté du titre) : incidents non résolus uniquement ──
+  (function () {
+    var allRows = UNRES_DETAILS.slice();
+    if (!allRows.length) return;   // aucun détail → boutons masqués
+    document.querySelectorAll('.synth-dl-btn').forEach(function (btn) {
+      btn.style.display = '';
+      btn.addEventListener('click', function () {
+        submitExport(btn.dataset.fmt, 'all', '', allRows);
+      });
+    });
+  })();
+
+  function openModal(escalade, count, kind) {
+    var resolved = kind === 'resolved';
+    var data = resolved ? RES_DETAILS : UNRES_DETAILS;
+    var rows = data.filter(function (d) {
       return String(d.escalade || '').trim() === String(escalade).trim();
     });
-    titleEl.textContent = '⚠ ' + escalade + ' — ' + count + ' incident' + (count > 1 ? 's' : '') + ' non résolu' + (count > 1 ? 's' : '');
+    var n = resolved ? rows.length : count;
+    if (modalEl) modalEl.classList.toggle('resolved', resolved);
+    titleEl.textContent = resolved
+      ? '✓ ' + escalade + ' — ' + (n ? n + ' incident' + (n > 1 ? 's' : '') + ' résolu' + (n > 1 ? 's' : '') : 'incidents résolus')
+      : '⚠ ' + escalade + ' — ' + count + ' incident' + (count > 1 ? 's' : '') + ' non résolu' + (count > 1 ? 's' : '');
     if (rows.length === 0) {
       bodyEl.innerHTML =
         '<div class="unres-empty">Détail indisponible pour les rapports importés avant cette mise à jour.<br>' +
         'Relancez la période avec <strong>« MAJ forcée »</strong> pour récupérer le détail des incidents.</div>';
     } else {
+      var tm = window.TogoMap;
       var html = '<table class="unres-detail-table"><thead><tr>' +
         '<th>Site</th><th>Région</th><th>Alarm Time</th><th>Durée</th><th>Cause</th>' +
         '</tr></thead><tbody>';
+      var locatable = [];   // sites géolocalisés (dédupliqués) pour le bouton carte
       rows.forEach(function (d) {
+        var onMap = tm && tm.hasSite(d.site);
+        if (onMap && locatable.indexOf(d.site) === -1) locatable.push(d.site);
+        var siteCell = onMap
+          ? '<span class="unres-site-link" data-site="' + esc(d.site) + '" title="Voir sur la carte">📍 ' + esc(d.site) + '</span>'
+          : esc(d.site);
         html += '<tr>' +
-          '<td style="font-weight:700;color:#003087;">' + esc(d.site) + '</td>' +
+          '<td style="font-weight:700;color:#003087;">' + siteCell + '</td>' +
           '<td>' + esc(d.region) + '</td>' +
           '<td style="white-space:nowrap;">' + esc(d.alarm_time) + '</td>' +
           '<td style="white-space:nowrap;">' + esc(d.duration) + '</td>' +
@@ -1285,7 +1494,36 @@
         '</tr>';
       });
       html += '</tbody></table>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">';
+      if (locatable.length) {
+        html += '<button type="button" class="unres-map-btn" id="unresMapBtn">🗺 Voir sur la carte (' +
+                locatable.length + ' site' + (locatable.length > 1 ? 's' : '') + ')</button>';
+      }
+      html += '<button type="button" class="unres-map-btn unres-dl-btn" data-fmt="xlsx">⬇ Excel</button>' +
+              '<button type="button" class="unres-map-btn unres-dl-btn" data-fmt="pdf">⬇ PDF</button>';
+      html += '</div>';
       bodyEl.innerHTML = html;
+      // Clic sur un site → ferme le modal + zoom sur le site (popup ouvert)
+      bodyEl.querySelectorAll('.unres-site-link').forEach(function (el) {
+        el.addEventListener('click', function () {
+          closeModal();
+          window.TogoMap.focusSite(el.dataset.site);
+        });
+      });
+      // Bouton → ferme le modal + cadre l'ensemble des sites de l'escalade
+      var mapBtn = document.getElementById('unresMapBtn');
+      if (mapBtn) {
+        mapBtn.addEventListener('click', function () {
+          closeModal();
+          window.TogoMap.focusSites(locatable);
+        });
+      }
+      // Téléchargement Excel / PDF : POST vers l'export serveur
+      bodyEl.querySelectorAll('.unres-dl-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          submitExport(btn.dataset.fmt, kind, escalade, rows);
+        });
+      });
     }
     overlay.classList.add('open');
   }
@@ -1294,9 +1532,15 @@
 
   document.querySelectorAll('.unres-click').forEach(function (el) {
     var count = (el.textContent.match(/\d+/) || ['?'])[0];
-    el.addEventListener('click', function () { openModal(el.dataset.esc, count); });
+    el.addEventListener('click', function () { openModal(el.dataset.esc, count, 'unresolved'); });
     el.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.esc, count); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.esc, count, 'unresolved'); }
+    });
+  });
+  document.querySelectorAll('.res-click').forEach(function (el) {
+    el.addEventListener('click', function () { openModal(el.dataset.esc, 0, 'resolved'); });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.esc, 0, 'resolved'); }
     });
   });
   document.getElementById('unresModalClose').addEventListener('click', closeModal);

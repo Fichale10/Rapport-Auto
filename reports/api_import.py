@@ -397,6 +397,7 @@ def run_import(
     unresolved = 0
     unresolved_sites: list[str] = []
     unresolved_details: list[dict] = []
+    resolved_details: list[dict] = []
     if "Status" in df_synth.columns:
         _open_mask = df_synth["Status"].astype(str).str.upper() == "OUVERT"
         unresolved = int(_open_mask.sum())
@@ -413,18 +414,24 @@ def run_import(
                 v = "" if v is None else str(v).strip()
                 return "" if v.lower() in ("nan", "nat") else v
 
+            def _detail_row(row):
+                return {
+                    "site":       _cell(row, _site_col_open),
+                    "escalade":   _cell(row, "Escalade"),
+                    "region":     _cell(row, _reg_col_open),
+                    "alarm_time": _cell(row, "Alarm Time"),
+                    "duration":   _cell(row, "Duration"),
+                    "cause":      _cell(row, _cause_col_open),
+                }
+
             for _, _orow in df_synth.loc[_open_mask].iterrows():
-                unresolved_details.append({
-                    "site":       _cell(_orow, _site_col_open),
-                    "escalade":   _cell(_orow, "Escalade"),
-                    "region":     _cell(_orow, _reg_col_open),
-                    "alarm_time": _cell(_orow, "Alarm Time"),
-                    "duration":   _cell(_orow, "Duration"),
-                    "cause":      _cell(_orow, _cause_col_open),
-                })
+                unresolved_details.append(_detail_row(_orow))
+            for _, _crow in df_synth.loc[~_open_mask].iterrows():
+                resolved_details.append(_detail_row(_crow))
     report.unresolved_count = unresolved
     report.unresolved_sites_json = unresolved_sites
     report.unresolved_details_json = unresolved_details
+    report.resolved_details_json = resolved_details
 
     # total_duration_sec = outage total (avec doublons) depuis df_detail
     report.total_duration_sec = int(dur_detail.sum()) if len(dur_detail) else 0

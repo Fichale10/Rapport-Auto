@@ -116,6 +116,8 @@ class UploadedReport(models.Model):
     # Détail des incidents NON résolus (drill-down du Statut dans la Synthèse) :
     # [{"site", "escalade", "region", "alarm_time", "duration", "cause"}, …]
     unresolved_details_json    = models.JSONField(default=list, blank=True)
+    # Détail des incidents RÉSOLUS (même structure, drill-down « ✓ Résolu »)
+    resolved_details_json      = models.JSONField(default=list, blank=True)
 
     SOURCE_EXCEL = 'excel'
     SOURCE_API   = 'api'

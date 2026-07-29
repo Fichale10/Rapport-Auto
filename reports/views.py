@@ -748,6 +748,21 @@ def home(request):
         'mttr_sec': 0, 'unresolved': 0, 'has_data': False,
     })
 
+    # ── Réconciliation des statuts : un incident « OUVERT » dans un rapport de
+    # la période peut avoir été clôturé depuis. Les fenêtres API se chevauchent :
+    # si le même incident (site + alarm time) apparaît comme résolu dans
+    # N'IMPORTE QUEL rapport, on le reclasse en résolu.
+    def _res_key(d):
+        return (str(d.get('site', '')).strip().upper(),
+                str(d.get('alarm_time', '')).strip())
+
+    _closed_keys = set()
+    for _rdetails in UploadedReport.objects.exclude(resolved_details_json=[]) \
+                                           .values_list('resolved_details_json', flat=True):
+        for _d in _rdetails or []:
+            if isinstance(_d, dict) and str(_d.get('site', '')).strip():
+                _closed_keys.add(_res_key(_d))
+
     def _hms_to_sec(s):
         try:
             parts = str(s).split(':')
@@ -783,6 +798,14 @@ def home(request):
                     esc_data[esc]['unresolved'] += int(status.split()[0])
                 except Exception:
                     esc_data[esc]['unresolved'] += 1
+
+    # Retire du compteur « non résolu » les incidents clôturés entre temps
+    for r in synth_qs:
+        for _d in (r.unresolved_details_json or []):
+            if isinstance(_d, dict) and _res_key(_d) in _closed_keys:
+                _esc = str(_d.get('escalade', '')).strip()
+                if _esc in esc_data and esc_data[_esc]['unresolved'] > 0:
+                    esc_data[_esc]['unresolved'] -= 1
 
     synth_rows = []
     total_inc = total_duree = total_outage = 0
@@ -893,17 +916,37 @@ def home(request):
     region_impacted_sets = defaultdict(set)
     unresolved_site_names = set()
     unresolved_details = []
+    resolved_details = []
+    _seen_unres, _seen_res = set(), set()
     site_outage_sec = defaultdict(float)   # outage cumulé par site (période)
     site_main_cause = {}                   # cause principale par site (période)
     for r in synth_qs:
         for region, sites in (r.region_sites_json or {}).items():
             if isinstance(sites, list):
                 region_impacted_sets[region].update(sites)
-        for _s in (r.unresolved_sites_json or []):
-            unresolved_site_names.add(str(_s).strip())
-        for _d in (r.unresolved_details_json or []):
-            if isinstance(_d, dict):
+        # Détails non résolus, réconciliés avec les clôtures survenues depuis
+        _details = [d for d in (r.unresolved_details_json or []) if isinstance(d, dict)]
+        for _d in _details:
+            _k = _res_key(_d)
+            if _k in _closed_keys:
+                # Clôturé entre temps → bascule dans le détail des résolus
+                if _k not in _seen_res:
+                    _seen_res.add(_k)
+                    resolved_details.append(_d)
+            elif _k not in _seen_unres:
+                _seen_unres.add(_k)
                 unresolved_details.append(_d)
+                unresolved_site_names.add(str(_d.get('site', '')).strip())
+        if not _details:
+            # Rapports anciens sans détail : impossible de réconcilier → tel quel
+            for _s in (r.unresolved_sites_json or []):
+                unresolved_site_names.add(str(_s).strip())
+        for _d in (r.resolved_details_json or []):
+            if isinstance(_d, dict):
+                _k = _res_key(_d)
+                if _k not in _seen_res:
+                    _seen_res.add(_k)
+                    resolved_details.append(_d)
         for _s, _sec in (r.site_duration_json or {}).items():
             try:
                 site_outage_sec[str(_s).strip()] += float(_sec or 0)
@@ -998,7 +1041,143 @@ def home(request):
         'statut_sites':         statut_sites,
         'sites_geo_json':       mark_safe(json.dumps(sites_geo)),
         'unresolved_details_json': mark_safe(json.dumps(unresolved_details)),
+        'resolved_details_json':   mark_safe(json.dumps(resolved_details)),
     })
+
+
+def status_details_export(request):
+    """Export Excel / PDF du détail des incidents (modal Statut de la Synthèse).
+
+    Reçoit en POST les lignes affichées dans le modal (site, région, alarm time,
+    durée, cause), le type (resolved / unresolved), l'escalade et le format.
+    """
+    from django.http import HttpResponse, HttpResponseBadRequest
+
+    if request.method != 'POST':
+        raise Http404
+
+    fmt      = request.POST.get('fmt', 'xlsx')
+    kind     = request.POST.get('kind', 'unresolved')
+    escalade = (request.POST.get('escalade') or '').strip()[:80]
+    resolved = kind == 'resolved'
+    is_all   = kind == 'all'
+
+    try:
+        raw_rows = json.loads(request.POST.get('rows') or '[]')
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest('rows invalide')
+    if not isinstance(raw_rows, list):
+        return HttpResponseBadRequest('rows invalide')
+
+    if is_all:
+        fields  = ('site', 'escalade', 'region', 'alarm_time', 'duration', 'cause')
+        headers = ['Site', 'Escalade', 'Région', 'Alarm Time', 'Durée', 'Cause']
+    else:
+        fields  = ('site', 'region', 'alarm_time', 'duration', 'cause')
+        headers = ['Site', 'Région', 'Alarm Time', 'Durée', 'Cause']
+    rows = [
+        {k: str(r.get(k, '') or '').strip() for k in fields}
+        for r in raw_rows[:2000] if isinstance(r, dict)
+    ]
+
+    if is_all:
+        title = f"Incidents non résolus — {len(rows)} incident{'s' if len(rows) > 1 else ''} (toutes escalades)"
+        fname = f"incidents_non_resolus_{date.today():%Y-%m-%d}"
+    else:
+        statut_label = 'résolus' if resolved else 'non résolus'
+        title = f"{escalade} — {len(rows)} incident{'s' if len(rows) > 1 else ''} {statut_label}"
+        slug  = re.sub(r'[^A-Za-z0-9]+', '_', escalade).strip('_') or 'escalade'
+        fname = f"incidents_{'resolus' if resolved else 'non_resolus'}_{slug}_{date.today():%Y-%m-%d}"
+
+    if fmt == 'xlsx':
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Incidents'
+
+        accent = '166534' if resolved else 'B7791F'
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        c = ws.cell(row=1, column=1, value=title)
+        c.font = Font(bold=True, size=13, color=accent)
+        c.alignment = Alignment(horizontal='left', vertical='center')
+
+        head_fill = PatternFill('solid', fgColor='003087')
+        for col, h in enumerate(headers, start=1):
+            c = ws.cell(row=2, column=col, value=h)
+            c.font = Font(bold=True, color='FFFFFF')
+            c.fill = head_fill
+            c.alignment = Alignment(horizontal='center', vertical='center')
+
+        for i, r in enumerate(rows, start=3):
+            for col, key in enumerate(fields, start=1):
+                ws.cell(row=i, column=col, value=r[key])
+
+        widths = (28, 20, 14, 20, 12, 55) if is_all else (28, 14, 20, 12, 55)
+        for col, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(col)].width = width
+        ws.freeze_panes = 'A3'
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = f'attachment; filename="{fname}.xlsx"'
+        return resp
+
+    if fmt == 'pdf':
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=landscape(A4),
+            leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=12 * mm,
+            title=title)
+
+        styles  = getSampleStyleSheet()
+        accent  = colors.HexColor('#166534') if resolved else colors.HexColor('#b7791f')
+        h_style = ParagraphStyle('t', parent=styles['Title'], fontSize=15, textColor=accent,
+                                 alignment=0, spaceAfter=4)
+        cell    = ParagraphStyle('c', parent=styles['Normal'], fontSize=8.5, leading=11)
+
+        data = [headers]
+        for r in rows:
+            data.append([Paragraph(r[k], cell) for k in fields])
+
+        col_widths = ([48 * mm, 28 * mm, 24 * mm, 34 * mm, 20 * mm, 108 * mm]
+                      if is_all else
+                      [55 * mm, 30 * mm, 38 * mm, 24 * mm, 115 * mm])
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#003087')),
+            ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+            ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE',      (0, 0), (-1, 0), 9),
+            ('ALIGN',         (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID',          (0, 0), (-1, -1), 0.4, colors.HexColor('#c9d4e8')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f7fb')]),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        doc.build([Paragraph(title, h_style),
+                   Paragraph(f"Généré le {date.today():%d/%m/%Y}", styles['Normal']),
+                   Spacer(1, 6), table])
+        buf.seek(0)
+        resp = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{fname}.pdf"'
+        return resp
+
+    return HttpResponseBadRequest('format inconnu')
 
 
 @gestionnaire_required
@@ -1224,6 +1403,7 @@ def process_report(request, pk):
     _site_col_open = next((c for c in ('Site Name', 'Site name', 'SITE NAME') if c in df_dedup.columns), None)
     _unresolved_sites = []
     _unresolved_details = []
+    _resolved_details = []
     if _site_col_open and len(df_dedup) > 0:
         if 'Status' in df_dedup.columns:
             _open_mask = df_dedup['Status'].astype(str).str.upper() == 'OUVERT'
@@ -1243,17 +1423,23 @@ def process_report(request, pk):
                 v = '' if v is None else str(v).strip()
                 return '' if v.lower() in ('nan', 'nat') else v
 
+            def _detail_row(row):
+                return {
+                    'site':       _open_cell(row, _site_col_open),
+                    'escalade':   _open_cell(row, 'Escalade'),
+                    'region':     _open_cell(row, _reg_col_open),
+                    'alarm_time': _open_cell(row, 'Alarm Time'),
+                    'duration':   _open_cell(row, 'Duration'),
+                    'cause':      _open_cell(row, _cause_col_open),
+                }
+
             for _, _orow in df_dedup.loc[_open_mask].iterrows():
-                _unresolved_details.append({
-                    'site':       _open_cell(_orow, _site_col_open),
-                    'escalade':   _open_cell(_orow, 'Escalade'),
-                    'region':     _open_cell(_orow, _reg_col_open),
-                    'alarm_time': _open_cell(_orow, 'Alarm Time'),
-                    'duration':   _open_cell(_orow, 'Duration'),
-                    'cause':      _open_cell(_orow, _cause_col_open),
-                })
+                _unresolved_details.append(_detail_row(_orow))
+            for _, _crow in df_dedup.loc[~_open_mask].iterrows():
+                _resolved_details.append(_detail_row(_crow))
     report.unresolved_sites_json = _unresolved_sites
     report.unresolved_details_json = _unresolved_details
+    report.resolved_details_json = _resolved_details
 
     def _parse_duration(x):
         try:

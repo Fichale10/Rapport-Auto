@@ -5,6 +5,7 @@ from . import views  # noqa
 
 urlpatterns = [
     path('',                                      login_required(views.home),           name='home'),
+    path('status-details/export/',                login_required(views.status_details_export), name='status_details_export'),
     path('upload/',                               login_required(views.upload),          name='upload'),
     path('traitement/<slug:platform>/',           login_required(views.plateforme_traitement), name='plateforme_traitement'),
     path('traitement/<slug:platform>/api/',       login_required(views.plateforme_api_fetch),  name='plateforme_api_fetch'),
