@@ -4888,6 +4888,10 @@ def reporting(request):
 
         nb_excel = len(cfg.get('excel_reports', []))
         nb_pptx  = len(cfg.get('pptx_reports', []))
+        nb_tools = len(cfg.get('tool_reports', []))
+
+        total_inc = agg['total'] or 0
+        outage_h  = round((agg['outage'] or 0) / 3600, 1)
 
         platforms_ctx.append({
             'key':          key,
@@ -4895,11 +4899,13 @@ def reporting(request):
             'icon':         cfg['icon'],
             'color':        cfg['color'],
             'color2':       cfg['color2'],
-            'total':        agg['total'] or 0,
-            'outage_h':     round((agg['outage'] or 0) / 3600, 1),
+            'total':        total_inc,
+            'outage_h':     outage_h,
+            'mttr_h':       round(outage_h / total_inc, 1) if total_inc else 0,
             'dernier_mois': dernier_mois,
             'nb_excel':     nb_excel,
             'nb_pptx':      nb_pptx,
+            'nb_tools':     nb_tools,
         })
 
     return render(request, 'reports/reporting.html', {

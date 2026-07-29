@@ -417,8 +417,8 @@
           </div>
         </div>
       </div>
-      {% if p.nb_excel or p.nb_pptx %}
-      <div class="plat-count-pill">{{ p.nb_excel|add:p.nb_pptx }} rapports</div>
+      {% if p.nb_excel or p.nb_pptx or p.nb_tools %}
+      <div class="plat-count-pill">{{ p.nb_excel|add:p.nb_pptx|add:p.nb_tools }} rapport{% if p.nb_excel|add:p.nb_pptx|add:p.nb_tools > 1 %}s{% endif %}</div>
       {% endif %}
     </div>
 
@@ -433,21 +433,24 @@
         <div class="plat-stat-lbl">H. outage</div>
       </div>
       <div class="plat-stat">
-        <div class="plat-stat-val" style="color:{{ p.color }}">{{ p.nb_excel }}</div>
-        <div class="plat-stat-lbl">Excel</div>
+        <div class="plat-stat-val" style="color:{{ p.color }}">{{ p.mttr_h }}</div>
+        <div class="plat-stat-lbl">MTTR (h)</div>
       </div>
     </div>
 
     <!-- Badges -->
     <div class="plat-badges">
       {% if p.nb_excel %}
-      <span class="plat-badge excel">📊 {{ p.nb_excel }} rapport{% if p.nb_excel > 1 %}s{% endif %} Excel</span>
+      <span class="plat-badge excel">📊 {{ p.nb_excel }} modèle{% if p.nb_excel > 1 %}s{% endif %} Excel</span>
       {% endif %}
       {% if p.nb_pptx %}
       <span class="plat-badge pptx">🎯 {{ p.nb_pptx }} PowerPoint</span>
       {% endif %}
-      {% if not p.nb_excel and not p.nb_pptx %}
-      <span class="plat-badge empty">Aucun rapport généré</span>
+      {% if p.nb_tools %}
+      <span class="plat-badge excel">🛠 {{ p.nb_tools }} outil{% if p.nb_tools > 1 %}s{% endif %}</span>
+      {% endif %}
+      {% if not p.nb_excel and not p.nb_pptx and not p.nb_tools %}
+      <span class="plat-badge empty">Aucun rapport disponible</span>
       {% endif %}
     </div>
 
