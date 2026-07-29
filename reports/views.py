@@ -339,10 +339,18 @@ def _platform_summary_cards(user):
             )
         _agg  = _qs.aggregate(total=_Spf('total_incidents'), unres=_Spf('unresolved_count'))
         _last = _qs.order_by('-date_rapport').values('date_rapport').first()
+        _last_date = _last['date_rapport'] if _last else None
+        if _last_date:
+            _age = (_td - _last_date).days
+            _fresh_state = 'ok' if _age <= 2 else ('warn' if _age <= 7 else 'old')
+        else:
+            _age, _fresh_state = None, ''
         return {
             'total':      _agg['total'] or 0,
             'unresolved': _agg['unres'] or 0,
-            'last_date':  _last['date_rapport'] if _last else None,
+            'last_date':  _last_date,
+            'days_old':   _age,
+            'freshness':  _fresh_state,
         }
 
     platform_cards = [
@@ -360,6 +368,8 @@ def _platform_summary_cards(user):
         'pf_date_from':        _first['date_rapport'] if _first else None,
         'pf_date_to':          _last['date_rapport'] if _last else None,
         'pf_last_update':      _fresh['uploaded_at'] if _fresh else None,
+        'pf_total_month':      sum(c['total'] for c in platform_cards),
+        'pf_unres_month':      sum(c['unresolved'] for c in platform_cards),
     }
 
 
@@ -878,11 +888,30 @@ def home(request):
     top3_max = top3_escalades[0]['inc_count'] if top3_escalades else 1
 
     # ── Statut Sites par Région ────────────────────────────────────────────
+    # Dynamique avec le filtre de la page : on n'agrège que les rapports de la
+    # période sélectionnée (mêmes rapports que la Synthèse par Escalade)
     region_impacted_sets = defaultdict(set)
-    for r in all_reports:
+    unresolved_site_names = set()
+    unresolved_details = []
+    site_outage_sec = defaultdict(float)   # outage cumulé par site (période)
+    site_main_cause = {}                   # cause principale par site (période)
+    for r in synth_qs:
         for region, sites in (r.region_sites_json or {}).items():
             if isinstance(sites, list):
                 region_impacted_sets[region].update(sites)
+        for _s in (r.unresolved_sites_json or []):
+            unresolved_site_names.add(str(_s).strip())
+        for _d in (r.unresolved_details_json or []):
+            if isinstance(_d, dict):
+                unresolved_details.append(_d)
+        for _s, _sec in (r.site_duration_json or {}).items():
+            try:
+                site_outage_sec[str(_s).strip()] += float(_sec or 0)
+            except (TypeError, ValueError):
+                pass
+        for _s, _c in (r.site_top_cause_json or {}).items():
+            if _c:
+                site_main_cause.setdefault(str(_s).strip(), str(_c))
 
     statut_sites = []
     for key, label, total in REGION_TOTAL_SITES:
@@ -915,10 +944,15 @@ def home(request):
 
     sites_geo = [
         {
-            'name':   s.site_name,
-            'lat':    s.latitude,
-            'lon':    s.longitude,
-            'region': s.region,
+            'name':    s.site_name,
+            'lat':     s.latitude,
+            'lon':     s.longitude,
+            'region':  s.region,
+            # True = incident en cours (non résolu) → rouge ; False = résolu → vert
+            'ongoing': s.site_name in unresolved_site_names,
+            # Enrichissement popup : outage cumulé + cause principale (période)
+            'outage_sec': int(site_outage_sec.get(s.site_name, 0)),
+            'cause':      site_main_cause.get(s.site_name, ''),
         }
         for s in Site.objects.exclude(latitude__isnull=True).exclude(longitude__isnull=True)
         if s.site_name in impacted_names
@@ -963,6 +997,7 @@ def home(request):
         'last_report':          last_report,
         'statut_sites':         statut_sites,
         'sites_geo_json':       mark_safe(json.dumps(sites_geo)),
+        'unresolved_details_json': mark_safe(json.dumps(unresolved_details)),
     })
 
 
@@ -1184,6 +1219,41 @@ def process_report(request, pk):
             except (ValueError, IndexError):
                 pass
     report.unresolved_count = unresolved
+
+    # Sites avec au moins un incident non résolu (pour la carte du Togo)
+    _site_col_open = next((c for c in ('Site Name', 'Site name', 'SITE NAME') if c in df_dedup.columns), None)
+    _unresolved_sites = []
+    _unresolved_details = []
+    if _site_col_open and len(df_dedup) > 0:
+        if 'Status' in df_dedup.columns:
+            _open_mask = df_dedup['Status'].astype(str).str.upper() == 'OUVERT'
+        elif 'Cancel Time' in df_dedup.columns:
+            _open_mask = df_dedup['Cancel Time'].isna()
+        else:
+            _open_mask = None
+        if _open_mask is not None:
+            _unresolved_sites = sorted(
+                df_dedup.loc[_open_mask, _site_col_open].dropna().astype(str).str.strip().unique().tolist()
+            )
+            _reg_col_open   = next((c for c in ('Région', 'Region', 'REGION') if c in df_dedup.columns), None)
+            _cause_col_open = next((c for c in ('Cause', 'Root Cause') if c in df_dedup.columns), None)
+
+            def _open_cell(row, col):
+                v = row.get(col, '') if col else ''
+                v = '' if v is None else str(v).strip()
+                return '' if v.lower() in ('nan', 'nat') else v
+
+            for _, _orow in df_dedup.loc[_open_mask].iterrows():
+                _unresolved_details.append({
+                    'site':       _open_cell(_orow, _site_col_open),
+                    'escalade':   _open_cell(_orow, 'Escalade'),
+                    'region':     _open_cell(_orow, _reg_col_open),
+                    'alarm_time': _open_cell(_orow, 'Alarm Time'),
+                    'duration':   _open_cell(_orow, 'Duration'),
+                    'cause':      _open_cell(_orow, _cause_col_open),
+                })
+    report.unresolved_sites_json = _unresolved_sites
+    report.unresolved_details_json = _unresolved_details
 
     def _parse_duration(x):
         try:
@@ -4649,6 +4719,9 @@ def reporting(request):
     return render(request, 'reports/reporting.html', {
         'platforms': platforms_ctx,
         'rj_default_date': (date.today() - timedelta(days=1)).isoformat(),
+        'glob_incidents': sum(p['total'] for p in platforms_ctx),
+        'glob_outage_h':  round(sum(p['outage_h'] for p in platforms_ctx), 1),
+        'glob_reports':   sum(p['nb_excel'] + p['nb_pptx'] for p in platforms_ctx),
         **_platform_summary_cards(request.user),
     })
 

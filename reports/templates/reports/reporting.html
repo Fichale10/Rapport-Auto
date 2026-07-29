@@ -5,8 +5,10 @@
 {% block breadcrumb %}Reporting{% endblock %}
 
 {% block extra_css %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
   :root { --blue:#003087; --yellow:#FFC72C; }
 
   /* ── Banner ── */
@@ -155,36 +157,43 @@
     transform: translateY(-1px);
   }
 
-  /* ── Indicateur de rotation ── */
-  .shuffle-hint {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    margin-top: 18px; font-size: 11px; color: #9aa3ba; font-weight: 600;
-    letter-spacing: .4px; opacity: .75; transition: opacity .3s;
-    user-select: none;
+  /* ── Dossier GDI (Rapport journalier + Résumé par plateforme) ── */
+  .gdi-folder { margin-bottom: 28px; }
+  .gdi-tab {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, #ffd23f 0%, #ffb400 100%);
+    color: #4a3800; cursor: pointer; user-select: none;
+    border: 1px solid #e6a800; border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    padding: 10px 22px 9px; position: relative; z-index: 2;
+    box-shadow: 0 -2px 10px rgba(0,48,135,.06);
+    transition: filter .15s;
   }
-  .platform-grid:hover ~ .shuffle-hint { opacity: .25; }
-  .shuffle-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #FFC72C;
-    animation: shDot 1.6s ease-in-out infinite;
+  .gdi-tab:hover { filter: brightness(1.05); }
+  .gdi-tab-ico { font-size: 20px; line-height: 1; }
+  .gdi-tab-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 24px;
+    letter-spacing: 2px; line-height: 1; color: #3d2f00;
   }
-  @keyframes shDot {
-    0%,100% { opacity:.35; transform:scale(1); }
-    50%      { opacity:1;   transform:scale(1.35); }
+  .gdi-tab-hint { font-size: 11px; font-weight: 700; color: #7a6000; }
+  .gdi-tab-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.55); border: 1px solid rgba(122,96,0,.25);
+    border-radius: 20px; padding: 3px 11px;
+    font-size: 11.5px; font-weight: 800; color: #3d2f00; white-space: nowrap;
   }
-  .shuffle-pause-ico { font-size: 13px; opacity: 0; transition: opacity .2s; }
-  .platform-grid:hover ~ .shuffle-hint .shuffle-pause-ico { opacity: 1; }
-  .platform-grid:hover ~ .shuffle-hint .shuffle-dot       { animation-play-state: paused; opacity: .35; }
-
-  /* Empêche le hover-lift pendant l'animation */
-  .platform-grid.is-animating .plat-card { pointer-events: none; }
-
-  /* ── Conteneur GDI (Rapport journalier + Résumé par plateforme) ── */
+  .gdi-tab-badge .warn { color: #c53030; }
+  .gdi-tab-chev { font-size: 12px; color: #7a6000; transition: transform .25s; }
+  .gdi-folder.open .gdi-tab-chev { transform: rotate(90deg); }
   .gdi-card {
-    background: #fff; border-radius: 20px;
+    background: #fff; border-radius: 0 20px 20px 20px;
     box-shadow: 0 2px 16px rgba(0,48,135,.08);
-    border: 1px solid rgba(0,0,0,.04);
-    padding: 20px 24px; margin-bottom: 28px;
+    border: 1px solid #e6a800;
+    padding: 20px 24px; margin-top: -1px;
+    display: none;
   }
+  .gdi-folder.open .gdi-card { display: block; animation: gdiOpen .25s ease; }
+  @keyframes gdiOpen { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
   .gdi-head {
     display: flex; align-items: center; justify-content: space-between;
     flex-wrap: wrap; gap: 12px;
@@ -228,6 +237,11 @@
   .platform-card-label { font-size: 12px; font-weight: 800; color: var(--pf-color); text-transform: uppercase; letter-spacing: .5px; }
   .platform-card-total { font-family: 'Bebas Neue', sans-serif; font-size: 34px; color: #111; letter-spacing: 1px; line-height: 1; }
   .platform-card-sub { font-size: 11px; color: #8896b3; margin-top: 5px; }
+  .pf-age { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+  .pf-age-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .pf-age.ok   { color: #276749; } .pf-age.ok   .pf-age-dot { background: #48bb78; }
+  .pf-age.warn { color: #b7791f; } .pf-age.warn .pf-age-dot { background: #f6ad55; }
+  .pf-age.old  { color: #c53030; } .pf-age.old  .pf-age-dot { background: #f56565; }
   .platform-card-badge {
     display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
     font-size: 11px; font-weight: 700; color: #c53030;
@@ -244,6 +258,28 @@
   }
   @media(max-width:1100px){ .platform-cards { grid-template-columns: repeat(2,1fr); } }
   @media(max-width:600px) { .platform-cards { grid-template-columns: 1fr 1fr; gap:10px; } }
+
+  /* ── Recherche rapide ── */
+  .plat-search-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .plat-search {
+    flex: 1; max-width: 420px;
+    padding: 11px 16px; border-radius: 12px;
+    border: 1.5px solid #e0e7f5; background: #fff;
+    font-size: 13px; color: #223; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .plat-search:focus { border-color: #003087; box-shadow: 0 0 0 3px rgba(0,48,135,.10); }
+  .plat-search-count { font-size: 11.5px; color: #9aa3ba; font-weight: 600; }
+  .plat-card.search-hide { display: none; }
+
+  /* ── Accessibilité : réduire les animations ── */
+  @media (prefers-reduced-motion: reduce) {
+    .plat-card, .platform-card, .btn-rj, .plat-footer-btn { transition: none !important; }
+    .plat-card:hover, .platform-card:hover { transform: none; }
+    .gdi-folder.open .gdi-card { animation: none; }
+  }
 </style>
 {% endblock %}
 
@@ -264,23 +300,33 @@
       <div class="rpt-gs-num">{{ platforms|length }}</div>
       <div class="rpt-gs-lbl">Plateformes</div>
     </div>
-    {% for p in platforms %}{% if forloop.first %}
     <div class="rpt-gs">
-      <div class="rpt-gs-num yellow">{{ p.total }}</div>
-      <div class="rpt-gs-lbl">Inc. {{ p.label }}</div>
+      <div class="rpt-gs-num yellow">{{ glob_incidents }}</div>
+      <div class="rpt-gs-lbl">Incidents</div>
     </div>
     <div class="rpt-gs">
-      <div class="rpt-gs-num">{{ p.nb_excel }}</div>
+      <div class="rpt-gs-num">{{ glob_outage_h }}</div>
+      <div class="rpt-gs-lbl">H. outage</div>
+    </div>
+    <div class="rpt-gs">
+      <div class="rpt-gs-num">{{ glob_reports }}</div>
       <div class="rpt-gs-lbl">Rapports</div>
     </div>
-    {% endif %}{% endfor %}
   </div>
 </div>
 
-<!-- ── Conteneur GDI : Rapport journalier + Résumé par plateforme ── -->
-<div class="gdi-card">
+<!-- ── Dossier GDI : Rapport journalier + Résumé par plateforme ── -->
+<div class="gdi-folder" id="gdiFolder">
+  <div class="gdi-tab" id="gdiTab" title="Cliquez pour ouvrir / fermer le dossier GDI">
+    <span class="gdi-tab-ico" id="gdiTabIco">📁</span>
+    <span class="gdi-tab-title">GDI</span>
+    <span class="gdi-tab-hint">Rapport journalier · Résumé par plateforme</span>
+    <span class="gdi-tab-badge">{{ pf_total_month }} inc. ce mois{% if pf_unres_month %} · <span class="warn">⚠ {{ pf_unres_month }} non résolu{{ pf_unres_month|pluralize }}</span>{% endif %}</span>
+    <span class="gdi-tab-chev">▶</span>
+  </div>
+  <div class="gdi-card">
   <div class="gdi-head">
-    <div class="gdi-title">📋 GDI</div>
+    <div class="gdi-title">📋 Rapport journalier</div>
     <form method="get" action="{% url 'rapport_journalier_export' %}" id="rjForm"
           style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;"
           onsubmit="var b=this.querySelector('button');b.dataset.txt=b.textContent;b.textContent='⏳ Génération…';b.disabled=true;setTimeout(function(){b.textContent=b.dataset.txt;b.disabled=false;},25000);">
@@ -313,7 +359,10 @@
       </div>
       <div class="platform-card-total">{{ pf.total }}</div>
       <div class="platform-card-sub">
-        incidents ce mois{% if pf.last_date %} · données au {{ pf.last_date|date:"d/m" }}{% endif %}
+        incidents ce mois{% if pf.last_date %} ·
+        <span class="pf-age {{ pf.freshness }}"
+              title="Dernières données : il y a {{ pf.days_old }} jour{{ pf.days_old|pluralize }}">
+          <span class="pf-age-dot"></span>données au {{ pf.last_date|date:"d/m" }}</span>{% endif %}
       </div>
       {% if pf.total == 0 %}
         <div class="platform-card-empty">— Aucune donnée</div>
@@ -325,6 +374,31 @@
     </a>
     {% endfor %}
   </div>
+  </div><!-- /gdi-card -->
+</div><!-- /gdi-folder -->
+
+<script>
+(function () {
+  var folder = document.getElementById('gdiFolder');
+  var tab    = document.getElementById('gdiTab');
+  var ico    = document.getElementById('gdiTabIco');
+  function setIco() { ico.textContent = folder.classList.contains('open') ? '\uD83D\uDCC2' : '\uD83D\uDCC1'; }
+  tab.addEventListener('click', function () {
+    folder.classList.toggle('open');
+    setIco();
+    try { localStorage.setItem('gdiFolderOpen', folder.classList.contains('open') ? '1' : '0'); } catch (e) {}
+  });
+  try { if (localStorage.getItem('gdiFolderOpen') === '1') folder.classList.add('open'); } catch (e) {}
+  setIco();
+})();
+</script>
+
+<!-- Recherche rapide -->
+<div class="plat-search-bar">
+  <input type="search" id="platSearch" class="plat-search"
+         placeholder="🔍 Rechercher une plateforme… (Mobile, Fixe, Transmission…)"
+         autocomplete="off">
+  <span class="plat-search-count" id="platSearchCount"></span>
 </div>
 
 <!-- Grille des plateformes -->
@@ -389,82 +463,29 @@
   {% endfor %}
 </div>
 
-<!-- Indicateur rotation -->
-<div class="shuffle-hint" id="shuffleHint">
-  <span class="shuffle-dot"></span>
-  Rotation automatique
-  <span class="shuffle-pause-ico">⏸ Pause au survol</span>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
   var grid = document.getElementById('platformGrid');
-  if (!grid || grid.children.length < 2) return;
+  if (!grid) return;
 
-  var paused    = false;
-  var animating = false;
-  var DURATION  = 820;   // ms de l'animation FLIP
-  var INTERVAL  = 4000;  // ms entre chaque permutation
-
-  /* ── Rotation circulaire avec animation FLIP ── */
-  function rotateCards() {
-    if (paused || animating) return;
-    animating = true;
-    grid.classList.add('is-animating');
-
-    var cards = Array.from(grid.children);
-
-    /* FIRST : positions actuelles */
-    var first = new Map(cards.map(function (c) {
-      var r = c.getBoundingClientRect();
-      return [c, { left: r.left, top: r.top }];
-    }));
-
-    /* Permutation : la dernière carte passe en première position */
-    grid.insertBefore(cards[cards.length - 1], cards[0]);
-
-    /* LAST : nouvelles positions après le changement DOM */
-    var last = new Map(cards.map(function (c) {
-      var r = c.getBoundingClientRect();
-      return [c, { left: r.left, top: r.top }];
-    }));
-
-    /* INVERT : on replace chaque carte visuellement à son ancienne position */
-    cards.forEach(function (card) {
-      var f = first.get(card), l = last.get(card);
-      card.style.transition = 'none';
-      card.style.transform  = 'translate(' + (f.left - l.left) + 'px,' + (f.top - l.top) + 'px)';
-    });
-
-    /* Flush layout pour que le navigateur prenne en compte l'inversion */
-    grid.offsetHeight;
-
-    /* PLAY : animation vers la position finale (transform → 0) */
-    cards.forEach(function (card) {
-      card.style.transition = 'transform ' + DURATION + 'ms cubic-bezier(0.34,1.08,0.64,1)';
-      card.style.transform  = '';
-    });
-
-    /* Nettoyage après animation */
-    setTimeout(function () {
-      cards.forEach(function (card) {
-        card.style.transition = '';
-        card.style.transform  = '';
+  /* ── Recherche rapide ── */
+  var search = document.getElementById('platSearch');
+  var count  = document.getElementById('platSearchCount');
+  if (search) {
+    search.addEventListener('input', function () {
+      var q = search.value.trim().toLowerCase();
+      var visible = 0;
+      Array.from(grid.children).forEach(function (card) {
+        var hit = !q || card.textContent.toLowerCase().indexOf(q) !== -1;
+        card.classList.toggle('search-hide', !hit);
+        if (hit) visible++;
       });
-      grid.classList.remove('is-animating');
-      animating = false;
-    }, DURATION + 30);
+      count.textContent = q ? visible + ' / ' + grid.children.length : '';
+    });
   }
-
-  /* Pause au survol de la grille */
-  grid.addEventListener('mouseenter', function () { paused = true; });
-  grid.addEventListener('mouseleave', function () { paused = false; });
-
-  /* Lancement */
-  setInterval(rotateCards, INTERVAL);
 })();
 </script>
 {% endblock %}

@@ -257,6 +257,40 @@
   .synth-table td.num { text-align: center; }
   .synth-table tr:last-child td { border-bottom: none; }
   .synth-table tr:hover td { background: #fafbff; }
+
+  /* ── Drill-down statut non résolu ── */
+  .unres-click { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+  .unres-click:hover { box-shadow: 0 2px 8px rgba(229,62,62,.35); transform: translateY(-1px); }
+  .unres-modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(15,23,42,.5); align-items: center; justify-content: center;
+  }
+  .unres-modal-overlay.open { display: flex; }
+  .unres-modal {
+    background: #fff; border-radius: 14px; width: min(780px, 94vw);
+    max-height: 82vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 70px rgba(0,0,0,.3); overflow: hidden;
+  }
+  .unres-modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; border-bottom: 1px solid #f0f2f8; background: #fff8f0;
+  }
+  .unres-modal-title { font-size: 15px; font-weight: 700; color: #b7791f; }
+  .unres-modal-close {
+    border: none; background: none; font-size: 22px; line-height: 1;
+    color: #999; cursor: pointer; padding: 2px 8px; border-radius: 6px;
+  }
+  .unres-modal-close:hover { background: #f5f7fb; color: #333; }
+  .unres-modal-body { overflow-y: auto; padding: 6px 20px 18px; }
+  .unres-detail-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .unres-detail-table th {
+    text-align: left; font-size: 10.5px; font-weight: 700; color: #999;
+    text-transform: uppercase; letter-spacing: .5px; padding: 10px 10px 7px;
+    border-bottom: 2px solid #e8edf5; position: sticky; top: 0; background: #fff;
+  }
+  .unres-detail-table td { padding: 9px 10px; border-bottom: 1px solid #f5f7fb; color: #333; }
+  .unres-detail-table tr:hover td { background: #fffaf5; }
+  .unres-empty { padding: 26px 10px; text-align: center; color: #888; font-size: 13px; line-height: 1.6; }
   .synth-table tr.synth-total td {
     background: #e8f0ff; font-weight: 700; color: #003087;
     border-top: 2px solid #003087;
@@ -316,6 +350,33 @@
   .map-card { padding: 16px 20px 20px; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
   #togo-map { flex: 1 1 0; min-height: 420px; border-radius: 10px; overflow: hidden; z-index: 0; border: 1px solid #e8edf5; background: #f8fafc; }
   #togo-map .leaflet-container { background: #f8fafc; }
+
+  /* ── Légende carte interactive (toggle en cours / résolu) ── */
+  .map-leg {
+    cursor: pointer; user-select: none; padding: 3px 8px; border-radius: 14px;
+    transition: opacity .15s, background .15s;
+  }
+  .map-leg:hover { background: #f0f4ff; }
+  .map-leg.off { opacity: .35; text-decoration: line-through; }
+
+  /* ── Pulse sur les sites avec incident en cours ── */
+  .pulse-marker { position: relative; width: 14px; height: 14px; }
+  .pulse-marker .dot {
+    position: absolute; inset: 2px; border-radius: 50%;
+    background: #e53e3e; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #e53e3e;
+  }
+  .pulse-marker .ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: rgba(229,62,62,.45); animation: sitePulse 1.6s ease-out infinite;
+  }
+  @keyframes sitePulse {
+    0%   { transform: scale(.6); opacity: .9; }
+    70%  { transform: scale(2.4); opacity: 0; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-marker .ring { animation: none; display: none; }
+  }
   .sites-table tbody tr:not(.sites-total) { cursor: pointer; transition: background .12s; }
   .sites-table tbody tr.row-highlight td { background: #e8f0ff !important; }
   .empty { text-align: center; padding: 48px 20px; color: #bbb; font-size: 14px; }
@@ -708,7 +769,8 @@
                 {% if row.status == 'resolved' %}
                   <span class="badge badge-ok">✓ Résolu</span>
                 {% elif row.status == 'unresolved' %}
-                  <span class="badge badge-warn">⚠ {{ row.unresolved }} Non résolu</span>
+                  <span class="badge badge-warn unres-click" data-esc="{{ row.escalade }}" role="button" tabindex="0"
+                        title="Cliquer pour voir le détail des incidents non résolus">⚠ {{ row.unresolved }} Non résolu ›</span>
                 {% else %}
                   <span style="color:#ccc;font-size:12px;">N/A</span>
                 {% endif %}
@@ -720,6 +782,17 @@
       </div>
       <div style="margin-top:14px;text-align:right;">
         <a href="{% url 'history' %}" style="font-size:13px;color:#003087;font-weight:600;text-decoration:none;">Voir tout l'historique →</a>
+      </div>
+
+      <!-- Modal détail des incidents non résolus -->
+      <div class="unres-modal-overlay" id="unresModal">
+        <div class="unres-modal" role="dialog" aria-modal="true" aria-labelledby="unresModalTitle">
+          <div class="unres-modal-head">
+            <div class="unres-modal-title" id="unresModalTitle">⚠ Incidents non résolus</div>
+            <button class="unres-modal-close" id="unresModalClose" aria-label="Fermer">×</button>
+          </div>
+          <div class="unres-modal-body" id="unresModalBody"></div>
+        </div>
       </div>
       {% else %}
         <div class="empty">
@@ -772,7 +845,13 @@
     </div>
 
     <div class="card map-card">
-      <div class="sec-title">🗺️ Carte des régions</div>
+      <div class="sec-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>🗺️ Carte des régions</span>
+        <span style="display:flex;gap:6px;font-size:11.5px;font-weight:600;color:#6b7a99;">
+          <span class="map-leg" id="legOngoing" title="Cliquer pour afficher/masquer les sites avec incident en cours"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e53e3e;border:1.5px solid #fff;box-shadow:0 0 0 1px #e53e3e;margin-right:5px;vertical-align:middle;"></span>Incident en cours<span id="legOngoingCount"></span></span>
+          <span class="map-leg" id="legResolved" title="Cliquer pour afficher/masquer les sites résolus"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38a169;border:1.5px solid #fff;box-shadow:0 0 0 1px #38a169;margin-right:5px;vertical-align:middle;"></span>Résolu<span id="legResolvedCount"></span></span>
+        </span>
+      </div>
       <div id="togo-map"></div>
     </div>
   </div>
@@ -994,7 +1073,8 @@
 
   // Infra de filtrage : contour national + marqueurs par région
   var outlineLayer = null;   // contour de toutes les régions (assigné plus bas)
-  var allMarkers = [];       // [{ marker, key }]
+  var allMarkers = [];       // [{ marker, key, ongoing }]
+  var legState = { ongoing: true, resolved: true };   // toggles de la légende
 
   // Affiche/masque le contour et les marqueurs selon la région active
   function applyRegionFilter() {
@@ -1003,10 +1083,10 @@
       if (activeKey && map.hasLayer(outlineLayer)) { map.removeLayer(outlineLayer); }
       else if (!activeKey && !map.hasLayer(outlineLayer)) { outlineLayer.addTo(map); }
     }
-    // Marqueurs : seulement ceux de la région active (ou tous si aucune)
+    // Marqueurs : région active (ou toutes) ET statut activé dans la légende
     var ak = activeKey ? normKey(activeKey) : null;
     allMarkers.forEach(function(m){
-      var show = !ak || m.key === ak;
+      var show = (!ak || m.key === ak) && (m.ongoing ? legState.ongoing : legState.resolved);
       if (show && !sitesLayer.hasLayer(m.marker)) { sitesLayer.addLayer(m.marker); }
       else if (!show && sitesLayer.hasLayer(m.marker)) { sitesLayer.removeLayer(m.marker); }
     });
@@ -1064,19 +1144,53 @@
     });
   });
 
-  // ── Sites impactés uniquement ─────────────────────────────────────────
+  // ── Sites impactés (période filtrée) : rouge = en cours, vert = résolu ──
   var sitesLayer = L.layerGroup();
+  // Dessiner les sites en cours (rouges) au-dessus des résolus (verts)
+  SITES_GEO.sort(function(a, b){ return (a.ongoing ? 1 : 0) - (b.ongoing ? 1 : 0); });
+
+  function fmtOutage(sec) {
+    if (!sec || sec <= 0) return '';
+    var h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return h + 'h' + (m < 10 ? '0' : '') + m;
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var pulseIcon = L.divIcon({
+    className: '',
+    html: '<div class="pulse-marker"><div class="ring"></div><div class="dot"></div></div>',
+    iconSize: [14, 14], iconAnchor: [7, 7]
+  });
+
   SITES_GEO.forEach(function(s){
     if (typeof s.lat !== 'number' || typeof s.lon !== 'number') return;
-    var marker = L.circleMarker([s.lat, s.lon], {
-      radius: 6, color: '#fff', weight: 1.5,
-      fillColor: '#e53e3e', fillOpacity: 0.92
-    });
+    var col = s.ongoing ? '#e53e3e' : '#38a169';
+    var marker;
+    if (s.ongoing) {
+      // Marqueur DOM animé (pulse) pour les incidents en cours
+      marker = L.marker([s.lat, s.lon], { icon: pulseIcon });
+    } else {
+      marker = L.circleMarker([s.lat, s.lon], {
+        radius: 6, color: '#fff', weight: 1.5,
+        fillColor: col, fillOpacity: 0.92
+      });
+    }
+    var extra = '';
+    var out = fmtOutage(s.outage_sec);
+    if (out)     extra += '<div style="font-size:11px;color:#555;margin-top:3px;">⏱ Outage cumulé : <strong>' + out + '</strong></div>';
+    if (s.cause) extra += '<div style="font-size:11px;color:#555;margin-top:2px;">🔎 Cause principale : <strong>' + escHtml(s.cause) + '</strong></div>';
     marker.bindPopup(
-      '<div style="font-family:\'DM Sans\',sans-serif;min-width:130px;">' +
-        '<div style="font-size:12px;font-weight:700;color:#e53e3e;margin-bottom:4px;">⚠️ ' + s.name + '</div>' +
-        (s.region ? '<div style="font-size:11px;color:#888;">' + s.region + '</div>' : '') +
-        '<div style="font-size:11px;font-weight:700;color:#e53e3e;margin-top:4px;">Site impacté</div>' +
+      '<div style="font-family:\'DM Sans\',sans-serif;min-width:160px;">' +
+        '<div style="font-size:12px;font-weight:700;color:' + col + ';margin-bottom:4px;">' +
+          (s.ongoing ? '⚠️ ' : '✅ ') + escHtml(s.name) + '</div>' +
+        (s.region ? '<div style="font-size:11px;color:#888;">' + escHtml(s.region) + '</div>' : '') +
+        '<div style="font-size:11px;font-weight:700;color:' + col + ';margin-top:4px;">' +
+          (s.ongoing ? 'Incident en cours' : 'Incident(s) résolu(s)') + '</div>' +
+        extra +
       '</div>',
       { autoPan: true }
     );
@@ -1085,10 +1199,31 @@
       marker.openPopup();
       if (s.region) highlightRegion(normKey(s.region));
     });
-    allMarkers.push({ marker: marker, key: normKey(s.region) });
+    allMarkers.push({ marker: marker, key: normKey(s.region), ongoing: !!s.ongoing });
     sitesLayer.addLayer(marker);
   });
   sitesLayer.addTo(map);
+
+  // ── Légende interactive : compteurs + toggle en cours / résolu ─────────
+  (function(){
+    var nOn  = SITES_GEO.filter(function(s){ return s.ongoing; }).length;
+    var nOff = SITES_GEO.length - nOn;
+    var cOn  = document.getElementById('legOngoingCount');
+    var cOff = document.getElementById('legResolvedCount');
+    if (cOn)  cOn.textContent  = ' (' + nOn + ')';
+    if (cOff) cOff.textContent = ' (' + nOff + ')';
+    function bindLeg(id, key) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', function(){
+        legState[key] = !legState[key];
+        el.classList.toggle('off', !legState[key]);
+        applyRegionFilter();
+      });
+    }
+    bindLeg('legOngoing', 'ongoing');
+    bindLeg('legResolved', 'resolved');
+  })();
 
   // Fond blanc sur le conteneur Leaflet
   var lc = document.querySelector('#togo-map .leaflet-container');
@@ -1107,6 +1242,66 @@
     var mapEl = document.getElementById('togo-map');
     new ResizeObserver(function(){ map.invalidateSize(); }).observe(mapEl);
   }
+})();
+</script>
+
+<script>
+/* ── Drill-down « Non résolu » : détail des incidents par escalade ── */
+(function () {
+  var UNRES_DETAILS = {{ unresolved_details_json|default:"[]" }};
+  var overlay = document.getElementById('unresModal');
+  var titleEl = document.getElementById('unresModalTitle');
+  var bodyEl  = document.getElementById('unresModalBody');
+  if (!overlay) return;
+  // Hors de .main-content : un transform CSS parent casserait position:fixed
+  document.body.appendChild(overlay);
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function openModal(escalade, count) {
+    var rows = UNRES_DETAILS.filter(function (d) {
+      return String(d.escalade || '').trim() === String(escalade).trim();
+    });
+    titleEl.textContent = '⚠ ' + escalade + ' — ' + count + ' incident' + (count > 1 ? 's' : '') + ' non résolu' + (count > 1 ? 's' : '');
+    if (rows.length === 0) {
+      bodyEl.innerHTML =
+        '<div class="unres-empty">Détail indisponible pour les rapports importés avant cette mise à jour.<br>' +
+        'Relancez la période avec <strong>« MAJ forcée »</strong> pour récupérer le détail des incidents.</div>';
+    } else {
+      var html = '<table class="unres-detail-table"><thead><tr>' +
+        '<th>Site</th><th>Région</th><th>Alarm Time</th><th>Durée</th><th>Cause</th>' +
+        '</tr></thead><tbody>';
+      rows.forEach(function (d) {
+        html += '<tr>' +
+          '<td style="font-weight:700;color:#003087;">' + esc(d.site) + '</td>' +
+          '<td>' + esc(d.region) + '</td>' +
+          '<td style="white-space:nowrap;">' + esc(d.alarm_time) + '</td>' +
+          '<td style="white-space:nowrap;">' + esc(d.duration) + '</td>' +
+          '<td>' + esc(d.cause) + '</td>' +
+        '</tr>';
+      });
+      html += '</tbody></table>';
+      bodyEl.innerHTML = html;
+    }
+    overlay.classList.add('open');
+  }
+
+  function closeModal() { overlay.classList.remove('open'); }
+
+  document.querySelectorAll('.unres-click').forEach(function (el) {
+    var count = (el.textContent.match(/\d+/) || ['?'])[0];
+    el.addEventListener('click', function () { openModal(el.dataset.esc, count); });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(el.dataset.esc, count); }
+    });
+  });
+  document.getElementById('unresModalClose').addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
 })();
 </script>
 

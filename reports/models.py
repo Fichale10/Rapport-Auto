@@ -109,6 +109,13 @@ class UploadedReport(models.Model):
     transmission_stats_json    = models.JSONField(default=dict, blank=True)
     site_duration_json         = models.JSONField(default=dict, blank=True)
     site_top_cause_json        = models.JSONField(default=dict, blank=True)
+    # Sites ayant au moins un incident NON résolu (OUVERT) sur la période du
+    # rapport : ["SITE_A", "SITE_B", …] — utilisé pour colorer la carte du Togo
+    # (rouge = en cours, vert = résolu)
+    unresolved_sites_json      = models.JSONField(default=list, blank=True)
+    # Détail des incidents NON résolus (drill-down du Statut dans la Synthèse) :
+    # [{"site", "escalade", "region", "alarm_time", "duration", "cause"}, …]
+    unresolved_details_json    = models.JSONField(default=list, blank=True)
 
     SOURCE_EXCEL = 'excel'
     SOURCE_API   = 'api'
