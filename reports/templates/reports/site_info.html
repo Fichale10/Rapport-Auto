@@ -287,6 +287,49 @@
   .geo-popup-meta { font-size:11.5px; color:#9aa6c8; margin-bottom:6px; }
   .geo-popup-link { font-size:12px; font-weight:700; color:#8ab4ff; text-decoration:underline; }
 
+  /* ── Itinéraire technicien → site ── */
+  .geo-route-box {
+    background:#f6f9ff; border:1.5px solid #dbe4f5; border-radius:12px;
+    padding:10px 12px; display:flex; flex-direction:column; gap:8px;
+  }
+  .geo-route-title { font-size:12px; font-weight:800; color:#003087; display:flex; align-items:center; gap:6px; }
+  .geo-route-row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; }
+  .geo-route-field { flex:1 1 150px; min-width:140px; position:relative; }
+  .geo-route-field.small { flex:0 0 92px; min-width:92px; }
+  .geo-route-field label { display:block; font-size:10.5px; font-weight:700; color:#6b7a99; margin-bottom:3px; text-transform:uppercase; letter-spacing:.4px; }
+  .geo-route-field input {
+    width:100%; padding:7px 10px; border-radius:8px; border:1.5px solid #d0d8e8;
+    font-size:12.5px; font-family:'DM Sans',sans-serif; color:#1e2b4a; background:#fff; outline:none;
+  }
+  .geo-route-field input:focus { border-color:#003087; }
+  .geo-route-drop {
+    position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:500;
+    background:#fff; border:1px solid #dbe4f5; border-radius:9px;
+    box-shadow:0 8px 24px rgba(0,48,135,.18); overflow:hidden; display:none;
+    max-height:190px; overflow-y:auto;
+  }
+  .geo-route-drop.show { display:block; }
+  .geo-route-opt { padding:7px 11px; font-size:12px; color:#1e2b4a; cursor:pointer; display:flex; justify-content:space-between; gap:8px; }
+  .geo-route-opt:hover { background:#eef4ff; }
+  .geo-route-opt small { color:#8896b3; font-size:10.5px; }
+  .geo-route-minibtns { display:flex; gap:5px; margin-top:4px; flex-wrap:wrap; }
+  .geo-route-minibtns button {
+    font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:7px;
+    border:1px solid #d5def0; background:#fff; color:#003087; cursor:pointer;
+  }
+  .geo-route-minibtns button:hover { background:#e4edff; }
+  .geo-route-minibtns button.active { background:#003087; color:#fff; border-color:#003087; }
+  .geo-route-actions { display:flex; gap:6px; }
+  .geo-route-result { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .geo-route-chip {
+    display:inline-flex; align-items:center; gap:6px;
+    background:#003087; color:#fff; border-radius:9px; padding:6px 13px;
+    font-size:12.5px; font-weight:700;
+  }
+  .geo-route-chip span { font-weight:400; font-size:10.5px; color:#c9d6f5; }
+  .geo-route-note { font-size:11px; color:#8896b3; font-style:italic; flex-basis:100%; }
+  .geo-route-err { font-size:12px; font-weight:600; color:#c0392b; }
+
   /* ── Empty state ── */
   .search-empty { text-align:center; padding:60px 24px; color:#bbb; }
   .search-empty-ico { font-size:52px; margin-bottom:16px; }
@@ -598,6 +641,37 @@
 
         <!-- Vue Carte (défaut) : site consulté + sites voisins -->
         <div id="geoView">
+
+          <!-- Recherche d'itinéraire : départ (technicien) → arrivée (site) -->
+          <div class="geo-route-box">
+            <div class="geo-route-title">🧭 Itinéraire — départ technicien → site</div>
+            <div class="geo-route-row">
+              <div class="geo-route-field">
+                <label>🧑‍🔧 Départ (position technicien)</label>
+                <input type="text" id="routeFromInput" placeholder="Site, ou « lat, lon »…" autocomplete="off">
+                <div class="geo-route-drop" id="routeFromDrop"></div>
+                <div class="geo-route-minibtns">
+                  <button type="button" id="routeGeoBtn" title="Utiliser ma position GPS">📍 Ma position</button>
+                  <button type="button" id="routePickBtn" title="Cliquer sur la carte pour définir le départ">🖱️ Pointer sur la carte</button>
+                </div>
+              </div>
+              <div class="geo-route-field">
+                <label>🎯 Arrivée (site)</label>
+                <input type="text" id="routeToInput" placeholder="Rechercher un site…" autocomplete="off">
+                <div class="geo-route-drop" id="routeToDrop"></div>
+              </div>
+              <div class="geo-route-field small">
+                <label>🚗 Vitesse (km/h)</label>
+                <input type="number" id="routeSpeed" value="60" min="1" max="200">
+              </div>
+              <div class="geo-route-actions">
+                <button type="button" class="site-geo-btn" id="routeGoBtn">🧭 Calculer</button>
+                <button type="button" class="site-geo-btn" id="routeClearBtn" title="Effacer l'itinéraire">✕</button>
+              </div>
+            </div>
+            <div class="geo-route-result" id="routeResult" style="display:none;"></div>
+          </div>
+
           <div id="geoMap"></div>
           <div class="geo-actions-row">
             <button type="button" class="site-geo-btn active" id="geoBtnNear">🎯 {{ site.site_name }} + alentours</button>
@@ -820,6 +894,185 @@
 
   // Leaflet dans un conteneur qui vient d'être affiché : recalcul de taille
   setTimeout(function(){ map.invalidateSize(); if (currentSite) showNear(); }, 250);
+
+  /* ═══════════ Itinéraire technicien → site ═══════════ */
+  var ICON_START = pinIcon('#2ecc71', '#0a5c2e', 22, 30);
+  var ICON_DEST  = pinIcon('#FFC72C', '#003087', 26, 35);
+  var routeLayer = L.layerGroup().addTo(map);
+  var fromPoint = null;   // {lat, lon, label}
+  var toPoint   = null;
+  var picking   = false;
+
+  var fromInput = document.getElementById('routeFromInput');
+  var toInput   = document.getElementById('routeToInput');
+  var fromDrop  = document.getElementById('routeFromDrop');
+  var toDrop    = document.getElementById('routeToDrop');
+  var speedIn   = document.getElementById('routeSpeed');
+  var goBtn     = document.getElementById('routeGoBtn');
+  var clearBtn2 = document.getElementById('routeClearBtn');
+  var geoBtn    = document.getElementById('routeGeoBtn');
+  var pickBtn   = document.getElementById('routePickBtn');
+  var resultBox = document.getElementById('routeResult');
+
+  // Arrivée pré-remplie avec le site consulté
+  if (currentSite) {
+    toPoint = { lat: currentSite.lat, lon: currentSite.lon, label: currentSite.name };
+    toInput.value = currentSite.name;
+  }
+
+  // ── Autocomplétion sur la liste des sites géolocalisés ──
+  function attachAutocomplete(input, drop, onSelect) {
+    input.addEventListener('input', function(){
+      var q = input.value.trim().toLowerCase();
+      drop.innerHTML = '';
+      if (q.length < 2) { drop.classList.remove('show'); return; }
+      var hits = SITES_GEO.filter(function(s){ return s.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 8);
+      if (!hits.length) { drop.classList.remove('show'); return; }
+      hits.forEach(function(s){
+        var el = document.createElement('div');
+        el.className = 'geo-route-opt';
+        el.innerHTML = '<b>' + s.name + '</b><small>' + (s.region || '') + '</small>';
+        el.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          input.value = s.name;
+          drop.classList.remove('show');
+          onSelect({ lat: s.lat, lon: s.lon, label: s.name });
+        });
+        drop.appendChild(el);
+      });
+      drop.classList.add('show');
+    });
+    input.addEventListener('blur', function(){ setTimeout(function(){ drop.classList.remove('show'); }, 150); });
+  }
+  attachAutocomplete(fromInput, fromDrop, function(p){ fromPoint = p; });
+  attachAutocomplete(toInput,   toDrop,   function(p){ toPoint = p; });
+
+  // Saisie manuelle « lat, lon » dans le champ départ
+  function parseLatLon(str) {
+    var m = String(str).trim().match(/^(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)$/);
+    if (!m) return null;
+    var lat = parseFloat(m[1].replace(',', '.'));
+    var lon = parseFloat(m[2].replace(',', '.'));
+    if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat: lat, lon: lon, label: lat.toFixed(5) + ', ' + lon.toFixed(5) };
+  }
+
+  // ── 📍 Ma position (GPS navigateur) ──
+  geoBtn.addEventListener('click', function(){
+    if (!navigator.geolocation) { showErr("Géolocalisation non supportée par ce navigateur — utilisez « Pointer sur la carte »."); return; }
+    geoBtn.textContent = '📍 Localisation…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      geoBtn.textContent = '📍 Ma position';
+      fromPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude, label: 'Ma position' };
+      fromInput.value = 'Ma position (' + fromPoint.lat.toFixed(5) + ', ' + fromPoint.lon.toFixed(5) + ')';
+    }, function(){
+      geoBtn.textContent = '📍 Ma position';
+      showErr("Position GPS indisponible (connexion non sécurisée ou refus) — utilisez « Pointer sur la carte » ou tapez « lat, lon ».");
+    }, { enableHighAccuracy: true, timeout: 8000 });
+  });
+
+  // ── 🖱️ Pointer le départ sur la carte ──
+  pickBtn.addEventListener('click', function(){
+    picking = !picking;
+    pickBtn.classList.toggle('active', picking);
+    mapEl.style.cursor = picking ? 'crosshair' : '';
+  });
+  map.on('click', function(e){
+    if (!picking) return;
+    picking = false;
+    pickBtn.classList.remove('active');
+    mapEl.style.cursor = '';
+    fromPoint = { lat: e.latlng.lat, lon: e.latlng.lng, label: 'Point sur la carte' };
+    fromInput.value = 'Point choisi (' + fromPoint.lat.toFixed(5) + ', ' + fromPoint.lon.toFixed(5) + ')';
+  });
+
+  // ── Calculs ──
+  function haversineKm(a, b) {
+    var R = 6371, rad = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+    var h = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(a.lat*rad) * Math.cos(b.lat*rad) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function fmtTime(hours) {
+    var totalMin = Math.round(hours * 60);
+    var h = Math.floor(totalMin / 60), m = totalMin % 60;
+    if (h <= 0) return m + ' min';
+    return h + ' h ' + (m < 10 ? '0' : '') + m + ' min';
+  }
+  function showErr(msg) {
+    resultBox.style.display = 'flex';
+    resultBox.innerHTML = '<div class="geo-route-err">⚠ ' + msg + '</div>';
+  }
+
+  function drawRoute(latlngs, km, isRoad) {
+    routeLayer.clearLayers();
+    L.polyline(latlngs, {
+      color: '#FFC72C', weight: 4, opacity: .95,
+      dashArray: isRoad ? null : '8 8'
+    }).addTo(routeLayer);
+    L.marker([fromPoint.lat, fromPoint.lon], { icon: ICON_START, zIndexOffset: 1200 })
+      .addTo(routeLayer)
+      .bindPopup('<div class="geo-popup-name">🧑‍🔧 Départ</div><div class="geo-popup-meta">' + fromPoint.label + '</div>');
+    L.marker([toPoint.lat, toPoint.lon], { icon: ICON_DEST, zIndexOffset: 1200 })
+      .addTo(routeLayer)
+      .bindPopup('<div class="geo-popup-name">🎯 ' + toPoint.label + '</div>');
+    map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+
+    var speed = parseFloat(speedIn.value) || 60;
+    var hours = km / speed;
+    resultBox.style.display = 'flex';
+    resultBox.innerHTML =
+      '<div class="geo-route-chip">📏 ' + km.toFixed(1) + ' km <span>distance</span></div>' +
+      '<div class="geo-route-chip">🚗 ' + speed + ' km/h <span>vitesse</span></div>' +
+      '<div class="geo-route-chip">⏱ ' + fmtTime(hours) + ' <span>temps estimé</span></div>' +
+      '<div class="geo-route-note">' +
+        (isRoad ? 'Itinéraire routier (OSRM).' : 'Distance à vol d\u2019oiseau (routage routier injoignable) — le trajet réel par route sera plus long.') +
+      '</div>';
+  }
+
+  goBtn.addEventListener('click', function(){
+    // Départ tapé en « lat, lon » ?
+    var manual = parseLatLon(fromInput.value);
+    if (manual) fromPoint = manual;
+    if (!fromPoint) { showErr('Choisissez un point de départ : site, « lat, lon », 📍 Ma position ou 🖱️ Pointer sur la carte.'); return; }
+    if (!toPoint)   { showErr("Choisissez un site d'arrivée dans la liste."); return; }
+
+    resultBox.style.display = 'flex';
+    resultBox.innerHTML = '<div class="geo-route-note">⏳ Calcul de l\u2019itinéraire…</div>';
+
+    var straight = [[fromPoint.lat, fromPoint.lon], [toPoint.lat, toPoint.lon]];
+    var kmStraight = haversineKm(fromPoint, toPoint);
+
+    // Routage routier via OSRM public ; secours = ligne droite
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 6000) : null;
+    var url = 'https://router.project-osrm.org/route/v1/driving/' +
+              fromPoint.lon + ',' + fromPoint.lat + ';' + toPoint.lon + ',' + toPoint.lat +
+              '?overview=full&geometries=geojson';
+    fetch(url, ctrl ? { signal: ctrl.signal } : {})
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(data){
+        if (timer) clearTimeout(timer);
+        if (!data.routes || !data.routes.length) throw new Error('no route');
+        var route = data.routes[0];
+        var latlngs = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
+        drawRoute(latlngs, route.distance / 1000, true);
+      })
+      .catch(function(){
+        if (timer) clearTimeout(timer);
+        drawRoute(straight, kmStraight, false);
+      });
+  });
+
+  clearBtn2.addEventListener('click', function(){
+    routeLayer.clearLayers();
+    resultBox.style.display = 'none';
+    resultBox.innerHTML = '';
+    fromPoint = null;
+    fromInput.value = '';
+    map.fitBounds(TOGO_BOUNDS, { padding: [10, 10] });
+  });
 })();
 </script>
 
