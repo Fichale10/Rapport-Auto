@@ -429,8 +429,8 @@ def build_rapport_journalier(day: date) -> bytes:
         outage = _parse_hms(total.get('OUTAGE'))
         mttr = (timedelta(seconds=int((duree / count).total_seconds()))
                 if (duree and count) else timedelta(0))
-        dr2_df = _dr2_rows(_df_of(dt_d), dt_d)
-        dr2_count = len(dr2_df) if dr2_df is not None else 0
+        # DR2 non traité actuellement → colonne laissée vide
+        dr2_count = None
         mttr_rows[d] = (count, duree, mttr, outage, dr2_count)
     _sheet_mttr(wb, ' MTTR MOB',
                 ['DATE  ', 'Inc count ', 'DUREE', 'MTTR', 'OUTAGE', 'DR2'],
@@ -517,7 +517,8 @@ def build_rapport_journalier(day: date) -> bytes:
     for j, h in enumerate(DR2_HEADERS, 1):
         c = ws.cell(row=2, column=j, value=h)
         c.fill, c.font = FILL_DR2_HDR, FONT_HDR_12
-    dr2 = _dr2_rows(df_j, day) if df_j is not None else pd.DataFrame()
+    # DR2 non traité actuellement → feuille générée sans données (en-têtes seuls)
+    dr2 = pd.DataFrame()
     end_of_day = pd.Timestamp(f'{day} 23:59:00')
     i, cat_counts = 3, {}
     for num, (_, row) in enumerate(dr2.iterrows(), start=1):
@@ -543,7 +544,7 @@ def build_rapport_journalier(day: date) -> bytes:
             if j == 7 and resolved:
                 c.number_format = FMT_DUR
         i += 1
-    # bloc de synthèse
+    # bloc de synthèse — DR2 non traité : compteur à zéro, pourcentages vides
     i += 1
     total_dr2 = len(dr2)
     b = ws.cell(row=i, column=2, value='DR2 COUNT'); b.fill = FILL_GREY
@@ -551,8 +552,7 @@ def build_rapport_journalier(day: date) -> bytes:
     for cat in DR2_CATEGORIES:
         i += 1
         b = ws.cell(row=i, column=2, value=cat); b.fill = FILL_YELLOW2
-        pct = (cat_counts.get(cat, 0) / total_dr2) if total_dr2 else 0
-        c = ws.cell(row=i, column=3, value=pct)
+        c = ws.cell(row=i, column=3, value=None)
         c.fill, c.font, c.number_format = FILL_GREEN2, Font(bold=True), '0%'
     for col, w in (('A', 3.4), ('B', 25.3), ('C', 14.7), ('D', 18.3), ('E', 9.1),
                    ('F', 17.9), ('G', 12.7), ('H', 19.7), ('I', 56.1), ('J', 41.0),

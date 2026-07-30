@@ -200,7 +200,13 @@ def fetch_api_excel(
             f"(réseau: {network})"
         )
 
-    df = json_to_dataframe(rows)
+    # NB : contrairement à fetch_and_save_api (réseau mobile → treatement.py,
+    # qui a besoin des en-têtes ANGLAIS via json_to_dataframe), les rapports
+    # fixe/transmission/core (traitement_*.html, transport_rapport_fo.html,
+    # _resolve_upload_or_api) parsent les en-têtes FRANÇAIS d'origine — les
+    # mêmes que les fichiers RESEAU_FIXE_*/TRANSMISSION_*/CORE_ET_IGW_*.xlsx
+    # uploadés manuellement. On NE renomme donc PAS les colonnes ici.
+    df = pd.DataFrame(rows)
 
     # Pré-filtre « tickets actifs pendant la période » (identique à fetch_and_save_api).
     # Si une heure est fournie (YYYY-MM-DDTHH:MM), elle est respectée ; sinon la

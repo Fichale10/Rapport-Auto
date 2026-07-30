@@ -1335,6 +1335,52 @@ def plateforme_api_fetch(request, platform):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
+def _resolve_upload_or_api(request, file_field, network, redirect_name):
+    """Résout la source de données d'un formulaire de rapport (fichier uploadé
+    OU import API) : retourne ``(tmp_path, filename, ext)``, ou ``None`` en cas
+    d'erreur (un message a déjà été ajouté et l'appelant doit rediriger vers
+    ``redirect_name``).
+
+    - ``import_mode == 'api'`` (champ caché posté par l'onglet Import API) :
+      récupère le fichier Excel brut depuis l'API ticketing via
+      ``fetch_api_excel(date_debut, date_fin, network)`` sur la période postée
+      (champs ``date_debut`` / ``date_fin``).
+    - sinon : utilise le fichier posté sous le nom ``file_field``.
+    """
+    import tempfile
+
+    if request.POST.get('import_mode') == 'api':
+        date_debut = request.POST.get('date_debut', '').strip()
+        date_fin   = request.POST.get('date_fin', '').strip()
+        if not date_debut or not date_fin:
+            messages.error(request, 'Veuillez renseigner la période (date de début / fin).')
+            return None
+        from .api_import import fetch_api_excel
+        try:
+            buf, filename = fetch_api_excel(date_debut, date_fin, network=network)
+        except Exception as exc:
+            messages.error(request, f"Erreur import API : {exc}")
+            return None
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            tmp.write(buf.getvalue())
+            tmp_path = tmp.name
+        return tmp_path, filename, 'xlsx'
+
+    uploaded = request.FILES.get(file_field)
+    if not uploaded:
+        messages.error(request, 'Aucun fichier sélectionné.')
+        return None
+    ext = uploaded.name.rsplit('.', 1)[-1].lower()
+    if ext not in ('xlsx', 'xls'):
+        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
+        return None
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+    return tmp_path, uploaded.name, ext
+
+
 def process_report(request, pk):
     report = get_object_or_404(UploadedReport, pk=pk)
 
@@ -5126,25 +5172,15 @@ def core_gdi_process(request):
     if request.method != 'POST':
         return redirect('reporting_platform', platform='core')
 
-    uploaded = request.FILES.get('gdi_file')
-    if not uploaded:
-        messages.error(request, 'Aucun fichier sélectionné.')
+    resolved = _resolve_upload_or_api(request, 'gdi_file', 'core', 'reporting_platform')
+    if resolved is None:
         return redirect('reporting_platform', platform='core')
+    tmp_path, filename, ext = resolved
 
-    ext = uploaded.name.rsplit('.', 1)[-1].lower()
-    if ext not in ('xlsx', 'xls'):
-        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
-        return redirect('reporting_platform', platform='core')
-
-    import tempfile
     from .gdi_core import parse_gdi_core
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
-        for chunk in uploaded.chunks():
-            tmp.write(chunk)
-        tmp_path = tmp.name
     try:
-        report = parse_gdi_core(tmp_path, filename=uploaded.name)
+        report = parse_gdi_core(tmp_path, filename=filename)
     except Exception as e:
         messages.error(request, f'Lecture impossible : {e}')
         return redirect('reporting_platform', platform='core')
@@ -5152,10 +5188,10 @@ def core_gdi_process(request):
         os.unlink(tmp_path)
 
     request.session['gdi_core_report'] = report
-    request.session['gdi_core_source'] = uploaded.name
+    request.session['gdi_core_source'] = filename
     messages.success(
         request,
-        f'{report["total"]} incident(s) chargé(s) depuis « {uploaded.name} ».'
+        f'{report["total"]} incident(s) chargé(s) depuis « {filename} ».'
     )
     return redirect(reverse_lazy_anchor('reporting_platform', 'core', 'gdi-report'))
 
@@ -6798,24 +6834,14 @@ def igw_dispo_process(request):
     if request.method != 'POST':
         return redirect('igw_trafic_international')
 
-    uploaded = request.FILES.get('dispo_file')
-    if not uploaded:
-        messages.error(request, 'Aucun fichier sélectionné.')
+    resolved = _resolve_upload_or_api(request, 'dispo_file', 'core', 'igw_trafic_international')
+    if resolved is None:
         return redirect('igw_trafic_international')
+    tmp_path, filename, ext = resolved
 
-    ext = uploaded.name.rsplit('.', 1)[-1].lower()
-    if ext not in ('xlsx', 'xls'):
-        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
-        return redirect('igw_trafic_international')
-
-    import tempfile
     import pandas as pd
     from .igw_dispo import parse_igw_dispo, parse_core_to_dispo
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
-        for chunk in uploaded.chunks():
-            tmp.write(chunk)
-        tmp_path = tmp.name
     try:
         # Auto-détection : fichier brut de tickets (en-têtes en 1re ligne) vs
         # fichier « taux d'indisponibilité » (colonne LIENS INTERNATIONAUX).
@@ -6826,10 +6852,10 @@ def igw_dispo_process(request):
         is_core = "nature de l'incident" in cols0 or 'alarm time' in cols0
 
         if is_core:
-            report = parse_core_to_dispo(tmp_path, filename=uploaded.name)
+            report = parse_core_to_dispo(tmp_path, filename=filename)
             top = report.get('top_incidents', [])
         else:
-            report = parse_igw_dispo(tmp_path, filename=uploaded.name)
+            report = parse_igw_dispo(tmp_path, filename=filename)
             top = _dispo_top_incidents(request)
     except Exception as e:
         messages.error(request, f'Lecture impossible : {e}')
@@ -6838,7 +6864,7 @@ def igw_dispo_process(request):
         os.unlink(tmp_path)
 
     request.session['igw_dispo_report'] = report
-    request.session['igw_dispo_source'] = uploaded.name
+    request.session['igw_dispo_source'] = filename
     request.session['igw_dispo_top'] = top
     messages.success(
         request,
@@ -6916,25 +6942,15 @@ def transport_noc_process(request):
     if request.method != 'POST':
         return redirect('transport_rapport_noc')
 
-    uploaded = request.FILES.get('transport_file')
-    if not uploaded:
-        messages.error(request, 'Aucun fichier sélectionné.')
+    resolved = _resolve_upload_or_api(request, 'transport_file', 'transmission', 'transport_rapport_noc')
+    if resolved is None:
         return redirect('transport_rapport_noc')
+    tmp_path, filename, ext = resolved
 
-    ext = uploaded.name.rsplit('.', 1)[-1].lower()
-    if ext not in ('xlsx', 'xls'):
-        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
-        return redirect('transport_rapport_noc')
-
-    import tempfile
     from .transport_noc import parse_transport_noc
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
-        for chunk in uploaded.chunks():
-            tmp.write(chunk)
-        tmp_path = tmp.name
     try:
-        report = parse_transport_noc(tmp_path, filename=uploaded.name)
+        report = parse_transport_noc(tmp_path, filename=filename)
     except Exception as e:
         messages.error(request, f'Lecture impossible : {e}')
         return redirect('transport_rapport_noc')
@@ -6942,7 +6958,7 @@ def transport_noc_process(request):
         os.unlink(tmp_path)
 
     request.session['transport_noc_report'] = report
-    request.session['transport_noc_source'] = uploaded.name
+    request.session['transport_noc_source'] = filename
     messages.success(
         request,
         f'{report["total_inc"]} incident(s) analysé(s) — {report["period_label"]}.'
@@ -7059,25 +7075,15 @@ def fixe_ftth_process(request):
     if request.method != 'POST':
         return redirect('fixe_rapport_ftth')
 
-    uploaded = request.FILES.get('ftth_file')
-    if not uploaded:
-        messages.error(request, 'Aucun fichier sélectionné.')
+    resolved = _resolve_upload_or_api(request, 'ftth_file', 'fixe', 'fixe_rapport_ftth')
+    if resolved is None:
         return redirect('fixe_rapport_ftth')
+    tmp_path, filename, ext = resolved
 
-    ext = uploaded.name.rsplit('.', 1)[-1].lower()
-    if ext not in ('xlsx', 'xls'):
-        messages.error(request, 'Format non supporté. Utilisez un fichier Excel (.xlsx).')
-        return redirect('fixe_rapport_ftth')
-
-    import tempfile
     from .fixe_ftth import parse_reseau_fixe
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
-        for chunk in uploaded.chunks():
-            tmp.write(chunk)
-        tmp_path = tmp.name
     try:
-        report = parse_reseau_fixe(tmp_path, filename=uploaded.name)
+        report = parse_reseau_fixe(tmp_path, filename=filename)
     except Exception as e:
         messages.error(request, f'Lecture impossible : {e}')
         return redirect('fixe_rapport_ftth')
@@ -7085,7 +7091,7 @@ def fixe_ftth_process(request):
         os.unlink(tmp_path)
 
     request.session['ftth_report'] = report
-    request.session['ftth_source'] = uploaded.name
+    request.session['ftth_source'] = filename
     messages.success(
         request,
         f'{report["total"]} incident(s) analysé(s) — {report["period_label"]}.'

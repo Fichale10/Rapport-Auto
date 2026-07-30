@@ -119,6 +119,35 @@
       <button type="submit" class="btn-process" style="width:auto; margin:0; padding:12px 28px">⚙ Générer les rapports</button>
     </form>
     {% if source %}<div style="font-size:12.5px; color:var(--gray2); margin-top:10px">Fichier en mémoire : <strong>{{ source }}</strong></div>{% endif %}
+
+    <div style="display:flex; align-items:center; gap:12px; margin:20px 0">
+      <div style="flex:1; height:1px; background:var(--gray1)"></div><span style="font-size:12px; font-weight:700; color:var(--gray2)">ou</span><div style="flex:1; height:1px; background:var(--gray1)"></div>
+    </div>
+    <div class="card-title" style="font-size:16px">🌐 Récupérer les données par API</div>
+    <div class="card-sub">Récupère les incidents <strong>Transmission</strong> depuis le système de ticketing sur la période choisie — mêmes Image 1 &amp; Image 2 générées automatiquement.</div>
+    <form method="post" action="{% url 'transport_noc_process' %}" id="nocApiForm"
+          style="display:flex; gap:12px; align-items:end; flex-wrap:wrap">
+      {% csrf_token %}
+      <input type="hidden" name="import_mode" value="api">
+      <div style="flex:1; min-width:210px">
+        <label style="display:block; font-size:11.5px; font-weight:700; color:var(--gray2); margin-bottom:4px">Début</label>
+        <input type="datetime-local" name="date_debut" id="nocApiDebut" required style="width:100%; padding:10px; border:1.5px solid #aab4d4; border-radius:9px; background:#f7f9fd">
+      </div>
+      <div style="flex:1; min-width:210px">
+        <label style="display:block; font-size:11.5px; font-weight:700; color:var(--gray2); margin-bottom:4px">Fin</label>
+        <input type="datetime-local" name="date_fin" id="nocApiFin" required style="width:100%; padding:10px; border:1.5px solid #aab4d4; border-radius:9px; background:#f7f9fd">
+      </div>
+      <button type="submit" class="btn-process" style="width:auto; margin:0; padding:12px 28px">🌐 Récupérer et générer</button>
+    </form>
+    <script>
+      (function(){
+        function pad(n){return String(n).padStart(2,'0');}
+        var d=document.getElementById('nocApiDebut'), f=document.getElementById('nocApiFin');
+        var y=new Date(Date.now()-86400000), t=new Date();
+        if(d) d.value=y.getFullYear()+'-'+pad(y.getMonth()+1)+'-'+pad(y.getDate())+'T00:00';
+        if(f) f.value=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())+'T23:59';
+      })();
+    </script>
   </div>
 
   {% if report %}

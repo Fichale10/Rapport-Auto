@@ -312,6 +312,40 @@
       </div>
     </form>
 
+    <div style="display:flex; align-items:center; gap:12px; margin:20px 0">
+      <div style="flex:1; height:1px; background:#eef2fa"></div><span style="font-size:12px; font-weight:700; color:#9aa3ba">ou</span><div style="flex:1; height:1px; background:#eef2fa"></div>
+    </div>
+    <div style="font-size:14px; font-weight:800; color:#0d2461; margin-bottom:4px">🌐 Récupérer les données par API</div>
+    <div style="font-size:12.5px; color:#9aa3ba; margin-bottom:14px">Récupère les tickets <strong>Core/IGW</strong> depuis le système de ticketing sur la période choisie.</div>
+    <form method="post" action="{% url 'core_gdi_process' %}" id="gdiApiForm">
+      {% csrf_token %}
+      <input type="hidden" name="import_mode" value="api">
+      <div class="import-form-row">
+        <div class="import-file-wrap" style="display:flex; gap:12px; flex-wrap:wrap">
+          <div style="flex:1; min-width:200px">
+            <label class="import-label">Début</label>
+            <input type="datetime-local" name="date_debut" id="gdiApiDebut" required class="import-file-input">
+          </div>
+          <div style="flex:1; min-width:200px">
+            <label class="import-label">Fin</label>
+            <input type="datetime-local" name="date_fin" id="gdiApiFin" required class="import-file-input">
+          </div>
+        </div>
+        <div class="import-actions">
+          <button type="submit" class="btn-import" style="background:linear-gradient(135deg,#0d2461,#162d72)">🌐 Récupérer et générer</button>
+        </div>
+      </div>
+    </form>
+    <script>
+      (function(){
+        function pad(n){return String(n).padStart(2,'0');}
+        var d=document.getElementById('gdiApiDebut'), f=document.getElementById('gdiApiFin');
+        var y=new Date(Date.now()-86400000), t=new Date();
+        if(d) d.value=y.getFullYear()+'-'+pad(y.getMonth()+1)+'-'+pad(y.getDate())+'T00:00';
+        if(f) f.value=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())+'T23:59';
+      })();
+    </script>
+
     {% if gdi_report %}
     <div style="margin-top:24px; border-top:1px solid #eef2fa; padding-top:20px;">
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
