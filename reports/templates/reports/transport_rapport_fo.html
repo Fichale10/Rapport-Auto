@@ -83,8 +83,9 @@
   .sl-count { background:#f5c000; color:#0d2461; font-size:11.5px; font-weight:800; padding:3px 10px; border-radius:4px; white-space:nowrap; letter-spacing:.2px; }
   .sl-logo { height:54px; width:auto; object-fit:contain; flex-shrink:0; }
 
-  /* Band labels */
-  .sl-band { position:absolute; background:linear-gradient(135deg,#f5c000,#fdd835); color:#0d2461; font-size:13px; font-weight:800; padding:4px 0; text-align:center; border-radius:6px; letter-spacing:.5px; pointer-events:none; box-shadow:0 2px 8px rgba(245,192,0,.28); }
+  /* Band labels — z-index élevé : sinon la carte / le panneau Backhaul (ajoutés
+     après dans le DOM) les recouvrent entièrement et le texte jaune disparaît. */
+  .sl-band { position:absolute; z-index:5; background:linear-gradient(135deg,#f5c000,#fdd835); color:#0d2461; font-size:13px; font-weight:800; padding:4px 0; text-align:center; border-radius:6px; letter-spacing:.5px; pointer-events:none; box-shadow:0 2px 8px rgba(245,192,0,.28); }
 
   /* Map */
   #mapWrap { position:absolute; left:252px; top:116px; width:376px; height:560px; border-radius:10px; }
@@ -100,7 +101,7 @@
 
   /* Right panel */
   #bhPanel { position:absolute; right:18px; top:104px; width:420px; bottom:30px; border:2px solid #16306b; border-top:3px solid #f5c000; border-radius:22px; padding:14px 14px 14px; background:#fff; box-shadow:0 2px 16px rgba(13,36,97,.10); }
-  #bhPanelTitle { font-size:11px; font-weight:900; color:#16306b; letter-spacing:.8px; text-transform:uppercase; text-align:center; padding:6px 0 10px; border-bottom:1.5px solid #e8edf5; margin-bottom:10px; }
+  #bhPanelTitle { font-size:11px; font-weight:900; color:#0d2461; letter-spacing:.8px; text-transform:uppercase; text-align:center; padding:7px 0; margin:-14px -14px 10px; border-radius:20px 20px 0 0; background:linear-gradient(135deg,#f5c000,#fdd835); box-shadow:0 2px 8px rgba(245,192,0,.28); }
 
   /* Zone BACKBONE gauche */
   #bbZone { position:absolute; left:8px; top:108px; width:234px; bottom:30px; background:#fff; border-radius:14px; border:2px solid #16306b; border-top:3px solid #f5c000; box-shadow:0 2px 12px rgba(13,36,97,.10); }
@@ -225,8 +226,7 @@
         </div>
         <img class="sl-logo" id="slLogo" alt="yas" />
       </div>
-      <div class="sl-band" id="bandBackbone" style="left:250px;top:120px;width:380px;">BACKBONE</div>
-      <div class="sl-band" id="bandBackhaul" style="right:140px;top:104px;width:200px;">BACKHAUL</div>
+      <div class="sl-band" id="bandBackbone" style="left:250px;top:92px;width:380px;">BACKBONE</div>
       <div id="mapWrap">
         <img id="mapImg" alt="carte" />
         <div id="mapPlaceholder">Chargement automatique de la carte Liens Backbones…</div>

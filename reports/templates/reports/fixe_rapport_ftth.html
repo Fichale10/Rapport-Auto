@@ -346,6 +346,25 @@
           </div>
           <input type="file" id="fileInput" accept=".xlsx,.xls" />
         </div>
+
+        <div style="display:flex; align-items:center; gap:12px; margin:16px 0">
+          <div style="flex:1; height:1px; background:#e8edf5"></div><span style="font-size:12px; font-weight:700; color:var(--gray2)">ou</span><div style="flex:1; height:1px; background:#e8edf5"></div>
+        </div>
+        <div style="font-size:14px; font-weight:800; color:var(--yas-blue); margin-bottom:6px">🌐 Récupérer les données par API</div>
+        <div style="font-size:12.5px; color:#888; margin-bottom:14px">Récupère les incidents <strong>Réseau Fixe</strong> depuis le système de ticketing sur la période choisie.</div>
+        <form id="ftthTopApiForm" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap; margin-bottom:16px">
+          {% csrf_token %}
+          <div style="flex:1; min-width:210px">
+            <label style="display:block; font-size:11.5px; font-weight:700; color:var(--gray2); margin-bottom:4px">Début</label>
+            <input type="datetime-local" id="ftthTopApiDebut" required style="width:100%; padding:10px; border:1.5px solid #aab4d4; border-radius:9px; background:#f7f9fd">
+          </div>
+          <div style="flex:1; min-width:210px">
+            <label style="display:block; font-size:11.5px; font-weight:700; color:var(--gray2); margin-bottom:4px">Fin</label>
+            <input type="datetime-local" id="ftthTopApiFin" required style="width:100%; padding:10px; border:1.5px solid #aab4d4; border-radius:9px; background:#f7f9fd">
+          </div>
+          <button type="submit" id="ftthTopApiBtn" class="btn-export btn-export-pptx" style="width:auto; margin:0; padding:13px 28px">🌐 Récupérer</button>
+        </form>
+
         <div class="file-status" id="fileStatus"></div>
 
         <!-- Boutons export -->
@@ -619,6 +638,36 @@ function updateUI(){
   const chip=$('slidesChip');if(chip)chip.textContent=`S ${REPORT.week} · ${REPORT.pages.length} diapositive${REPORT.pages.length>1?'s':''}`;
 }
 
+async function fetchFtthTopApi(e){
+  e.preventDefault();
+  const btn=$('ftthTopApiBtn');const lbl=btn.innerHTML;
+  const debut=$('ftthTopApiDebut').value,fin=$('ftthTopApiFin').value;
+  if(!debut||!fin){setStatus('error','⚠ Veuillez renseigner la période.');return;}
+  btn.disabled=true;btn.innerHTML='⏳ Récupération…';
+  setStatus('info','⏳ Connexion à l\'API ticketing (Réseau Fixe)…');
+  try{
+    const fd=new FormData();
+    fd.append('csrfmiddlewaretoken',document.querySelector('#ftthTopApiForm [name=csrfmiddlewaretoken]').value);
+    fd.append('date_debut',debut);
+    fd.append('date_fin',fin);
+    const resp=await fetch("{% url 'plateforme_api_fetch' 'fixe' %}",{method:'POST',body:fd,credentials:'same-origin'});
+    const ct=resp.headers.get('Content-Type')||'';
+    if(!resp.ok||!ct.includes('spreadsheetml')){
+      throw new Error("l'API n'a pas renvoyé de fichier Excel — vérifiez la connexion au système de ticketing.");
+    }
+    const cd=resp.headers.get('Content-Disposition')||'';
+    const m=cd.match(/filename="?([^";]+)/);
+    const fname=m?m[1]:'FIXE_API.xlsx';
+    const blob=await resp.blob();
+    const file=new File([blob],fname,{type:blob.type});
+    handleFile(file);
+  }catch(err){
+    setStatus('error','✗ Erreur API : '+err.message);
+  }finally{
+    btn.disabled=false;btn.innerHTML=lbl;
+  }
+}
+
 function handleFile(file){
   if(!file)return;
   if(!/\.xlsx?$/i.test(file.name)){setStatus('error','✗ Format non supporté — sélectionnez un fichier .xlsx');return;}
@@ -656,6 +705,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag-over');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
   $('btnPng').addEventListener('click',exportPng);
   $('btnPptx').addEventListener('click',exportPptx);
+  $('ftthTopApiForm').addEventListener('submit',fetchFtthTopApi);
+  (function(){
+    function pad(n){return String(n).padStart(2,'0');}
+    const y=new Date(Date.now()-86400000),t=new Date();
+    $('ftthTopApiDebut').value=y.getFullYear()+'-'+pad(y.getMonth()+1)+'-'+pad(y.getDate())+'T00:00';
+    $('ftthTopApiFin').value=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())+'T23:59';
+  })();
   window.addEventListener('resize',()=>{if(REPORT){clearTimeout(window.__rt);window.__rt=setTimeout(()=>{MARKER_POS={};REPORT.pages.forEach((p,i)=>renderMap($('map_'+i)));},200);}});
 });
 </script>
