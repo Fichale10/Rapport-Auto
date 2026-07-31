@@ -401,150 +401,9 @@
   <div class="an-kpi"><div class="an-kpi-lbl">Cause dominante</div><div class="an-kpi-val small">{{ res.kpi.top_cause }}</div></div>
 </div>
 
-<!-- ═══════════ 1 & 6 ═══════════ -->
-<div class="an-grid2">
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">1</span> Indisponibilité par Région &amp; Site</div>
-    <div class="an-card-sub">Histogramme empilé — heures d'outage par région, ventilées par site (top 6 + autres).</div>
-    <div class="an-chart-wrap"><canvas id="chartA1"></canvas></div>
-  </div>
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">6</span> Pareto des causes (80/20)</div>
-    <div class="an-card-sub">Outage par cause (barres) et pourcentage cumulé (courbe).</div>
-    <div class="an-chart-wrap"><canvas id="chartA6"></canvas></div>
-  </div>
-</div>
-
-<!-- ═══════════ 2 ═══════════ -->
+<!-- ═══════════ 1 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Site &amp; Cause</div>
-  <div class="an-card-sub">Top 15 des sites par durée totale d'indisponibilité — la cause principale est indiquée dans l'infobulle et le tableau.</div>
-  <div class="an-grid2">
-    <div class="an-chart-wrap tall"><canvas id="chartA2"></canvas></div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>#</th><th>Site</th><th class="num">Incidents</th><th class="num">Outage</th><th>Cause principale</th></tr></thead>
-        <tbody>
-        {% for r in res.a2 %}
-          <tr><td>{{ forloop.counter }}</td><td><b>{{ r.site }}</b></td>
-              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
-              <td><span class="an-badge">{{ r.cause }}</span></td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════ 3 ═══════════ -->
-<div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">3</span> Corrélation Cause &amp; Site — incidents et indisponibilité</div>
-  <div class="an-card-sub">Barres = nombre d'incidents, courbe = heures d'outage (double axe).</div>
-  <div class="an-grid2">
-    <div class="an-chart-wrap tall"><canvas id="chartA3"></canvas></div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>Cause</th><th class="num">Incidents</th><th class="num">Outage</th><th>Site le plus impacté</th></tr></thead>
-        <tbody>
-        {% for r in res.a3.table %}
-          <tr><td><b>{{ r.cause }}</b></td><td class="num">{{ r.n }}</td>
-              <td class="num">{{ r.outage }}</td><td>{{ r.top_site }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════ 4 & 10 ═══════════ -->
-<div class="an-grid2">
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">4</span> Synthèse régionale</div>
-    <div class="an-card-sub">Nombre d'incidents et indisponibilité totale par région.</div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>Région</th><th class="num">Sites</th><th class="num">Incidents</th>
-                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
-        <tbody>
-        {% for r in res.a4 %}
-          <tr><td><b>{{ r.region }}</b></td><td class="num">{{ r.sites }}</td>
-              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
-              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">10</span> Performance opérationnelle par Base</div>
-    <div class="an-card-sub">Incidents, indisponibilité et MTTR par base technique.</div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>Base</th><th class="num">Sites</th><th class="num">Incidents</th>
-                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
-        <tbody>
-        {% for r in res.a10 %}
-          <tr><td><b>{{ r.base }}</b></td><td class="num">{{ r.sites }}</td>
-              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
-              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════ 5 & 7 ═══════════ -->
-<div class="an-grid2">
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">5</span> Classification du site — incidents &amp; cause principale</div>
-    <div class="an-card-sub">Tableau croisé : volume d'incidents et cause dominante par classification.</div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>Classification</th><th class="num">Sites</th><th class="num">Incidents</th>
-                   <th class="num">Outage</th><th>Cause principale</th></tr></thead>
-        <tbody>
-        {% for r in res.a5 %}
-          <tr><td><b>{{ r.classification }}</b></td><td class="num">{{ r.sites }}</td>
-              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
-              <td><span class="an-badge">{{ r.top_cause }}</span></td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">7</span> Top 10 des équipements les moins fiables</div>
-    <div class="an-card-sub">Équipements en défaut classés par nombre d'incidents puis outage.</div>
-    <div class="an-chart-wrap tall"><canvas id="chartA7"></canvas></div>
-  </div>
-</div>
-
-<!-- ═══════════ 9 ═══════════ -->
-<div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">9</span> Répartition des responsabilités — Escalade &amp; Cause</div>
-  <div class="an-card-sub">Part de l'indisponibilité totale portée par chaque entité d'escalade.</div>
-  <div class="an-grid2">
-    <div class="an-chart-wrap"><canvas id="chartA9"></canvas></div>
-    <div class="an-scroll">
-      <table class="an-table">
-        <thead><tr><th>Escalade</th><th>Cause</th><th class="num">Incidents</th>
-                   <th class="num">Outage</th><th class="num">% du total</th></tr></thead>
-        <tbody>
-        {% for r in res.a9.table %}
-          <tr><td><b>{{ r.escalade }}</b></td><td>{{ r.cause }}</td>
-              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
-              <td class="num">{{ r.pct }} %</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════ 8 ═══════════ -->
-<div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">8</span> Exploration multi-niveaux — croisement libre</div>
+  <div class="an-card-title"><span class="an-card-num">1</span> Exploration multi-niveaux — croisement libre</div>
   <div class="an-card-sub"><b>Croiser par</b> : choisissez les champs qui forment les colonnes du tableau (1 à 3).
     <b>Filtres</b> : restreignez les données sur n'importe quel champ NetXcare, indépendamment du croisement.</div>
   <div class="an-card-sub" style="background:#eef4ff; border-left:3px solid #3b6fd4; padding:7px 10px; border-radius:4px;">
@@ -612,6 +471,147 @@
       <table class="an-table" style="white-space:nowrap;">
         <thead id="drillDetailHead"></thead>
         <tbody id="drillDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 2 & 3 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Région &amp; Site</div>
+    <div class="an-card-sub">Histogramme empilé — heures d'outage par région, ventilées par site (top 6 + autres).</div>
+    <div class="an-chart-wrap"><canvas id="chartA1"></canvas></div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">3</span> Pareto des causes (80/20)</div>
+    <div class="an-card-sub">Outage par cause (barres) et pourcentage cumulé (courbe).</div>
+    <div class="an-chart-wrap"><canvas id="chartA6"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════ 4 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">4</span> Indisponibilité par Site &amp; Cause</div>
+  <div class="an-card-sub">Top 15 des sites par durée totale d'indisponibilité — la cause principale est indiquée dans l'infobulle et le tableau.</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap tall"><canvas id="chartA2"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>#</th><th>Site</th><th class="num">Incidents</th><th class="num">Outage</th><th>Cause principale</th></tr></thead>
+        <tbody>
+        {% for r in res.a2 %}
+          <tr><td>{{ forloop.counter }}</td><td><b>{{ r.site }}</b></td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td><span class="an-badge">{{ r.cause }}</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 5 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">5</span> Corrélation Cause &amp; Site — incidents et indisponibilité</div>
+  <div class="an-card-sub">Barres = nombre d'incidents, courbe = heures d'outage (double axe).</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap tall"><canvas id="chartA3"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Cause</th><th class="num">Incidents</th><th class="num">Outage</th><th>Site le plus impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a3.table %}
+          <tr><td><b>{{ r.cause }}</b></td><td class="num">{{ r.n }}</td>
+              <td class="num">{{ r.outage }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 6 & 7 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">6</span> Synthèse régionale</div>
+    <div class="an-card-sub">Nombre d'incidents et indisponibilité totale par région.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Région</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a4 %}
+          <tr><td><b>{{ r.region }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">7</span> Performance opérationnelle par Base</div>
+    <div class="an-card-sub">Incidents, indisponibilité et MTTR par base technique.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Base</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
+        <tbody>
+        {% for r in res.a10 %}
+          <tr><td><b>{{ r.base }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.mttr }}</td><td>{{ r.top_site }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 8 & 9 ═══════════ -->
+<div class="an-grid2">
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">8</span> Classification du site — incidents &amp; cause principale</div>
+    <div class="an-card-sub">Tableau croisé : volume d'incidents et cause dominante par classification.</div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Classification</th><th class="num">Sites</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th>Cause principale</th></tr></thead>
+        <tbody>
+        {% for r in res.a5 %}
+          <tr><td><b>{{ r.classification }}</b></td><td class="num">{{ r.sites }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td><span class="an-badge">{{ r.top_cause }}</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="an-card">
+    <div class="an-card-title"><span class="an-card-num">9</span> Top 10 des équipements les moins fiables</div>
+    <div class="an-card-sub">Équipements en défaut classés par nombre d'incidents puis outage.</div>
+    <div class="an-chart-wrap tall"><canvas id="chartA7"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════ 10 ═══════════ -->
+<div class="an-card">
+  <div class="an-card-title"><span class="an-card-num">10</span> Répartition des responsabilités — Escalade &amp; Cause</div>
+  <div class="an-card-sub">Part de l'indisponibilité totale portée par chaque entité d'escalade.</div>
+  <div class="an-grid2">
+    <div class="an-chart-wrap"><canvas id="chartA9"></canvas></div>
+    <div class="an-scroll">
+      <table class="an-table">
+        <thead><tr><th>Escalade</th><th>Cause</th><th class="num">Incidents</th>
+                   <th class="num">Outage</th><th class="num">% du total</th></tr></thead>
+        <tbody>
+        {% for r in res.a9.table %}
+          <tr><td><b>{{ r.escalade }}</b></td><td>{{ r.cause }}</td>
+              <td class="num">{{ r.n }}</td><td class="num">{{ r.outage }}</td>
+              <td class="num">{{ r.pct }} %</td></tr>
+        {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>
