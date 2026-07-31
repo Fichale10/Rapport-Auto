@@ -272,27 +272,36 @@ def fmt_pct(v):
 # (clé, mots-clés détectés dans « Nature de l'incident », indices valides,
 #  gabarit nom court, gabarit nom complet). Ordre = ordre d'affichage des liens.
 _FAMILIES = [
-    ('TERACO',  ['TERACO'],                              [1, 2, 3], 'TERACO-{i}',               'TRANSIT-TERACO-LOME-10GE-{i}'),
-    ('PARIS',   ['TELMA PARIS', 'TELMA-PARIS', 'PARIS(WACS'], [1, 2], 'PARIS(WACS-LONDON)-{i}', 'TRANSIT-PARIS(WACS-LONDON)-10GE-{i}'),
-    ('BICS',    ['BICS'],                                [1, 2],    'BICS-{i}',                 'TRANSIT-BICS-CACA-10GE-{i}'),
-    ('MTN',     ['MTN'],                                 [1, 2, 3], 'MTN-{i}',                  'TRANSIT MTN-CACA-10GE-{i}'),
-    ('EQUIANO', ['EQUIANO'],                             [1, 2, 3], 'EQUIANO-{i}',              'TRANSIT EQUIANO-CACA-10GE-{i}'),
-    ('COGENT',  ['COGENT'],                              [1, 2],    'COGENT-LOME-{i}',          'COGENT-LOME-{i}'),
-    ('GOOGLE',  ['GOOGLE-PNI', 'GOOGLE PNI', 'GOOGLE_PNI'], [1, 2], 'GOOGLE-PNI-0{i}',         'GOOGLE-PNI-0{i}'),
-    ('TATA',    ['TATA'],                                [1, 2],    'TATA-{i}',                 'TATA-{i}'),
+    ('TERACO',    ['TERACO'],                              [1, 2, 3],          'TERACO-{i}',               'TRANSIT-TERACO-LOME-10GE-{i}'),
+    ('PARIS',     ['TELMA PARIS', 'TELMA-PARIS', 'PARIS(WACS'], [1, 2],        'PARIS(WACS-LONDON)-{i}',  'TRANSIT-PARIS(WACS-LONDON)-10GE-{i}'),
+    ('BICS-LOME', ['BICS-LOME', 'BICS LOME'],              [1, 2],             'BICS-LOME-{i}',            'BICS-LOME-{i}'),
+    ('BICS',      ['BICS'],                                [1, 2],             'BICS-{i}',                 'TRANSIT-BICS-CACA-10GE-{i}'),
+    ('MTN',       ['MTN'],                                 [1, 2, 3],          'MTN-{i}',                  'TRANSIT MTN-CACA-10GE-{i}'),
+    ('EQUIANO',   ['EQUIANO'],                             [1, 2, 3, 4, 5, 6], 'EQUIANO-{i}',              'TRANSIT EQUIANO-CACA-10GE-{i}'),
+    ('COGENT',    ['COGENT'],                              [1, 2],             'COGENT-LOME-{i}',          'COGENT-LOME-{i}'),
+    ('GOOGLE',    ['GOOGLE-PNI', 'GOOGLE PNI', 'GOOGLE_PNI'], [1, 2],          'GOOGLE-PNI-0{i}',          'GOOGLE-PNI-0{i}'),
+    ('TATA',      ['TATA'],                                [1, 2],             'TATA-{i}',                 'TATA-{i}'),
 ]
 
 
 def _match_links(nature):
     """Retourne l'ensemble des (famille, index) de liens IGW concernés par un ticket,
-    déduits du texte « Nature de l'incident »."""
+    déduits du texte « Nature de l'incident ».
+    Dédoublonne les mots-clés qui se chevauchent (« BICS » générique vs
+    « BICS-LOME » plus spécifique) en gardant le mot-clé le plus long à une
+    même position de départ."""
     up = (nature or '').upper()
     hits = []
     for fam, kws, idxs, _s, _f in _FAMILIES:
         for kw in kws:
             for m in re.finditer(re.escape(kw), up):
-                hits.append((m.start(), fam, tuple(idxs)))
-    hits.sort(key=lambda h: h[0])
+                hits.append((m.start(), len(kw), fam, tuple(idxs)))
+    best_by_start = {}
+    for start, klen, fam, idxs in hits:
+        cur = best_by_start.get(start)
+        if cur is None or klen > cur[0]:
+            best_by_start[start] = (klen, fam, idxs)
+    hits = sorted((start, fam, idxs) for start, (klen, fam, idxs) in best_by_start.items())
     res = set()
     for j, (pos, fam, idxs) in enumerate(hits):
         end = hits[j + 1][0] if j + 1 < len(hits) else len(up)
@@ -349,16 +358,21 @@ def _core_period(filename, df, cols):
 
 
 def _clipped_seconds(rec, cols, start, end):
-    """Durée d'indisponibilité du ticket bornée à la période [start, end]."""
+    """Durée d'indisponibilité du ticket bornée à la période [start, end].
+    `end` est le début du jour SUIVANT le dernier jour (borne exclusive) ;
+    la borne réellement utilisée pour le plafonnement est `end − 1 minute`
+    (23:59 du dernier jour), convention du fichier modèle (23:59:00 et non
+    24:00:00 pour un incident couvrant toute la période)."""
     import pandas as pd
     from .gdi_core import _dur_to_sec
+    period_end = end - timedelta(minutes=1)
     a = pd.to_datetime(rec.get(cols['alarm']), errors='coerce', dayfirst=True) if cols.get('alarm') else None
     c = pd.to_datetime(rec.get(cols['cancel']), errors='coerce', dayfirst=True) if cols.get('cancel') else None
     if a is not None and not pd.isna(a):
         a = a.to_pydatetime()
-        cc = c.to_pydatetime() if (c is not None and not pd.isna(c)) else end
+        cc = c.to_pydatetime() if (c is not None and not pd.isna(c)) else period_end
         lo = max(a, start)
-        hi = min(cc, end)
+        hi = min(cc, period_end)
         return max(0, (hi - lo).total_seconds())
     # repli : colonne Duration (non bornée)
     if cols.get('duration'):
@@ -392,7 +406,10 @@ def parse_core_to_dispo(file_path, filename=''):
         raise ValueError("Colonne « Nature de l'incident » introuvable dans le fichier.")
 
     start, end = _core_period(filename, df, cols)
-    interval_min = (end - start).total_seconds() / 60.0
+    # Convention du fichier modèle : la période se termine à 23:59 du dernier
+    # jour (et non minuit du jour suivant) → borne −1 minute, cohérent avec
+    # le plafonnement des tickets encore ouverts dans _clipped_seconds.
+    interval_min = (end - start).total_seconds() / 60.0 - 1
     period_label, month_label = _period_labels(start, end)
 
     # Initialise les 19 liens (ordre fixe), même ceux sans incident
@@ -642,5 +659,143 @@ def build_png(report, top_incidents=None, generated_on=''):
 
     buf = BytesIO()
     img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXPORT EXCEL — même mise en page que le fichier source « RAPPORT DE TAUX
+# D'INDISPONIBILITE DES LIENS INTERNATIONAUX », rempli avec les calculs du
+# rapport de la période choisie (upload manuel ou fichier CORE brut).
+# ═══════════════════════════════════════════════════════════════════════════
+
+def build_excel(report, generated_on=''):
+    """Génère le classeur Excel « RAPPORT DE TAUX D'INDISPONIBILITE DES LIENS
+    INTERNATIONAUX » à partir du rapport calculé (mêmes colonnes/couleurs que
+    le fichier modèle) : N°, Lien, Nombre d'incidents, Somme durée (HH:MM),
+    durée en heure décimale, Taux d'indisponibilité, Taux de disponibilité,
+    MTTR + ligne de synthèse « INDISPONIBILITE GLOBALE »."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    links = report.get('links', [])
+    period_label = report.get('period_label', '')
+    global_availability = report.get('global_availability', 100.0)
+    total_inc = report.get('total_inc', 0)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Dispo IGW'
+
+    HEADERS = [
+        'N°', 'LIENS INTERNATIONAUX', "Nombre d'incidents",
+        'Somme durée incident (HH:MM)', 'Durée incident en Heure (En décimal)',
+        "TAUX D'INDISPONIBILITE", 'TAUX DE DISPONIBILITE', 'MTTR',
+    ]
+    n_cols = len(HEADERS)
+
+    GREEN_FILL = PatternFill('solid', fgColor='92D050')
+    ORANGE_FILL = PatternFill('solid', fgColor='F4B183')
+    YELLOW_FILL = PatternFill('solid', fgColor='FFFF00')
+    TITLE_FILL = PatternFill('solid', fgColor='70AD47')
+    GRAY_FILL = PatternFill('solid', fgColor='D9D9D9')
+    thin = Side(style='thin', color='808080')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left_al = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+    title_row = 2
+    ws.merge_cells(start_row=title_row, start_column=1, end_row=title_row, end_column=n_cols)
+    title_txt = "RAPPORT DE TAUX D'INDISPONIBILITE DES LIENS INTERNATIONAUX"
+    if period_label:
+        title_txt += f' {period_label.upper()}'
+    tcell = ws.cell(title_row, 1, title_txt)
+    tcell.font = Font(bold=True, size=14, color='FFFFFF')
+    tcell.fill = TITLE_FILL
+    tcell.alignment = center
+    ws.row_dimensions[title_row].height = 30
+
+    header_row = 5
+    for j, h in enumerate(HEADERS, start=1):
+        cell = ws.cell(header_row, j, h)
+        cell.font = Font(bold=True, color='000000')
+        cell.fill = YELLOW_FILL
+        cell.alignment = center
+        cell.border = border
+    ws.row_dimensions[header_row].height = 42
+
+    r = header_row + 1
+    for idx, lk in enumerate(links, start=1):
+        downtime_sec = lk.get('downtime_sec', 0)
+        n_inc = lk.get('n_inc', 0)
+        avail = lk.get('availability', 100.0)
+        indispo = 100.0 - avail
+        mttr_sec = downtime_sec / n_inc if n_inc else 0
+        ok = n_inc == 0 or avail >= 99.999
+        row_fill = GREEN_FILL if ok else ORANGE_FILL
+
+        vals = [idx, lk.get('name', ''), n_inc, timedelta(seconds=downtime_sec),
+                downtime_sec / 3600.0, indispo, avail, timedelta(seconds=mttr_sec)]
+        for j, v in enumerate(vals, start=1):
+            cell = ws.cell(r, j, v)
+            cell.border = border
+            cell.alignment = left_al if j == 2 else center
+            cell.fill = row_fill if j >= 6 else GRAY_FILL
+            cell.font = Font(bold=(j >= 3))
+            if j in (4, 8):
+                cell.number_format = '[h]:mm:ss'
+            elif j == 5:
+                cell.number_format = '0.00'
+            elif j in (6, 7):
+                cell.number_format = '0.00"%"'
+        r += 1
+
+    total_downtime = sum(lk.get('downtime_sec', 0) for lk in links)
+    global_ok = global_availability >= 99.999
+    global_fill = GREEN_FILL if global_ok else ORANGE_FILL
+    total_row = r
+    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=3)
+    lbl = ws.cell(total_row, 1, 'INDISPONIBILITE GLOBALE')
+    lbl.font = Font(bold=True)
+    lbl.alignment = center
+    lbl.fill = GRAY_FILL
+    for j in (2, 3):
+        c = ws.cell(total_row, j)
+        c.fill = GRAY_FILL
+        c.border = border
+    ws.cell(total_row, 1).border = border
+
+    tot_vals = {
+        4: timedelta(seconds=total_downtime),
+        5: total_downtime / 3600.0,
+        6: 100.0 - global_availability,
+        7: global_availability,
+    }
+    for j in range(4, n_cols + 1):
+        cell = ws.cell(total_row, j, tot_vals.get(j, ''))
+        cell.font = Font(bold=True)
+        cell.alignment = center
+        cell.fill = global_fill if j in (6, 7) else GRAY_FILL
+        cell.border = border
+        if j == 4:
+            cell.number_format = '[h]:mm:ss'
+        elif j == 5:
+            cell.number_format = '0.00'
+        elif j in (6, 7):
+            cell.number_format = '0.00"%"'
+    ws.row_dimensions[total_row].height = 20
+
+    widths = [6, 34, 15, 22, 22, 18, 18, 12]
+    for j, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(j)].width = w
+
+    if generated_on:
+        foot_row = total_row + 2
+        ws.cell(foot_row, 1,
+                f'Généré le {generated_on} — Yas Togo / DT / DOC / iSOC — {period_label}')
+
+    buf = BytesIO()
+    wb.save(buf)
     buf.seek(0)
     return buf

@@ -6901,6 +6901,13 @@ def igw_dispo_export(request, fmt):
             buf, as_attachment=True, filename=f'{base}.png',
             content_type='image/png')
 
+    if fmt == 'xlsx':
+        from .igw_dispo import build_excel
+        buf = build_excel(report, generated_on)
+        return FileResponse(
+            buf, as_attachment=True, filename=f'{base}.xlsx',
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
     raise Http404('Format inconnu')
 
 
