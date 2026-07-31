@@ -281,7 +281,13 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 # ═════════════════════ 2. Chargement des sources ════════════════════════════
 
 def read_uploaded(uploaded_file) -> pd.DataFrame:
-    """Lit un fichier importé (xlsx / xls / csv) en DataFrame brut."""
+    """Lit un fichier importé (xlsx / xls / csv) en DataFrame brut.
+
+    Gère aussi les classeurs multi-feuilles (« Base de connaissances » — une
+    feuille par mois, ex. JANVIER/FEVRIER/…) : concatène toutes les feuilles
+    dont l'en-tête contient une colonne Site exploitable, en ignorant les
+    feuilles de synthèse/tableau croisé sans en-tête utilisable (ex. « Feuil1 »
+    avec des colonnes « Unnamed: N »)."""
     name = (getattr(uploaded_file, 'name', '') or '').lower()
     if name.endswith('.csv'):
         try:
@@ -290,8 +296,39 @@ def read_uploaded(uploaded_file) -> pd.DataFrame:
             uploaded_file.seek(0)
             return pd.read_csv(uploaded_file, sep=None, engine='python', encoding='latin-1')
     if name.endswith(('.xlsx', '.xls', '.xlsm')):
-        return pd.read_excel(uploaded_file)
+        xls = pd.ExcelFile(uploaded_file)
+        if len(xls.sheet_names) == 1:
+            return pd.read_excel(xls, sheet_name=xls.sheet_names[0])
+        frames = []
+        for sh in xls.sheet_names:
+            df = pd.read_excel(xls, sheet_name=sh)
+            if df.empty or not any('site' in _norm(c) for c in df.columns):
+                continue
+            frames.append(df)
+        if frames:
+            return pd.concat(frames, ignore_index=True, sort=False)
+        # Aucune feuille avec colonne Site reconnaissable : comportement d'origine
+        return pd.read_excel(xls, sheet_name=xls.sheet_names[0])
     raise ValueError('Format non supporté — importez un fichier .xlsx, .xls ou .csv.')
+
+
+# Alarmes retenues pour le réseau Mobile — même filtre que le rapport
+# officiel (treatement.process_file) : le trafic BTS/WCDMA génère un grand
+# nombre d'alarmes annexes non représentatives d'une indisponibilité de site.
+_MOBILE_ALARMES_A_GARDER = [
+    "BTS O&M LINK FAILURE / WCDMA BASE STATION OUT OF USE",
+    "WCDMA BASE STATION OUT OF USE",
+    "BTS O&M LINK FAILURE",
+    "ALL RFMS MISSING",
+    "WCDMA CELL OUT OF USE",
+]
+
+
+def _filter_mobile_alarms(df: pd.DataFrame) -> pd.DataFrame:
+    """Restreint aux types d'alarme officiels du réseau Mobile (colonne « Alarm text »)."""
+    if 'Alarm text' not in df.columns:
+        return df
+    return df[df['Alarm text'].astype(str).str.strip().isin(_MOBILE_ALARMES_A_GARDER)].copy()
 
 
 def _prepare_api_rows(df: pd.DataFrame, d1: _dt.date, d2: _dt.date) -> pd.DataFrame:
@@ -410,7 +447,14 @@ def fetch_api_dataframe(date_debut: str, date_fin: str, network: str = 'mobile')
     if not rows:
         raise ValueError(
             f'Aucune donnée retournée par l’API pour {d1} → {d2} (réseau : {network}).')
-    return _prepare_api_rows(json_to_dataframe(rows), d1, d2)
+    raw = json_to_dataframe(rows)
+    if network == 'mobile':
+        raw = _filter_mobile_alarms(raw)
+        if raw.empty:
+            raise ValueError(
+                f'Aucune alarme Mobile retenue (BTS O&M LINK FAILURE / WCDMA BASE '
+                f'STATION OUT OF USE / ALL RFMS MISSING) pour {d1} → {d2}.')
+    return _prepare_api_rows(raw, d1, d2)
 
 
 # ═════════════════════ 3. Persistance session ═══════════════════════════════
