@@ -365,27 +365,31 @@ def build_rapport_journalier(day: date) -> bytes:
         return api_month[0]
 
     def _synth_of(d: date) -> list | None:
-        """synthesis_json du rapport en base (si complet — avec durées),
-        sinon recalcul depuis les données brutes ; base en dernier recours."""
+        """Synthèse journalière : recalculée en priorité depuis les données
+        LIVE de l'API ticketing (un ticket continue d'évoluer après son
+        import initial — incidents tardifs, clôtures, causes mises à jour —
+        donc une synthesis_json/un fichier stockés en base par l'import
+        automatique peuvent être obsolètes). On ne retombe sur le fichier
+        stocké du rapport puis sur la synthèse en base que si l'API est
+        injoignable, pour ne jamais produire silencieusement un rapport
+        incomplet."""
         if d not in synth_cache:
             rep = reports.get(d)
             db_synth = rep.synthesis_json if (rep and rep.synthesis_json) else None
-            synth = db_synth if (db_synth and _synth_is_valid(db_synth)) else None
-            if db_synth and not synth:
-                logger.warning('RJ: synthèse en base incomplète pour %s '
-                               '(DUREE/OUTAGE manquants) → recalcul', d)
-            if not synth:
-                # 1) fichier stocké du rapport, 2) données API du mois
-                src = None
-                if rep is not None and rep.file:
-                    try:
-                        src = pd.read_excel(rep.file.path)
-                    except Exception:
-                        src = None
-                if src is None:
-                    src = _mobile_api_raw()
-                if src is not None:
+            synth = None
+            live = _mobile_api_raw()
+            if live is not None:
+                synth = _synthesis_from_df(live, d)
+            if not synth and rep is not None and rep.file:
+                try:
+                    src = pd.read_excel(rep.file.path)
                     synth = _synthesis_from_df(src, d)
+                except Exception:
+                    pass
+            if not synth and db_synth and _synth_is_valid(db_synth):
+                logger.warning('RJ: API indisponible pour %s, utilisation de '
+                               'la synthèse en base (potentiellement obsolète)', d)
+                synth = db_synth
             if not synth:
                 synth = db_synth   # au pire : la synthèse en base, même incomplète
             synth_cache[d] = synth
@@ -393,13 +397,12 @@ def build_rapport_journalier(day: date) -> bytes:
 
     def _df_of(d: date):
         if d not in df_cache:
-            r = reports.get(d)
-            df = _load_mobile_df(r) if r else None
+            dfm = _mobile_api_month()
+            df = dfm[_day_mask(dfm, d)].copy() if dfm is not None else None
             if df is None:
-                # rapport sans fichier stocké → données live de l'API
-                dfm = _mobile_api_month()
-                if dfm is not None:
-                    df = dfm[_day_mask(dfm, d)].copy()
+                # API injoignable → dernier recours : fichier stocké du rapport
+                r = reports.get(d)
+                df = _load_mobile_df(r) if r else None
             df_cache[d] = df
         return df_cache[d]
 

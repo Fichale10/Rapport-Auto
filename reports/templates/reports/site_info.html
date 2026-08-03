@@ -775,7 +775,7 @@
     preferCanvas: true
   });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18, minZoom: 6,
+    maxZoom: 19, minZoom: 6,
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   map.fitBounds(TOGO_BOUNDS, { padding: [10, 10] });
@@ -1018,6 +1018,11 @@
       .addTo(routeLayer)
       .bindPopup('<div class="geo-popup-name">🎯 ' + toPoint.label + '</div>');
     map.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+    // Vue d'ensemble d'abord, puis zoom automatique sur le site d'arrivée pour voir rues/maisons
+    clearTimeout(map._routeZoomTimer);
+    map._routeZoomTimer = setTimeout(function(){
+      map.flyTo([toPoint.lat, toPoint.lon], 18, { duration: 1.3 });
+    }, 1100);
 
     var speed = parseFloat(speedIn.value) || 60;
     var hours = km / speed;
