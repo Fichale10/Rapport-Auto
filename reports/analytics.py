@@ -685,23 +685,30 @@ def compute(df: pd.DataFrame, *, date_debut: str = '', date_fin: str = '',
     }
 
     # ── 1. Région & Site — outage (histogramme empilé) ──────────────────────
+    # Chaque région est ordonnée par outage total (desc). À l'intérieur de
+    # chaque barre, les sites sont empilés selon LEUR PROPRE classement
+    # d'indisponibilité (le site le plus indisponible de la région en bas).
     reg_out  = f.groupby('region')['duration_sec'].sum().sort_values(ascending=False)
     regions_ = [str(r) for r in reg_out.index]
     site_out = f.groupby('site')['duration_sec'].sum().sort_values(ascending=False)
-    top_sites = [str(s) for s in site_out.head(6).index]
     pv = f.pivot_table(index='region', columns='site', values='duration_sec',
                        aggfunc='sum', fill_value=0)
-    a1_datasets = []
-    for s in top_sites:
-        col = pv[s] if s in pv.columns else None
-        a1_datasets.append({
-            'label': s,
-            'data': [_h(col.get(r, 0)) if col is not None else 0 for r in regions_],
-        })
+    TOP_N = 6
+    a1_datasets = [{'label': f'Site #{i + 1}', 'data': [], 'siteNames': []}
+                   for i in range(TOP_N)]
     autres = []
     for r in regions_:
+        row = pv.loc[r] if r in pv.index else pd.Series(dtype=float)
+        ranked = row[row > 0].sort_values(ascending=False)
+        for i in range(TOP_N):
+            if i < len(ranked):
+                a1_datasets[i]['data'].append(_h(ranked.iloc[i]))
+                a1_datasets[i]['siteNames'].append(str(ranked.index[i]))
+            else:
+                a1_datasets[i]['data'].append(0)
+                a1_datasets[i]['siteNames'].append('')
         tot = float(reg_out.get(r, 0))
-        tops = sum(float(pv.at[r, s]) if s in pv.columns else 0 for s in top_sites)
+        tops = float(ranked.head(TOP_N).sum())
         autres.append(_h(max(tot - tops, 0)))
     if any(v > 0 for v in autres):
         a1_datasets.append({'label': 'Autres sites', 'data': autres})
@@ -904,21 +911,33 @@ def build_section_excel(res: dict, key: str) -> io.BytesIO:
 
     if key == 'a1':
         a1 = res['a1']
-        sites = [d['label'] for d in a1['datasets']]
-        ws.append(['Région'] + sites)
+        cols = [d['label'] for d in a1['datasets']]
+        ws.append(['Région'] + cols)
         for i, region in enumerate(a1['labels']):
             ws.append([region] + [d['data'][i] for d in a1['datasets']])
-        _style_header(ws, len(sites) + 1)
+        _style_header(ws, len(cols) + 1)
         n = len(a1['labels'])
         chart = BarChart()
         chart.type, chart.grouping, chart.overlap = 'col', 'stacked', 100
         chart.title = title
         chart.y_axis.title = 'Outage (h)'
-        chart.add_data(Reference(ws, min_col=2, max_col=1 + len(sites), min_row=1, max_row=1 + n),
+        chart.add_data(Reference(ws, min_col=2, max_col=1 + len(cols), min_row=1, max_row=1 + n),
                        titles_from_data=True)
         chart.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
         chart.width, chart.height = 24, 12
         ws.add_chart(chart, f'A{n + 4}')
+
+        # Détail : à quel site correspond chaque rang, par région
+        ws2 = wb.create_sheet('Détail Sites')
+        ws2.append(['Région', 'Rang', 'Site', 'Outage (h)'])
+        for i, region in enumerate(a1['labels']):
+            for d in a1['datasets']:
+                if d['label'] == 'Autres sites':
+                    continue
+                name = d.get('siteNames', [''] * n)[i]
+                if name:
+                    ws2.append([region, d['label'], name, d['data'][i]])
+        _style_header(ws2, 4)
 
     elif key == 'a6':
         a6 = res['a6']

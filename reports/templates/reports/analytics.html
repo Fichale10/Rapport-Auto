@@ -151,6 +151,7 @@
   @media (max-width: 1100px) { .an-grid2 { grid-template-columns: 1fr; } }
   .an-chart-wrap { position: relative; height: 320px; }
   .an-chart-wrap.tall { height: 420px; }
+  .an-chart-wrap.xtall { height: 520px; }
 
   /* ── Tables ── */
   .an-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -495,7 +496,7 @@
     <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Région &amp; Site
       <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a1' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
     <div class="an-card-sub">Histogramme empilé — heures d'outage par région, ventilées par site (top 6 + autres).</div>
-    <div class="an-chart-wrap"><canvas id="chartA1"></canvas></div>
+    <div class="an-chart-wrap xtall"><canvas id="chartA1"></canvas></div>
   </div>
   <div class="an-card">
     <div class="an-card-title"><span class="an-card-num">3</span> Pareto des causes (80/20)
@@ -821,26 +822,78 @@ async function anExportFullPagePdf() {
                '#c05299','#5c7457','#f18f01','#7b8794'];
   const col = i => PAL[i % PAL.length];
 
-  /* ── 1. Région & Site — empilé ── */
+  /* ── 1. Région & Site — empilé (liste des sites classés, une ligne par site, colorée comme sa légende) ── */
+  const a1SiteLines = D.a1.labels.map((_, idx) => {
+    const names = [];
+    for (const ds of D.a1.datasets) {
+      if (ds.label === 'Autres sites') continue;
+      const n = (ds.siteNames || [])[idx];
+      if (n) names.push(n);
+    }
+    const shown = names.slice(0, 4);
+    const extra = names.length - shown.length;
+    return { lines: shown, extra };
+  });
+  const A1_LINE_H = 13;
+  const a1MaxLines = Math.max(...a1SiteLines.map(s => s.lines.length + (s.extra > 0 ? 1 : 0)));
   new Chart(document.getElementById('chartA1'), {
     type: 'bar',
     data: {
       labels: D.a1.labels,
       datasets: D.a1.datasets.map((ds, i) => ({
-        label: ds.label, data: ds.data,
+        label: ds.label, data: ds.data, siteNames: ds.siteNames || [],
         backgroundColor: ds.label === 'Autres sites' ? (dark ? '#33487a' : '#c9d4ea') : col(i),
         borderRadius: 3,
       })),
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } },
-                 tooltip: { callbacks: { label: c => `${c.dataset.label} : ${c.parsed.y} h` } } },
+      layout: { padding: { bottom: a1MaxLines * A1_LINE_H + 4 } },
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: c => {
+                   const name = c.dataset.siteNames && c.dataset.siteNames[c.dataIndex];
+                   const label = name || c.dataset.label;
+                   return `${label} : ${c.parsed.y} h`;
+                 } } } },
       scales: {
-        x: { stacked: true, grid: { display: false } },
+        x: { stacked: true, grid: { display: false },
+             ticks: { autoSkip: false, maxRotation: 0, minRotation: 0, font: { size: 10 } } },
         y: { stacked: true, grid: { color: grid }, title: { display: true, text: 'Outage (h)' } },
       },
     },
+    plugins: [{
+      id: 'a1RankedSiteLabels',
+      afterDraw(chart) {
+        const { ctx } = chart;
+        const xScale = chart.scales.x;
+        const SQ = 8, GAP = 4;
+        ctx.save();
+        ctx.font = "10px 'Segoe UI', system-ui, sans-serif";
+        ctx.textBaseline = 'top';
+        D.a1.labels.forEach((_, idx) => {
+          const xPix = xScale.getPixelForTick(idx);
+          let yPix = xScale.bottom + 4;
+          const { lines, extra } = a1SiteLines[idx];
+          lines.forEach((line, li) => {
+            const color = col(li);
+            const textW = ctx.measureText(line).width;
+            const totalW = SQ + GAP + textW;
+            const startX = xPix - totalW / 2;
+            ctx.fillStyle = color;
+            ctx.fillRect(startX, yPix + 2, SQ, SQ);
+            ctx.textAlign = 'left';
+            ctx.fillText(line, startX + SQ + GAP, yPix);
+            yPix += A1_LINE_H;
+          });
+          if (extra > 0) {
+            ctx.fillStyle = ink;
+            ctx.textAlign = 'center';
+            ctx.fillText(`+${extra} autres`, xPix, yPix);
+          }
+        });
+        ctx.restore();
+      },
+    }],
   });
 
   /* ── 6. Pareto causes ── */
