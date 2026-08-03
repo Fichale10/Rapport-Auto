@@ -174,6 +174,16 @@
 
   .an-export-bar { display: flex; gap: 10px; flex-wrap: wrap; }
 
+  .an-dl-btn {
+    margin-left: auto; border: none; background: #eef2fb; color: var(--yas-blue);
+    width: 26px; height: 26px; border-radius: 8px; cursor: pointer; font-size: 12.5px;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    transition: .15s; padding: 0; text-decoration: none;
+  }
+  .an-dl-btn:hover { background: #dfe7f8; transform: translateY(-1px); }
+  html[data-theme="dark"] .an-dl-btn { background: #16234a; color: #9db6ff; }
+  html[data-theme="dark"] .an-dl-btn:hover { background: #1c2c58; }
+
   /* ── Overlay de chargement ── */
   #anLoading {
     display: none; position: fixed; inset: 0; z-index: 3000;
@@ -212,6 +222,7 @@
 
 {% block content %}
 
+<div id="anCapture">
 <!-- ═══════════ HERO ═══════════ -->
 <div class="an-hero">
   <span class="an-hero-tag">⚡ Module d'analyses automatiques</span>
@@ -302,7 +313,8 @@
   {% if res and not res.empty %}
   <div class="an-export-bar">
     <a class="an-btn ghost" href="{% url 'analytics_export' 'xlsx' %}{% if qs %}?{{ qs }}{% endif %}">📥 Excel</a>
-    <a class="an-btn ghost" href="{% url 'analytics_export' 'pdf' %}{% if qs %}?{{ qs }}{% endif %}">📄 PDF</a>
+    <a class="an-btn ghost" href="{% url 'analytics_export' 'pdf' %}{% if qs %}?{{ qs }}{% endif %}">📄 PDF (données)</a>
+    <button type="button" class="an-btn ghost" id="anExportPageBtn" onclick="anExportFullPagePdf()">🖨️ PDF (page + graphiques)</button>
   </div>
   {% endif %}
   <form method="post" action="{% url 'analytics_reset' %}" style="margin:0;">
@@ -403,7 +415,8 @@
 
 <!-- ═══════════ 1 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">1</span> Exploration multi-niveaux — croisement libre</div>
+  <div class="an-card-title"><span class="an-card-num">1</span> Exploration multi-niveaux — croisement libre
+    <button type="button" class="an-dl-btn" title="Exporter en Excel" onclick="anExportTableExcel('drillTable','Exploration_multi_niveaux.xlsx')">⬇️</button></div>
   <div class="an-card-sub"><b>Croiser par</b> : choisissez les champs qui forment les colonnes du tableau (1 à 3).
     <b>Filtres</b> : restreignez les données sur n'importe quel champ NetXcare, indépendamment du croisement.</div>
   <div class="an-card-sub" style="background:#eef4ff; border-left:3px solid #3b6fd4; padding:7px 10px; border-radius:4px;">
@@ -454,7 +467,7 @@
     <div class="an-field"><label>Valeur</label><select id="fvalSel2"></select></div>
   </div>
   <div class="an-scroll" style="max-height:300px;">
-    <table class="an-table">
+    <table class="an-table" id="drillTable">
       <thead id="drillHead"></thead>
       <tbody id="drillBody"></tbody>
     </table>
@@ -479,12 +492,14 @@
 <!-- ═══════════ 2 & 3 ═══════════ -->
 <div class="an-grid2">
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Région &amp; Site</div>
+    <div class="an-card-title"><span class="an-card-num">2</span> Indisponibilité par Région &amp; Site
+      <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a1' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
     <div class="an-card-sub">Histogramme empilé — heures d'outage par région, ventilées par site (top 6 + autres).</div>
     <div class="an-chart-wrap"><canvas id="chartA1"></canvas></div>
   </div>
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">3</span> Pareto des causes (80/20)</div>
+    <div class="an-card-title"><span class="an-card-num">3</span> Pareto des causes (80/20)
+      <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a6' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
     <div class="an-card-sub">Outage par cause (barres) et pourcentage cumulé (courbe).</div>
     <div class="an-chart-wrap"><canvas id="chartA6"></canvas></div>
   </div>
@@ -492,12 +507,13 @@
 
 <!-- ═══════════ 4 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">4</span> Indisponibilité par Site &amp; Cause</div>
+  <div class="an-card-title"><span class="an-card-num">4</span> Indisponibilité par Site &amp; Cause
+    <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a2' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
   <div class="an-card-sub">Top 15 des sites par durée totale d'indisponibilité — la cause principale est indiquée dans l'infobulle et le tableau.</div>
   <div class="an-grid2">
     <div class="an-chart-wrap tall"><canvas id="chartA2"></canvas></div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA2">
         <thead><tr><th>#</th><th>Site</th><th class="num">Incidents</th><th class="num">Outage</th><th>Cause principale</th></tr></thead>
         <tbody>
         {% for r in res.a2 %}
@@ -513,12 +529,13 @@
 
 <!-- ═══════════ 5 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">5</span> Corrélation Cause &amp; Site — incidents et indisponibilité</div>
+  <div class="an-card-title"><span class="an-card-num">5</span> Corrélation Cause &amp; Site — incidents et indisponibilité
+    <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a3' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
   <div class="an-card-sub">Barres = nombre d'incidents, courbe = heures d'outage (double axe).</div>
   <div class="an-grid2">
     <div class="an-chart-wrap tall"><canvas id="chartA3"></canvas></div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA3">
         <thead><tr><th>Cause</th><th class="num">Incidents</th><th class="num">Outage</th><th>Site le plus impacté</th></tr></thead>
         <tbody>
         {% for r in res.a3.table %}
@@ -534,10 +551,11 @@
 <!-- ═══════════ 6 & 7 ═══════════ -->
 <div class="an-grid2">
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">6</span> Synthèse régionale</div>
+    <div class="an-card-title"><span class="an-card-num">6</span> Synthèse régionale
+      <button type="button" class="an-dl-btn" title="Exporter en Excel" onclick="anExportTableExcel('tblA4','Synthese_regionale.xlsx')">⬇️</button></div>
     <div class="an-card-sub">Nombre d'incidents et indisponibilité totale par région.</div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA4">
         <thead><tr><th>Région</th><th class="num">Sites</th><th class="num">Incidents</th>
                    <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
         <tbody>
@@ -551,10 +569,11 @@
     </div>
   </div>
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">7</span> Performance opérationnelle par Base</div>
+    <div class="an-card-title"><span class="an-card-num">7</span> Performance opérationnelle par Base
+      <button type="button" class="an-dl-btn" title="Exporter en Excel" onclick="anExportTableExcel('tblA10','Performance_par_base.xlsx')">⬇️</button></div>
     <div class="an-card-sub">Incidents, indisponibilité et MTTR par base technique.</div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA10">
         <thead><tr><th>Base</th><th class="num">Sites</th><th class="num">Incidents</th>
                    <th class="num">Outage</th><th class="num">MTTR</th><th>Site le + impacté</th></tr></thead>
         <tbody>
@@ -572,10 +591,11 @@
 <!-- ═══════════ 8 & 9 ═══════════ -->
 <div class="an-grid2">
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">8</span> Classification du site — incidents &amp; cause principale</div>
+    <div class="an-card-title"><span class="an-card-num">8</span> Classification du site — incidents &amp; cause principale
+      <button type="button" class="an-dl-btn" title="Exporter en Excel" onclick="anExportTableExcel('tblA5','Classification_site.xlsx')">⬇️</button></div>
     <div class="an-card-sub">Tableau croisé : volume d'incidents et cause dominante par classification.</div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA5">
         <thead><tr><th>Classification</th><th class="num">Sites</th><th class="num">Incidents</th>
                    <th class="num">Outage</th><th>Cause principale</th></tr></thead>
         <tbody>
@@ -589,7 +609,8 @@
     </div>
   </div>
   <div class="an-card">
-    <div class="an-card-title"><span class="an-card-num">9</span> Top 10 des équipements les moins fiables</div>
+    <div class="an-card-title"><span class="an-card-num">9</span> Top 10 des équipements les moins fiables
+      <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a7' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
     <div class="an-card-sub">Équipements en défaut classés par nombre d'incidents puis outage.</div>
     <div class="an-chart-wrap tall"><canvas id="chartA7"></canvas></div>
   </div>
@@ -597,12 +618,13 @@
 
 <!-- ═══════════ 10 ═══════════ -->
 <div class="an-card">
-  <div class="an-card-title"><span class="an-card-num">10</span> Répartition des responsabilités — Escalade &amp; Cause</div>
+  <div class="an-card-title"><span class="an-card-num">10</span> Répartition des responsabilités — Escalade &amp; Cause
+    <a class="an-dl-btn" title="Exporter en Excel (avec graphique)" href="{% url 'analytics_export_section' 'a9' %}{% if qs %}?{{ qs }}{% endif %}">⬇️</a></div>
   <div class="an-card-sub">Part de l'indisponibilité totale portée par chaque entité d'escalade.</div>
   <div class="an-grid2">
     <div class="an-chart-wrap"><canvas id="chartA9"></canvas></div>
     <div class="an-scroll">
-      <table class="an-table">
+      <table class="an-table" id="tblA9">
         <thead><tr><th>Escalade</th><th>Cause</th><th class="num">Incidents</th>
                    <th class="num">Outage</th><th class="num">% du total</th></tr></thead>
         <tbody>
@@ -620,6 +642,8 @@
 {{ res|json_script:"analyticsData" }}
 {% endif %}{# res.empty #}
 {% endif %}{# meta #}
+
+</div><!-- /anCapture -->
 
 <!-- Overlay de chargement -->
 <div id="anLoading">
@@ -714,6 +738,75 @@ document.addEventListener('click', () =>
 </script>
 {% if res and not res.empty %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ── Export Excel d'un tableau (case 1,6,7,8) : reprend le tableau HTML tel quel ── */
+function anExportTableExcel(tableId, filename) {
+  const table = document.getElementById(tableId);
+  if (!table || typeof XLSX === 'undefined') {
+    alert("Export impossible (tableau introuvable ou librairie non chargée).");
+    return;
+  }
+  const wb = XLSX.utils.table_to_book(table, { sheet: 'Données' });
+  XLSX.writeFile(wb, filename);
+}
+</script>
+<script>
+/* ── Export de toute la page (incl. graphiques Chart.js) en PDF multi-pages ── */
+async function anExportFullPagePdf() {
+  const target = document.getElementById('anCapture');
+  if (!target) return;
+  if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
+    alert("Les librairies d'export PDF n'ont pas pu être chargées (connexion réseau ?).");
+    return;
+  }
+  const btn = document.getElementById('anExportPageBtn');
+  if (btn) btn.disabled = true;
+  anShowLoading('Génération du PDF de la page (avec graphiques)…');
+  // laisse le temps au navigateur d'afficher l'overlay avant le gel pendant le rendu
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  try {
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      windowWidth: target.scrollWidth,
+      windowHeight: target.scrollHeight,
+    });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const imgW = pageW;
+    const pxPerPage = Math.floor(canvas.width * (pageH / imgW));
+    let y = 0, first = true;
+    while (y < canvas.height) {
+      const sliceH = Math.min(pxPerPage, canvas.height - y);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sliceH;
+      pageCanvas.getContext('2d').drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
+      const sliceHmm = sliceH * imgW / canvas.width;
+      if (!first) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgW, sliceHmm);
+      y += sliceH;
+      first = false;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    pdf.save(`Analytics_${today}.pdf`);
+  } catch (e) {
+    console.error(e);
+    alert('Erreur lors de la génération du PDF : ' + e.message);
+  } finally {
+    document.getElementById('anLoading').style.display = 'none';
+    if (btn) btn.disabled = false;
+  }
+}
+</script>
 <script>
 (function () {
   const D = JSON.parse(document.getElementById('analyticsData').textContent);

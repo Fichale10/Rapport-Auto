@@ -8958,6 +8958,36 @@ def analytics_export(request, fmt):
     raise Http404
 
 
+def analytics_export_section(request, key):
+    """Exporte UNE case du dashboard (données + graphique Excel natif)."""
+    from django.http import HttpResponse
+    from django.utils import timezone
+
+    from . import analytics as an
+
+    if key not in an.SECTION_CHART_TITLES:
+        raise Http404
+
+    df, meta = _analytics_load(request)
+    if df is None:
+        messages.error(request, 'Aucune donnée chargée — importez une source d’abord.')
+        return redirect('analytics')
+
+    flt = _analytics_filters(request)
+    res = an.compute(df, **flt)
+    if res.get('empty'):
+        messages.warning(request, 'Aucune donnée pour les filtres choisis.')
+        return redirect('analytics')
+
+    buf = an.build_section_excel(res, key)
+    stamp = timezone.localtime().strftime('%Y%m%d_%H%M')
+    resp = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="Analytics_{key}_{stamp}.xlsx"'
+    return resp
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  RAPPORT JOURNALIER consolidé (Excel)
 # ═══════════════════════════════════════════════════════════════════════

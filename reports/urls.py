@@ -26,6 +26,7 @@ urlpatterns = [
     path('analytics/drill/',                      login_required(views.analytics_drill),   name='analytics_drill'),
     path('analytics/reset/',                      login_required(views.analytics_reset),   name='analytics_reset'),
     path('analytics/export/<str:fmt>/',           login_required(views.analytics_export),  name='analytics_export'),
+    path('analytics/export-section/<str:key>/',   login_required(views.analytics_export_section), name='analytics_export_section'),
     path('incident-tracking/',                    login_required(views.incident_tracking), name='incident_tracking'),
     path('incident-tracking/process/',                      login_required(views.isocep_process),        name='isocep_process'),
     path('incident-tracking/process/download/<str:token>/', login_required(views.isocep_download),       name='isocep_download'),

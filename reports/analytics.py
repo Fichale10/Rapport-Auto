@@ -867,6 +867,160 @@ def build_excel(df_filtered: pd.DataFrame, res: dict) -> io.BytesIO:
     return buf
 
 
+# Sections du dashboard qui affichent un graphique Chart.js (les autres
+# n'ont qu'un tableau HTML, déjà exportable côté client via SheetJS).
+SECTION_CHART_TITLES = {
+    'a1': "Indisponibilité par Région & Site",
+    'a6': 'Pareto des causes (80/20)',
+    'a2': 'Indisponibilité par Site & Cause (Top 15)',
+    'a3': 'Corrélation Cause & Site',
+    'a7': 'Top 10 des équipements les moins fiables',
+    'a9': 'Répartition des responsabilités — Escalade & Cause',
+}
+
+
+def build_section_excel(res: dict, key: str) -> io.BytesIO:
+    """Classeur Excel pour UNE case du dashboard, données + graphique natif
+    Excel reproduisant le graphique Chart.js affiché sur la page."""
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, DoughnutChart, LineChart, Reference
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    if key not in SECTION_CHART_TITLES:
+        raise ValueError(f'Section inconnue : {key}')
+    title = SECTION_CHART_TITLES[key]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Données'
+
+    def _style_header(sheet, ncols):
+        for c in range(1, ncols + 1):
+            cell = sheet.cell(row=1, column=c)
+            cell.fill = PatternFill('solid', fgColor='003087')
+            cell.font = Font(color='FFFFFF', bold=True)
+            cell.alignment = Alignment(horizontal='center')
+        sheet.freeze_panes = 'A2'
+
+    if key == 'a1':
+        a1 = res['a1']
+        sites = [d['label'] for d in a1['datasets']]
+        ws.append(['Région'] + sites)
+        for i, region in enumerate(a1['labels']):
+            ws.append([region] + [d['data'][i] for d in a1['datasets']])
+        _style_header(ws, len(sites) + 1)
+        n = len(a1['labels'])
+        chart = BarChart()
+        chart.type, chart.grouping, chart.overlap = 'col', 'stacked', 100
+        chart.title = title
+        chart.y_axis.title = 'Outage (h)'
+        chart.add_data(Reference(ws, min_col=2, max_col=1 + len(sites), min_row=1, max_row=1 + n),
+                       titles_from_data=True)
+        chart.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        chart.width, chart.height = 24, 12
+        ws.add_chart(chart, f'A{n + 4}')
+
+    elif key == 'a6':
+        a6 = res['a6']
+        ws.append(['Cause', 'Outage (h)', 'Cumul (%)'])
+        for c, h, cum in zip(a6['labels'], a6['outage_h'], a6['cum_pct']):
+            ws.append([c, h, cum])
+        _style_header(ws, 3)
+        n = len(a6['labels'])
+        bar = BarChart()
+        bar.type = 'col'
+        bar.title = title
+        bar.y_axis.title = 'Outage (h)'
+        bar.add_data(Reference(ws, min_col=2, max_col=2, min_row=1, max_row=1 + n), titles_from_data=True)
+        bar.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        line = LineChart()
+        line.add_data(Reference(ws, min_col=3, max_col=3, min_row=1, max_row=1 + n), titles_from_data=True)
+        line.y_axis.axId = 200
+        line.y_axis.title = 'Cumul (%)'
+        bar.y_axis.crosses = 'max'
+        bar += line
+        bar.width, bar.height = 24, 12
+        ws.add_chart(bar, f'A{n + 4}')
+
+    elif key == 'a2':
+        rows = res['a2']
+        ws.append(['Site', 'Incidents', 'Outage (h)', 'Cause principale'])
+        for r in rows:
+            ws.append([r['site'], r['n'], r['outage_h'], r['cause']])
+        _style_header(ws, 4)
+        n = len(rows)
+        bar = BarChart()
+        bar.type = 'bar'   # horizontal, comme sur la page
+        bar.title = title
+        bar.x_axis.title = 'Outage (h)'
+        bar.add_data(Reference(ws, min_col=3, max_col=3, min_row=1, max_row=1 + n), titles_from_data=True)
+        bar.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        bar.width, bar.height = 22, 18
+        ws.add_chart(bar, f'A{n + 4}')
+
+    elif key == 'a3':
+        t = res['a3']['table']
+        ws.append(['Cause', 'Incidents', 'Outage (h)', 'Site le plus impacté'])
+        for r in t:
+            ws.append([r['cause'], r['n'], r['outage_h'], r['top_site']])
+        _style_header(ws, 4)
+        n = len(t)
+        bar = BarChart()
+        bar.type = 'col'
+        bar.title = title
+        bar.y_axis.title = 'Incidents'
+        bar.add_data(Reference(ws, min_col=2, max_col=2, min_row=1, max_row=1 + n), titles_from_data=True)
+        bar.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        line = LineChart()
+        line.add_data(Reference(ws, min_col=3, max_col=3, min_row=1, max_row=1 + n), titles_from_data=True)
+        line.y_axis.axId = 200
+        line.y_axis.title = 'Outage (h)'
+        bar.y_axis.crosses = 'max'
+        bar += line
+        bar.width, bar.height = 24, 12
+        ws.add_chart(bar, f'A{n + 4}')
+
+    elif key == 'a7':
+        rows = res['a7']
+        ws.append(['Équipement en défaut', 'Incidents', 'Outage (h)'])
+        for r in rows:
+            ws.append([r['equipement'], r['n'], r['outage_h']])
+        _style_header(ws, 3)
+        n = len(rows)
+        bar = BarChart()
+        bar.type = 'bar'   # horizontal, comme sur la page
+        bar.title = title
+        bar.add_data(Reference(ws, min_col=2, max_col=3, min_row=1, max_row=1 + n), titles_from_data=True)
+        bar.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        bar.width, bar.height = 22, 16
+        ws.add_chart(bar, f'A{n + 4}')
+
+    elif key == 'a9':
+        a9 = res['a9']
+        ws.append(['Escalade', 'Outage (h)'])
+        for lbl, h in zip(a9['labels'], a9['outage_h']):
+            ws.append([lbl, h])
+        _style_header(ws, 2)
+        n = len(a9['labels'])
+        pie = DoughnutChart()
+        pie.title = title
+        pie.add_data(Reference(ws, min_col=2, max_col=2, min_row=1, max_row=1 + n), titles_from_data=True)
+        pie.set_categories(Reference(ws, min_col=1, min_row=2, max_row=1 + n))
+        pie.width, pie.height = 16, 12
+        ws.add_chart(pie, f'A{n + 4}')
+
+        ws2 = wb.create_sheet('Détail Escalade x Cause')
+        ws2.append(['Escalade', 'Cause', 'Incidents', 'Outage', '% du total'])
+        for r in a9['table']:
+            ws2.append([r['escalade'], r['cause'], r['n'], r['outage'], r['pct']])
+        _style_header(ws2, 5)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
 def build_pdf(res: dict, source: str, generated_on: str) -> io.BytesIO:
     """Rapport PDF de synthèse (reportlab) — KPIs + tableaux principaux."""
     from reportlab.lib import colors
