@@ -985,6 +985,30 @@ async function anExportFullPagePdf() {
   });
 
   /* ── 9. Escalade — doughnut ── */
+  const a9Total = D.a9.outage_h.reduce((s, v) => s + v, 0) || 1;
+  const a9PctLabels = {
+    id: 'a9PctLabels',
+    afterDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const { ctx } = chart;
+      chart.data.datasets[0].data.forEach((value, i) => {
+        const pct = value / a9Total * 100;
+        const arc = meta.data[i];
+        if (!arc || pct < 3) return;   // masque les parts trop fines pour rester lisible
+        const pos = arc.tooltipPosition();
+        ctx.save();
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,.65)';
+        ctx.strokeText(pct.toFixed(1) + ' %', pos.x, pos.y);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(pct.toFixed(1) + ' %', pos.x, pos.y);
+        ctx.restore();
+      });
+    },
+  };
   new Chart(document.getElementById('chartA9'), {
     type: 'doughnut',
     data: {
@@ -992,11 +1016,16 @@ async function anExportFullPagePdf() {
       datasets: [{ data: D.a9.outage_h, backgroundColor: D.a9.labels.map((_, i) => col(i)),
                    borderWidth: 2, borderColor: dark ? '#101828' : '#fff' }],
     },
+    plugins: [a9PctLabels],
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '55%',
       plugins: {
         legend: { position: 'right', labels: { boxWidth: 10 } },
-        tooltip: { callbacks: { label: c => ` ${c.label} : ${c.parsed} h` } },
+        tooltip: {
+          callbacks: {
+            label: c => ` ${c.label} : ${c.parsed} h (${(c.parsed / a9Total * 100).toFixed(1)} %)`,
+          },
+        },
       },
     },
   });
