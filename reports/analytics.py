@@ -25,6 +25,7 @@ EMPTY_LABEL = '(Non renseigné)'
 
 # Libellés français pour l'export Excel / PDF
 FR_LABELS = {
+    'ticket':         'Numéro du ticket',
     'region':         'Région',
     'base':           'Base',
     'site':           'Site',
@@ -49,6 +50,8 @@ def _norm(label) -> str:
 
 # Alias reconnus pour chaque colonne canonique (formats fichier libre + API)
 _ALIASES: dict[str, list[str]] = {
+    'ticket':         ['numero du ticket', 'numero de ticket', 'numero ticket',
+                      'num ticket', 'n ticket', 'ticket number', 'ticket'],
     'region':         ['region', 'regions', 'dr', 'direction regionale'],
     'base':           ['base', 'base technique'],
     'site':           ['site', 'site name', 'nom du site', 'nom site', 'site impacte'],
@@ -219,7 +222,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             "Équipement en défaut, Cause, Classification du site, Durée de l'incident, Escalade.")
 
     out = pd.DataFrame(index=df.index)
-    for canon in ('region', 'base', 'site', 'equipement', 'cause',
+    for canon in ('ticket', 'region', 'base', 'site', 'equipement', 'cause',
                   'classification', 'escalade', 'status'):
         if canon in mapping:
             out[canon] = _clean_str_series(df[mapping[canon]])
@@ -829,7 +832,7 @@ def build_excel(df_filtered: pd.DataFrame, res: dict) -> io.BytesIO:
             ('Période', kpi.get('period')),
         ], columns=['Indicateur', 'Valeur']).to_excel(xw, sheet_name='KPIs', index=False)
 
-        cols = [c for c in ('date', 'region', 'base', 'site', 'equipement', 'cause',
+        cols = [c for c in ('ticket', 'date', 'region', 'base', 'site', 'equipement', 'cause',
                             'classification', 'escalade', 'status', 'duration_sec')
                 if c in df_filtered.columns]
         df_data = df_filtered[cols].copy()
