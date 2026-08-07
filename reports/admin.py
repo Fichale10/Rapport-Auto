@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import UploadedReport, Site, Incident, ChatInteraction
+from .models import UploadedReport, Site, Incident, ChatInteraction, Dr2ProcessedDate, Dr2ViolationRecord
 
 
 @admin.register(UploadedReport)
@@ -25,6 +25,22 @@ class IncidentAdmin(admin.ModelAdmin):
     search_fields = ('numero_ticket', 'site_name', 'site_id', 'nature', 'cause')
     ordering      = ('-alarm_time',)
     date_hierarchy = 'alarm_time'
+
+
+@admin.register(Dr2ProcessedDate)
+class Dr2ProcessedDateAdmin(admin.ModelAdmin):
+    list_display  = ('date', 'sites_count', 'filename_2g', 'filename_3g', 'uploaded_by', 'uploaded_at')
+    ordering      = ('-date',)
+    date_hierarchy = 'date'
+
+
+@admin.register(Dr2ViolationRecord)
+class Dr2ViolationRecordAdmin(admin.ModelAdmin):
+    list_display  = ('date', 'site_name', 'region', 'categorie', 'numero_ticket', 'hours_down', 'is_resolved')
+    list_filter   = ('region', 'categorie', 'is_resolved')
+    search_fields = ('site_name', 'site_name_2g', 'site_name_3g', 'numero_ticket')
+    ordering      = ('-date', 'site_name')
+    date_hierarchy = 'date'
 
 
 @admin.register(ChatInteraction)

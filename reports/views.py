@@ -5400,6 +5400,8 @@ def _build_dr2_from_rows(raw_rows, debut=None, fin=None):
             'pct_tt':   round(metier / total_metier * 100) if total_metier else 0,
         })
 
+    detail_rows = sorted(rows, key=lambda r: (r['date'] or today, r.get('site_name') or ''), reverse=True)
+
     return {
         'debut':         debut,
         'fin':           fin,
@@ -5412,14 +5414,91 @@ def _build_dr2_from_rows(raw_rows, debut=None, fin=None):
         'region_rows':   region_rows,
         'esc_stats':     esc_stats,
         'total_metier':  total_metier,
+        'detail_rows':   detail_rows,
     }
 
 
+def _dr2_records_to_rows(qs):
+    """Convertit un queryset `Dr2ViolationRecord` (calcul automatique 2G/3G)
+    en la même structure de dicts que `_parse_dr2_excel` (ancien mode manuel)
+    — permet de réutiliser `_build_dr2_from_rows` sans le modifier."""
+    rows = []
+    for rec in qs:
+        rows.append({
+            'date':        rec.date.isoformat(),
+            'ticket':      rec.numero_ticket,
+            'site_name':   rec.site_name,
+            'site_id':     rec.site_id,
+            'categorie':   rec.categorie or '—',
+            'cause':       rec.cause,
+            'is_resolved': rec.is_resolved,
+            'region':      rec.region.upper() if rec.region else '—',
+            'zone':        '',
+        })
+    return rows
+
+
 def dr2_daily_report(request):
-    """DR2 Report — généré depuis un fichier Excel uploadé."""
+    """DR2 Report — calculé automatiquement depuis les fichiers de
+    disponibilité horaire 2G (TCH availability ratio) + 3G (Cell Availability
+    excl. BLU) envoyés quotidiennement par mail (voir `dr2_availability.py`).
+    L'ancien mode manuel (fichier Excel déjà flaggé DR2=OUI) reste disponible
+    en secours."""
+    from .models import Dr2ProcessedDate, Dr2ViolationRecord
     ctx = {'no_file': True, 'upload_error': None}
 
-    if request.method == 'POST' and request.FILES.get('dr2_file'):
+    # ── Mode automatique : upload des 2 fichiers de disponibilité horaire ──
+    if request.method == 'POST' and request.FILES.get('file_2g') and request.FILES.get('file_3g'):
+        try:
+            import pandas as pd
+            from .dr2_availability import (parse_2g_file, parse_3g_file, compute_dr2_sites,
+                                            build_dr2_rows, save_dr2_day)
+
+            day_str = request.POST.get('avail_date', '').strip()
+            try:
+                day = date.fromisoformat(day_str) if day_str else (date.today() - timedelta(days=1))
+            except ValueError:
+                day = date.today() - timedelta(days=1)
+
+            df_2g = parse_2g_file(request.FILES['file_2g'])
+            df_3g = parse_3g_file(request.FILES['file_3g'])
+            sites = compute_dr2_sites(df_2g, df_3g)
+
+            mobile_df = None
+            try:
+                from .api_import import fetch_api_excel
+                buf, _ = fetch_api_excel(day.isoformat(), day.isoformat(), 'mobile')
+                mobile_df = pd.read_excel(buf)
+            except Exception as exc:
+                logging.getLogger(__name__).warning(
+                    'DR2 auto : incidents mobile indisponibles pour %s : %s', day, exc)
+
+            rows = build_dr2_rows(sites, mobile_df, day)
+            save_dr2_day(day, rows,
+                         filename_2g=request.FILES['file_2g'].name,
+                         filename_3g=request.FILES['file_3g'].name,
+                         user=request.user)
+
+            debut = date(day.year, day.month, 1)
+            request.session['dr2_debut'] = debut.isoformat()
+            request.session['dr2_fin']   = day.isoformat()
+            request.session.pop('dr2_rows', None)
+            request.session.pop('dr2_filename', None)
+
+            qs = Dr2ViolationRecord.objects.filter(date__gte=debut, date__lte=day)
+            ctx = _build_dr2_from_rows(_dr2_records_to_rows(qs), debut, day)
+            ctx['no_file']  = False
+            ctx['filename'] = f"{request.FILES['file_2g'].name} + {request.FILES['file_3g'].name}"
+            if not rows:
+                ctx['upload_error'] = (
+                    f"Aucun site en violation DR2 détecté pour le {day.strftime('%d/%m/%Y')} "
+                    "(0 site instable >= 3h dans les 2 technologies) — jour marqué comme traité.")
+        except Exception as exc:
+            logging.getLogger(__name__).exception('DR2 auto : erreur de traitement')
+            ctx['upload_error'] = str(exc)
+
+    # ── Ancien mode manuel : fichier DR2 Excel déjà flaggé (secours) ──────
+    elif request.method == 'POST' and request.FILES.get('dr2_file'):
         try:
             rows = _parse_dr2_excel(request.FILES['dr2_file'])
             if not rows:
@@ -5460,6 +5539,26 @@ def dr2_daily_report(request):
         ctx['no_file']  = False
         ctx['filename'] = request.session.get('dr2_filename', '')
 
+    # ── Repli GET : données déjà calculées automatiquement en base ───────
+    elif request.method == 'GET' and Dr2ProcessedDate.objects.exists():
+        today = date.today()
+        default_debut = date(today.year, today.month, 1)
+        default_fin   = today - timedelta(days=1)
+        debut_str = request.GET.get('debut', request.session.get('dr2_debut', default_debut.isoformat()))
+        fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   default_fin.isoformat()))
+        try:
+            debut = date.fromisoformat(debut_str)
+        except ValueError:
+            debut = default_debut
+        try:
+            fin = date.fromisoformat(fin_str)
+        except ValueError:
+            fin = default_fin
+        qs = Dr2ViolationRecord.objects.filter(date__gte=debut, date__lte=fin)
+        ctx = _build_dr2_from_rows(_dr2_records_to_rows(qs), debut, fin)
+        ctx['no_file']  = False
+        ctx['filename'] = 'Calcul automatique (disponibilité 2G/3G)'
+
     return render(request, 'reports/dr2_daily.html', ctx)
 
 
@@ -5484,6 +5583,16 @@ def dr2_daily_export(request):
         fin = date.fromisoformat(fin_str) if fin_str else None
     except ValueError:
         fin = None
+    if not rows:
+        # Pas de session legacy (fichier Excel manuel) → repli sur les
+        # violations DR2 calculées automatiquement en base (2G/3G)
+        from .models import Dr2ViolationRecord
+        qs = Dr2ViolationRecord.objects.all()
+        if debut:
+            qs = qs.filter(date__gte=debut)
+        if fin:
+            qs = qs.filter(date__lte=fin)
+        rows = _dr2_records_to_rows(qs)
     d = _build_dr2_from_rows(rows, debut, fin)
 
     wb = Workbook()

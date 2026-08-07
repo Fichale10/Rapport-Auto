@@ -5,9 +5,13 @@ rassemble tous les rapports de la plateforme (INCIDENTS MOB J-1, MTTR MOB,
 STATISTIQUE J-1, FIXE J-1, MTTR FIXE, DR2 J-1, COMPILATION DR2,
 COMPIL OUTAGE MOB) en reproduisant le design / les couleurs du modèle manuel.
 
-NB : la feuille COMPILATION DR2 n'est pas encore automatisée — elle est
-générée avec ses en-têtes uniquement.
+NB : DR2 J-1 / COMPILATION DR2 / la colonne DR2 de MTTR MOB sont alimentées
+depuis `Dr2ViolationRecord` (voir dr2_availability.py) — calculé en amont sur
+la page /reporting/dr2-daily/ à partir des fichiers de disponibilité horaire
+2G+3G du jour. Si ce jour n'a pas encore été traité (`Dr2ProcessedDate`), les
+feuilles restent vides (comportement identique à avant l'automatisation).
 """
+
 from __future__ import annotations
 
 import calendar
@@ -340,6 +344,8 @@ def _sheet_mttr(wb: Workbook, title: str, headers, day_rows: dict, year, month, 
 # ───────────────────────────── Construction ─────────────────────────────
 def build_rapport_journalier(day: date) -> bytes:
     """Construit le classeur complet pour la journée `day` (J-1)."""
+    from .models import Dr2ProcessedDate, Dr2ViolationRecord
+
     year, month = day.year, day.month
     reports = _mobile_reports_of_month(year, month)
 
@@ -432,8 +438,10 @@ def build_rapport_journalier(day: date) -> bytes:
         outage = _parse_hms(total.get('OUTAGE'))
         mttr = (timedelta(seconds=int((duree / count).total_seconds()))
                 if (duree and count) else timedelta(0))
-        # DR2 non traité actuellement → colonne laissée vide
-        dr2_count = None
+        # DR2 : compté seulement si les fichiers dispo 2G/3G ont été traités
+        # ce jour-là (sinon colonne laissée vide, cf. Dr2ProcessedDate)
+        dr2_count = (Dr2ViolationRecord.objects.filter(date=dt_d).count()
+                     if Dr2ProcessedDate.objects.filter(date=dt_d).exists() else None)
         mttr_rows[d] = (count, duree, mttr, outage, dr2_count)
     _sheet_mttr(wb, ' MTTR MOB',
                 ['DATE  ', 'Inc count ', 'DUREE', 'MTTR', 'OUTAGE', 'DR2'],
@@ -511,7 +519,7 @@ def build_rapport_journalier(day: date) -> bytes:
     _sheet_mttr(wb, 'MTTR FIXE', ['DATE  ', 'Inc count ', 'DUREE', 'MTTR'],
                 fixe_rows, year, month, day.day)
 
-    # ── 6. DR2 J-1 ──
+    # ── 6. DR2 J-1 (calcul auto depuis dispo horaire 2G/3G, voir dr2_availability.py) ──
     ws = wb.create_sheet(' DR2 J-1')
     ws.merge_cells('A1:M1')
     t = ws.cell(row=1, column=1, value=f'CAS DE VIOLATION DR2  {day.strftime("%d-%m-%Y")} ')
@@ -520,23 +528,22 @@ def build_rapport_journalier(day: date) -> bytes:
     for j, h in enumerate(DR2_HEADERS, 1):
         c = ws.cell(row=2, column=j, value=h)
         c.fill, c.font = FILL_DR2_HDR, FONT_HDR_12
-    # DR2 non traité actuellement → feuille générée sans données (en-têtes seuls)
-    dr2 = pd.DataFrame()
-    end_of_day = pd.Timestamp(f'{day} 23:59:00')
+    dr2_today = list(Dr2ViolationRecord.objects.filter(date=day).order_by('site_name'))
     i, cat_counts = 3, {}
-    for num, (_, row) in enumerate(dr2.iterrows(), start=1):
-        parent = _cell_str(row, 'Site Parent').strip()
-        esc = _cell_str(row, 'Escalade').strip()
+    for num, rec in enumerate(dr2_today, start=1):
+        parent = (rec.site_parent or '').strip()
+        esc = (rec.categorie or '').strip()
         cat_counts[esc] = cat_counts.get(esc, 0) + 1
-        resolved = pd.notna(row['_Cancel Time'])
-        duree = ((row['_Cancel Time'] - row['_Alarm Time']).to_pytimedelta()
-                 if resolved else 'ENCOURS')
-        values = [num, _cell_str(row, 'Numero du ticket'), parent,
-                  _cell_str(row, 'Site Name'), _cell_str(row, 'Site ID'),
-                  _fmt_dt(row['_Alarm Time']), duree, esc,
-                  _cell_str(row, 'Cause'), _cell_str(row, 'Point bloquant'),
-                  _fmt_dt(row['_Cancel Time']) if resolved else 'EN COURS',
-                  _cell_str(row, 'Observation'), 'OUI']
+        alarm = rec.alarm_time.replace(tzinfo=None) if rec.alarm_time else None
+        cancel = rec.cancel_time.replace(tzinfo=None) if rec.cancel_time else None
+        resolved = rec.is_resolved and cancel is not None
+        duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
+        values = [num, rec.numero_ticket, parent,
+                  rec.site_name, rec.site_id,
+                  alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree, esc,
+                  rec.cause, rec.point_bloquant,
+                  cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
+                  rec.observation, 'OUI']
         for j, v in enumerate(values, 1):
             c = ws.cell(row=i, column=j, value=v)
             c.fill = FILL_GREEN
@@ -547,25 +554,46 @@ def build_rapport_journalier(day: date) -> bytes:
             if j == 7 and resolved:
                 c.number_format = FMT_DUR
         i += 1
-    # bloc de synthèse — DR2 non traité : compteur à zéro, pourcentages vides
+    # bloc de synthèse
     i += 1
-    total_dr2 = len(dr2)
+    total_dr2 = len(dr2_today)
     b = ws.cell(row=i, column=2, value='DR2 COUNT'); b.fill = FILL_GREY
     c = ws.cell(row=i, column=3, value=total_dr2); c.font = Font(bold=True)
     for cat in DR2_CATEGORIES:
         i += 1
         b = ws.cell(row=i, column=2, value=cat); b.fill = FILL_YELLOW2
-        c = ws.cell(row=i, column=3, value=None)
+        pct = (cat_counts.get(cat, 0) / total_dr2) if total_dr2 else None
+        c = ws.cell(row=i, column=3, value=pct)
         c.fill, c.font, c.number_format = FILL_GREEN2, Font(bold=True), '0%'
     for col, w in (('A', 3.4), ('B', 25.3), ('C', 14.7), ('D', 18.3), ('E', 9.1),
                    ('F', 17.9), ('G', 12.7), ('H', 19.7), ('I', 56.1), ('J', 41.0),
                    ('K', 18.1), ('L', 19.4), ('M', 5.1)):
         ws.column_dimensions[col].width = w
 
-    # ── 7. COMPILATION DR2 (automatisation non prête → en-têtes seulement) ──
+    # ── 7. COMPILATION DR2 (cumul du mois en cours, jour par jour) ──
     ws = wb.create_sheet('COMPILATION DR2')
     for j, h in enumerate(COMPIL_DR2_HEADERS, 1):
         ws.cell(row=1, column=j, value=h).font = Font(bold=True)
+    dr2_month = list(Dr2ViolationRecord.objects
+                      .filter(date__year=year, date__month=month, date__lte=day)
+                      .order_by('date', 'site_name'))
+    i = 2
+    for num, rec in enumerate(dr2_month, start=1):
+        alarm = rec.alarm_time.replace(tzinfo=None) if rec.alarm_time else None
+        cancel = rec.cancel_time.replace(tzinfo=None) if rec.cancel_time else None
+        resolved = rec.is_resolved and cancel is not None
+        duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
+        values = [num, rec.date.strftime('%d-%m-%Y'), rec.numero_ticket,
+                  (rec.site_parent or '').strip(), rec.site_name, rec.site_id,
+                  alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree,
+                  (rec.categorie or '').strip(), rec.cause, rec.point_bloquant,
+                  cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
+                  rec.observation, 'OUI']
+        for j, v in enumerate(values, 1):
+            c = ws.cell(row=i, column=j, value=v)
+            if j == 8 and resolved:
+                c.number_format = FMT_DUR
+        i += 1
     for col, w in (('A', 5.7), ('B', 13.4), ('C', 22.0), ('D', 19.0), ('E', 28.0),
                    ('F', 20.3), ('G', 25.9), ('H', 11.7), ('I', 46.0), ('J', 42.0),
                    ('K', 43.4), ('L', 18.0), ('M', 11.4), ('N', 4.7)):

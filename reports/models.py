@@ -356,3 +356,60 @@ class ChatInteraction(models.Model):
 
     def __str__(self):
         return f"[{self.status}] {self.question[:50]} ({self.created_at:%Y-%m-%d %H:%M})"
+
+
+class Dr2ProcessedDate(models.Model):
+    """Marque qu'un jour a été traité par l'automatisation DR2 (fichiers de
+    disponibilité horaire 2G+3G importés) — distingue « 0 DR2 ce jour-là »
+    de « pas encore traité » (colonne DR2 de MTTR MOB, feuille DR2 J-1)."""
+    date        = models.DateField(unique=True, db_index=True)
+    sites_count = models.PositiveSmallIntegerField(default=0)
+    filename_2g = models.CharField(max_length=255, blank=True, default='')
+    filename_3g = models.CharField(max_length=255, blank=True, default='')
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    uploaded_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"DR2 traité {self.date} ({self.sites_count} site(s))"
+
+
+class Dr2ViolationRecord(models.Model):
+    """Un site en violation DR2 pour un jour donné — calculé automatiquement
+    depuis les fichiers de disponibilité horaire 2G (TCH availability ratio)
+    et 3G (Cell Availability excl. BLU) : instable (dispo nulle) >= 3h
+    cumulées, dans les deux technologies. Enrichi avec les infos du ticket
+    d'incident correspondant (Numero ticket, Site Parent, Alarm/Cancel Time…)
+    quand celui-ci est retrouvé."""
+    date            = models.DateField(db_index=True)
+    site_name       = models.CharField(max_length=150, db_index=True)   # nom Site (ticket)
+    site_name_2g    = models.CharField(max_length=150, blank=True, default='')
+    site_name_3g    = models.CharField(max_length=150, blank=True, default='')
+    site_id         = models.CharField(max_length=100, blank=True, default='')
+    site_parent     = models.CharField(max_length=150, blank=True, default='')
+    region          = models.CharField(max_length=50,  blank=True, default='', db_index=True)
+    numero_ticket   = models.CharField(max_length=50,  blank=True, default='')
+    categorie       = models.CharField(max_length=80,  blank=True, default='')   # Escalade
+    cause           = models.TextField(blank=True, default='')
+    point_bloquant  = models.TextField(blank=True, default='')
+    observation     = models.TextField(blank=True, default='')
+    alarm_time      = models.DateTimeField(null=True, blank=True)
+    cancel_time     = models.DateTimeField(null=True, blank=True)
+    hours_down      = models.PositiveSmallIntegerField(default=0)
+    is_resolved     = models.BooleanField(default=False)
+    created_at      = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', 'site_name']
+        constraints = [
+            models.UniqueConstraint(fields=['date', 'site_name'], name='uniq_dr2_date_site'),
+        ]
+        indexes = [
+            models.Index(fields=['date']),
+            models.Index(fields=['region']),
+        ]
+
+    def __str__(self):
+        return f"DR2 {self.site_name} ({self.date})"
