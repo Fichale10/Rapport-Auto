@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import shutil
+import unicodedata
 from datetime import date, datetime, time, timedelta
 
 import pandas as pd
@@ -103,22 +104,58 @@ def _network_bases():
     return [b for b in getattr(settings, 'SITE_DOWN_NETWORK_BASES', []) if b]
 
 
+def _normaliser_nom(txt):
+    """Minuscule, sans accents, espaces réduits — pour comparer des noms de dossiers."""
+    txt = unicodedata.normalize('NFKD', txt)
+    txt = ''.join(c for c in txt if not unicodedata.combining(c))
+    return re.sub(r'\s+', ' ', txt).strip().lower()
+
+
+def _dossier_alarmes_parent(base):
+    return os.path.join(base, 'RAPPORT RESEAU MOBILE', 'ALARME NETACT SITES DOWN')
+
+
+def _resoudre_dossier_mois(base, annee, mois):
+    """Chemin du dossier ``SITE DOWN <MOIS> <ANNEE>`` pour une base donnée.
+
+    Tolère les écarts de nommage (accents « AOÛT » vs « AOUT », casse, espaces)
+    en cherchant, à défaut du nom exact, un dossier équivalent dans le parent.
+    Retourne le chemin existant ou None.
+    """
+    attendu = f'SITE DOWN {NOMS_MOIS_DOSSIER[mois]} {annee}'
+    chemin_exact = os.path.join(_dossier_alarmes_parent(base), attendu)
+    if os.path.exists(chemin_exact):
+        return chemin_exact
+
+    parent = _dossier_alarmes_parent(base)
+    cible = _normaliser_nom(attendu)
+    try:
+        for nom in os.listdir(parent):
+            if _normaliser_nom(nom) == cible:
+                return os.path.join(parent, nom)
+    except OSError:
+        pass
+    return None
+
+
+def _mois_a_collecter():
+    """(annee, mois) du mois courant + mois précédent (transition de mois)."""
+    now = datetime.now()
+    prev_mois = 12 if now.month == 1 else now.month - 1
+    prev_annee = now.year - 1 if now.month == 1 else now.year
+    return [(now.year, now.month), (prev_annee, prev_mois)]
+
+
 def _source_alarmes_candidates():
     """Dossiers sources candidats : mois courant + mois précédent, sur chaque base.
 
     Le mois précédent couvre la transition de mois (fichiers des 30/31 déposés
     dans le dossier du mois précédent après le changement de mois).
     """
-    now = datetime.now()
-    mois_list = [(NOMS_MOIS_DOSSIER[now.month], now.year)]
-    prev_mois = 12 if now.month == 1 else now.month - 1
-    prev_annee = now.year - 1 if now.month == 1 else now.year
-    mois_list.append((NOMS_MOIS_DOSSIER[prev_mois], prev_annee))
-
     return [
-        os.path.join(base, 'RAPPORT RESEAU MOBILE', 'ALARME NETACT SITES DOWN',
-                     f'SITE DOWN {mois} {annee}')
-        for mois, annee in mois_list
+        os.path.join(_dossier_alarmes_parent(base),
+                     f'SITE DOWN {NOMS_MOIS_DOSSIER[mois]} {annee}')
+        for annee, mois in _mois_a_collecter()
         for base in _network_bases()
     ]
 
@@ -129,18 +166,11 @@ def _sources_alarmes_existantes():
     Les candidats sont groupés par mois ; pour chaque mois on prend la
     première base accessible (fallback IP → DNS).
     """
-    now = datetime.now()
-    prev_mois = 12 if now.month == 1 else now.month - 1
-    prev_annee = now.year - 1 if now.month == 1 else now.year
-    mois_list = [(now.year, now.month), (prev_annee, prev_mois)]
-
     sources = []
-    for annee, mois in mois_list:
+    for annee, mois in _mois_a_collecter():
         for base in _network_bases():
-            chemin = os.path.join(
-                base, 'RAPPORT RESEAU MOBILE', 'ALARME NETACT SITES DOWN',
-                f'SITE DOWN {NOMS_MOIS_DOSSIER[mois]} {annee}')
-            if os.path.exists(chemin):
+            chemin = _resoudre_dossier_mois(base, annee, mois)
+            if chemin:
                 sources.append({'mois': f'{annee}-{mois:02d}', 'path': chemin})
                 break
     return sources
