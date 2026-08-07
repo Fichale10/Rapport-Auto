@@ -146,28 +146,45 @@ def _mois_a_collecter():
     return [(now.year, now.month), (prev_annee, prev_mois)]
 
 
-def _source_alarmes_candidates():
-    """Dossiers sources candidats : mois courant + mois précédent, sur chaque base.
+def _mois_cibles_depuis(mois_annee):
+    """Convertit un 'AAAA-MM' en [(annee, mois)] ; None → défaut (courant + précédent)."""
+    if not mois_annee:
+        return None
+    try:
+        annee, mois = map(int, str(mois_annee).split('-'))
+        if 1 <= mois <= 12:
+            return [(annee, mois)]
+    except (ValueError, AttributeError):
+        pass
+    return None
 
-    Le mois précédent couvre la transition de mois (fichiers des 30/31 déposés
-    dans le dossier du mois précédent après le changement de mois).
+
+def _source_alarmes_candidates(mois_cibles=None):
+    """Dossiers sources candidats pour les mois visés, sur chaque base.
+
+    Par défaut : mois courant + mois précédent (transition de mois — fichiers
+    des 30/31 déposés dans le dossier du mois précédent après le changement).
     """
+    if mois_cibles is None:
+        mois_cibles = _mois_a_collecter()
     return [
         os.path.join(_dossier_alarmes_parent(base),
                      f'SITE DOWN {NOMS_MOIS_DOSSIER[mois]} {annee}')
-        for annee, mois in _mois_a_collecter()
+        for annee, mois in mois_cibles
         for base in _network_bases()
     ]
 
 
-def _sources_alarmes_existantes():
+def _sources_alarmes_existantes(mois_cibles=None):
     """Retourne un dossier source existant par mois : [{'mois': 'AAAA-MM', 'path': …}].
 
     Les candidats sont groupés par mois ; pour chaque mois on prend la
     première base accessible (fallback IP → DNS).
     """
+    if mois_cibles is None:
+        mois_cibles = _mois_a_collecter()
     sources = []
-    for annee, mois in _mois_a_collecter():
+    for annee, mois in mois_cibles:
         for base in _network_bases():
             chemin = _resoudre_dossier_mois(base, annee, mois)
             if chemin:
@@ -239,20 +256,22 @@ def _dates_deja_traitees_cache():
     return get
 
 
-def collecter_alarmes():
+def collecter_alarmes(mois_cibles=None):
     """Copie les nouveaux fichiers d'alarmes du partage réseau vers ``a_traiter``.
 
-    Parcourt les dossiers du mois courant et du mois précédent.
+    Args:
+        mois_cibles: liste [(annee, mois)] à collecter ; None → mois courant
+            + mois précédent (comportement par défaut).
 
     Returns:
         dict: {'copied': n, 'network_ok': bool} — network_ok False si aucun
         dossier source n'est accessible depuis ce serveur.
     """
     ensure_dirs()
-    sources = _sources_alarmes_existantes()
+    sources = _sources_alarmes_existantes(mois_cibles)
     if not sources:
         logger.warning("site_down : source alarmes inaccessible (%s)",
-                       _source_alarmes_candidates())
+                       _source_alarmes_candidates(mois_cibles))
         return {'copied': 0, 'network_ok': False}
 
     deja_copies = _lire_journal(_journal_alarmes())
@@ -1140,9 +1159,15 @@ def actualiser_fichiers_existants(extra_causes_map=None):
     return summary
 
 
-def run_auto():
-    """Point d'entrée complet : collecte réseau puis traitement (scheduler)."""
-    collecte = collecter_alarmes()
+def run_auto(mois_annee=None):
+    """Point d'entrée complet : collecte réseau puis traitement (scheduler).
+
+    Args:
+        mois_annee: 'AAAA-MM' pour cibler un mois précis ; None → mois courant
+            + mois précédent (comportement du planificateur).
+    """
+    mois_cibles = _mois_cibles_depuis(mois_annee)
+    collecte = collecter_alarmes(mois_cibles)
     summary = process_pending_files()
     summary['collected']  = collecte['copied']
     summary['network_ok'] = collecte['network_ok']

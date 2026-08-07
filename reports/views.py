@@ -8597,7 +8597,7 @@ def site_down_view(request):
 
         if action == 'collect':
             try:
-                summary = sd.run_auto()
+                summary = sd.run_auto(request.POST.get('mois') or None)
                 if not summary.get('network_ok', True):
                     # Réseau inaccessible : uniquement l'erreur, pas de détails parasites
                     messages.error(
@@ -8723,6 +8723,18 @@ def site_down_view(request):
     # ── GET ──────────────────────────────────────────────────────────────────
     total_alarmes = SiteDownAlarm.objects.count()
     dernieres = SiteDownAlarm.objects.all()[:15]
+    # Mois proposés pour la collecte ciblée (12 derniers mois)
+    _today = date.today()
+    _y, _m = _today.year, _today.month
+    mois_options = []
+    for _ in range(12):
+        mois_options.append({
+            'value': f'{_y}-{_m:02d}',
+            'label': f"{sd.NOMS_MOIS_COMPLETS[f'{_m:02d}']} {_y}",
+        })
+        _m -= 1
+        if _m == 0:
+            _m, _y = 12, _y - 1
     ctx = {
         'fichiers':        sd.fichiers_mensuels(),
         'total_alarmes':   total_alarmes,
@@ -8731,6 +8743,7 @@ def site_down_view(request):
         'interval_hours':  getattr(settings, 'SITE_DOWN_INTERVAL_HOURS', 0),
         'stats':           sd.stats_mensuelles(request.GET.get('mois') or None),
         'manquants':       sd.lire_fichiers_manquants(),
+        'mois_options':    mois_options,
     }
     return render(request, 'reports/site_down.html', ctx)
 

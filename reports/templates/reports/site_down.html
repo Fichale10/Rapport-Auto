@@ -81,6 +81,13 @@
       <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="collect">
+        <label style="display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:4px;">Mois à collecter</label>
+        <select name="mois" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-bottom:12px;background:#fff;">
+          <option value="">Automatique (mois courant + précédent)</option>
+          {% for opt in mois_options %}
+            <option value="{{ opt.value }}">{{ opt.label }}</option>
+          {% endfor %}
+        </select>
         <button type="submit" class="btn-primary" {% if not network_enabled %}disabled title="Configurer SITE_DOWN_NETWORK_BASES"{% endif %}>
           Collecter &amp; traiter
         </button>
