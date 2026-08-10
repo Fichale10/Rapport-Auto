@@ -53,14 +53,7 @@
   .drd-mini-chip { background:#f5f8ff;border-radius:10px;padding:8px 12px;flex:1;min-width:90px; }
   .drd-mini-chip-val { font-family:'Bebas Neue',sans-serif;font-size:22px;color:#003087;line-height:1; }
   .drd-mini-chip-lbl { font-size:10px;color:#8896b3;text-transform:uppercase;letter-spacing:.4px;margin-top:2px; }
-  .drd-chart-wrap { padding:6px 14px 18px; position:relative; }
-  #drdTrendChart { cursor:pointer; }
-  .drd-click-info {
-    display:inline-flex; align-items:center; gap:8px;
-    background:#fff7e6; border:1.5px solid #FFC72C; border-radius:10px;
-    padding:6px 14px; margin:0 0 10px; font-size:12.5px; color:#8a6d00; font-weight:600;
-  }
-  .drd-click-info strong { color:#003087; font-size:14px; }
+  .drd-chart-wrap { padding:6px 14px 18px; }
 
   /* ── Right card ── */
   .drd-right-head { display:flex;align-items:center;justify-content:space-between;background:#0a1c4a;padding:14px 20px;flex-wrap:wrap;gap:10px; }
@@ -167,7 +160,6 @@
       </div>
     </div>
     <div class="drd-chart-wrap">
-      <div class="drd-click-info" id="drdClickInfo">👉 Cliquez sur un point de la courbe pour voir le détail</div>
       <canvas id="drdTrendChart" height="420"></canvas>
     </div>
   </div>
@@ -281,12 +273,6 @@
         scales: {
           y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f2f8' } },
           x: { grid: { display: false } },
-        },
-        onClick: function(evt, elements){
-          if (!elements.length) return;
-          var t = TREND[elements[0].index];
-          var info = document.getElementById('drdClickInfo');
-          if (info) info.innerHTML = '📅 <strong>' + t.label + '</strong> — ' + t.count + ' DR2';
         }
       }
     });
