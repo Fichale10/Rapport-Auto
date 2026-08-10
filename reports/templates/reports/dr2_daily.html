@@ -229,6 +229,7 @@
       <span class="upload-file-name" id="dr2AutoName3G">Aucun fichier</span>
       <button type="submit" class="btn-apply">⚙️ Calculer DR2</button>
     </form>
+    <a href="{% url 'dr2_dashboard' %}" class="btn-apply" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 16px">📊 Vue graphique</a>
     {% if not no_file %}
     <a href="{% url 'dr2_daily_export' %}?debut={{ debut|date:'Y-m-d' }}&fin={{ fin|date:'Y-m-d' }}"
        class="btn-apply" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 16px">
