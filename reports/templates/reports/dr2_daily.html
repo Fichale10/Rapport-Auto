@@ -239,6 +239,22 @@
       </svg>
       Exporter Excel
     </a>
+    <a href="{% url 'dr2_gdi_export' %}?debut={{ debut|date:'Y-m-d' }}&fin={{ fin|date:'Y-m-d' }}"
+       class="btn-apply" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 16px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export PPTX GDI
+    </a>
+    <a href="{% url 'dr2_reunion_export' %}?debut={{ debut|date:'Y-m-d' }}&fin={{ fin|date:'Y-m-d' }}"
+       class="btn-apply" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 16px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export PPTX Réunion
+    </a>
     {% endif %}
     <a href="{% url 'reporting_platform' 'mobile-dr2' %}" class="btn-back">&#8592; Retour</a>
   </div>

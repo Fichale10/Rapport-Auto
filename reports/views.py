@@ -5234,19 +5234,7 @@ def core_gdi_export(request, fmt):
     raise Http404('Format inconnu')
 
 
-DR2_REGION_TARGETS = {
-    'LOME':     372,
-    'MARITIME': 182,
-    'PLATEAUX': 159,
-    'CENTRALE': 134,
-    'KARA':     161,
-    'SAVANES':  118,
-}
-
-DR2_ESCALADE_ORDER = [
-    'ENERGIE', 'RAN-FIELD O', 'TRANS FH-FIELD O', 'TRANS IP',
-    'TRANS FO', 'TRANS FTTM', 'PROJET', 'BSS', 'INFRA',
-]
+from .dr2_availability import DR2_REGION_TARGETS, DR2_ESCALADE_ORDER
 
 
 def _parse_dr2_excel(fileobj):
@@ -5942,6 +5930,72 @@ def dr2_daily_export(request):
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
+    return response
+
+
+def _dr2_export_period(request):
+    """Détermine la période (debut, fin) des exports PPTX DR2 GDI/Réunion —
+    mêmes params GET que la page (repli sur la session/le mois en cours)."""
+    from .models import Dr2ViolationRecord
+
+    debut_str = request.GET.get('debut', request.session.get('dr2_debut', ''))
+    fin_str   = request.GET.get('fin',   request.session.get('dr2_fin',   ''))
+    try:
+        debut = date.fromisoformat(debut_str) if debut_str else None
+    except ValueError:
+        debut = None
+    try:
+        fin = date.fromisoformat(fin_str) if fin_str else None
+    except ValueError:
+        fin = None
+    if not debut or not fin:
+        qs = Dr2ViolationRecord.objects.all()
+        first = qs.order_by('date').first()
+        last  = qs.order_by('-date').first()
+        today = date.today()
+        debut = debut or (first.date if first else date(today.year, today.month, 1))
+        fin   = fin   or (last.date if last else today)
+    return debut, fin
+
+
+@gestionnaire_required
+def dr2_gdi_export(request):
+    """Export PPTX « Comité Gestion des Incidents » (point quotidien / mois
+    en cours) — calqué sur presentation a automatiser GDI.pptx."""
+    from datetime import datetime
+    from django.http import HttpResponse
+    from .dr2_meeting_pptx import generate_gdi_daily
+
+    debut, fin = _dr2_export_period(request)
+    generated_on = datetime.now().strftime('%d/%m/%Y %H:%M')
+    buf = generate_gdi_daily(debut, fin, generated_on)
+    filename = f"GDI_DR2_{debut.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.pptx"
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@gestionnaire_required
+def dr2_reunion_export(request):
+    """Export PPTX « Réunion Gestion des Incidents » hebdomadaire (1 diapo
+    Détail DR2 par jour de la période) — calqué sur PRESENTATION REUNION[1]
+    vendredi NEW (9).pptx."""
+    from datetime import datetime
+    from django.http import HttpResponse
+    from .dr2_meeting_pptx import generate_reunion_hebdo
+
+    debut, fin = _dr2_export_period(request)
+    generated_on = datetime.now().strftime('%d/%m/%Y %H:%M')
+    buf = generate_reunion_hebdo(debut, fin, generated_on)
+    filename = f"REUNION_DR2_{debut.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.pptx"
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 

@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 
 DR2_THRESHOLD_HOURS = 3
 
+# Cible de violations DR2 par région (nombre de sites * ~8%, valeurs figées
+# fournies par l'utilisateur) — utilisé pour la synthèse région / réunion GDI.
+DR2_REGION_TARGETS = {
+    'LOME':     372,
+    'MARITIME': 182,
+    'PLATEAUX': 159,
+    'CENTRALE': 134,
+    'KARA':     161,
+    'SAVANES':  118,
+}
+
+DR2_ESCALADE_ORDER = [
+    'ENERGIE', 'RAN-FIELD O', 'TRANS FH-FIELD O', 'TRANS IP',
+    'TRANS FO', 'TRANS FTTM', 'PROJET', 'BSS', 'INFRA',
+]
+
 # Tokens techno / séparateurs retirés pour rapprocher un nom de site 2G (BCF)
 # et son équivalent 3G (WBTS) — rapprochement par préfixe du libellé.
 _TECH_TOKENS = re.compile(

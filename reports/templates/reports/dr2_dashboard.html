@@ -227,6 +227,7 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="{% static 'reports/leaflet/leaflet.js' %}"></script>
 <script src="{% static 'reports/togo_geo.js' %}"></script>
 <script>
@@ -250,6 +251,7 @@
 
     new Chart(ctx, {
       type: 'line',
+      plugins: [ChartDataLabels],
       data: {
         labels: TREND.map(function(t){ return t.label; }),
         datasets: [{
@@ -269,7 +271,21 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        layout: { padding: { top: 26 } },
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            align: 'top',
+            anchor: 'end',
+            offset: 6,
+            color: '#fff',
+            backgroundColor: '#e53e3e',
+            borderRadius: 6,
+            padding: { top: 3, bottom: 3, left: 7, right: 7 },
+            font: { weight: '700', size: 12 },
+            formatter: function(value){ return value; },
+          },
+        },
         scales: {
           y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#f0f2f8' } },
           x: { grid: { display: false } },
