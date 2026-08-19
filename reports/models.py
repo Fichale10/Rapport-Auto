@@ -393,6 +393,7 @@ class Dr2ViolationRecord(models.Model):
     numero_ticket   = models.CharField(max_length=50,  blank=True, default='')
     categorie       = models.CharField(max_length=80,  blank=True, default='')   # Escalade
     cause           = models.TextField(blank=True, default='')
+    root_cause      = models.TextField(blank=True, default='')
     point_bloquant  = models.TextField(blank=True, default='')
     observation     = models.TextField(blank=True, default='')
     alarm_time      = models.DateTimeField(null=True, blank=True)

@@ -1,6 +1,7 @@
 import pandas as pd
 
-def process_file(input_file, date_rapport, date_fin=None):
+def process_file(input_file, date_rapport, date_fin=None, *,
+                 filter_alarm_text=True, include_all_escalations=False):
     """Traite le fichier Excel pour une plage de dates.
 
     Args:
@@ -8,6 +9,9 @@ def process_file(input_file, date_rapport, date_fin=None):
         date_rapport: date de début (str YYYY-MM-DD ou date).
         date_fin: date de fin inclusive (str YYYY-MM-DD ou date).
                   Si None, la plage porte uniquement sur date_rapport (rapport journalier).
+        filter_alarm_text: applique le filtre officiel des alarmes Mobile.
+        include_all_escalations: inclut toutes les escalades dans la synthèse,
+                     notamment celles propres au réseau Fixe.
 
     Returns:
         (df_export, df_dedup, df_synthese)
@@ -19,17 +23,22 @@ def process_file(input_file, date_rapport, date_fin=None):
         print(f"Chargement du fichier: {input_file}")
         df = pd.read_excel(input_file)
     
-    # Filtrage des alarmes à garder dans la colonne 'Alarm text'
+    # Filtrage officiel Mobile. Le réseau Fixe réutilise le même traitement
+    # avec filter_alarm_text=False afin de conserver toutes ses alarmes.
     alarmes_a_garder = [
         "BTS O&M LINK FAILURE / WCDMA BASE STATION OUT OF USE",
         "WCDMA BASE STATION OUT OF USE",
         "BTS O&M LINK FAILURE",
         "ALL RFMS MISSING",
     ]
-    
-    print("Filtrage des données dans la colonne 'Alarm text'...")
-    # On s'assure que la colonne ne contient pas des espaces au début/fin au moment de la comparaison
-    df_filtre = df[df['Alarm text'].astype(str).str.strip().isin(alarmes_a_garder)].copy()
+
+    if filter_alarm_text:
+        print("Filtrage des données dans la colonne 'Alarm text'...")
+        # On s'assure que la colonne ne contient pas des espaces au début/fin au moment de la comparaison
+        df_filtre = df[df['Alarm text'].astype(str).str.strip().isin(alarmes_a_garder)].copy()
+    else:
+        print("Traitement de toutes les alarmes sans filtre 'Alarm text'...")
+        df_filtre = df.copy()
     
     # Plage de dates : début = 00:00:00 du premier jour, fin = 23:59:00 du dernier jour
     debut_jour = pd.to_datetime(f"{date_rapport} 00:00:00")
@@ -105,6 +114,11 @@ def process_file(input_file, date_rapport, date_fin=None):
         "TRANS / RAN", "INFRA", "PROJET", "TRANS FO",
         "TRANS FTTM", "TRANS IP", "ENVIRONNEMENT", "BSS",
     ]
+    if include_all_escalations and 'Escalade' in df_pour_synthese.columns:
+        escalades_ordre = list(dict.fromkeys(
+            df_pour_synthese['Escalade'].fillna('').astype(str).str.strip()
+        ))
+        escalades_ordre = [esc for esc in escalades_ordre if esc]
 
     # Formatage Secondes -> HH:MM:SS
     def format_sec(secs):
@@ -149,10 +163,14 @@ def process_file(input_file, date_rapport, date_fin=None):
     df_synthese = pd.DataFrame(rapport_lignes)
 
     # Ligne de TOTAL
-    total_count = df_synthese['Inc count'].sum()
+    total_count = (len(df_pour_synthese) if include_all_escalations
+                   else df_synthese['Inc count'].sum())
 
     if 'Duration_Sec' in df_complet.columns:
-        total_duree = df_pour_synthese[df_pour_synthese['Escalade'].isin(escalades_ordre)]['Duration_Sec'].sum() if 'Escalade' in df_pour_synthese.columns else 0
+        if include_all_escalations:
+            total_duree = df_pour_synthese['Duration_Sec'].sum()
+        else:
+            total_duree = df_pour_synthese[df_pour_synthese['Escalade'].isin(escalades_ordre)]['Duration_Sec'].sum() if 'Escalade' in df_pour_synthese.columns else 0
         total_outage = df_complet['Duration_Sec'].sum()
     else:
         total_duree = 0

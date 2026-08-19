@@ -314,6 +314,7 @@
   {% if res and not res.empty %}
   <div class="an-export-bar">
     <a class="an-btn ghost" href="{% url 'analytics_export' 'xlsx' %}{% if qs %}?{{ qs }}{% endif %}">📥 Excel</a>
+    <a class="an-btn yellow" href="{% url 'analytics_export' 'pptx' %}{% if qs %}?{{ qs }}{% endif %}">📊 PowerPoint complet</a>
     <a class="an-btn ghost" href="{% url 'analytics_export' 'pdf' %}{% if qs %}?{{ qs }}{% endif %}">📄 PDF (données)</a>
     <button type="button" class="an-btn ghost" id="anExportPageBtn" onclick="anExportFullPagePdf()">🖨️ PDF (page + graphiques)</button>
   </div>

@@ -5267,6 +5267,7 @@ def _parse_dr2_excel(fileobj):
         'site_id':   find_col('SITE ID'),
         'categorie': find_col('CATEGORIE', 'CAT'),
         'cause':     find_col('CAUSE'),
+        'root_cause': find_col('ROOT CAUSE'),
         'cancel':    find_col('CANCEL TIME'),
         'dr2':       find_col('DR2'),
         'region':    find_col('REGION'),
@@ -5314,6 +5315,7 @@ def _parse_dr2_excel(fileobj):
             'site_id':     str(cell('site_id')   or ''),
             'categorie':   str(cell('categorie') or '').strip() or '—',
             'cause':       str(cell('cause')     or ''),
+            'root_cause':  str(cell('root_cause') or ''),
             'is_resolved': is_resolved,
             'region':      str(cell('region')    or '').strip().upper() or '—',
             'zone':        str(cell('zone')      or ''),
@@ -5419,6 +5421,7 @@ def _dr2_records_to_rows(qs):
             'site_id':     rec.site_id,
             'categorie':   rec.categorie or '—',
             'cause':       rec.cause,
+            'root_cause':  rec.root_cause,
             'is_resolved': rec.is_resolved,
             'region':      rec.region.upper() if rec.region else '—',
             'zone':        '',
@@ -9256,7 +9259,7 @@ def analytics_reset(request):
 
 
 def analytics_export(request, fmt):
-    """Exporte le tableau de bord filtré au format Excel ou PDF."""
+    """Exporte le tableau de bord filtré au format Excel, PDF ou PowerPoint."""
     from django.http import HttpResponse
     from django.utils import timezone
 
@@ -9287,6 +9290,22 @@ def analytics_export(request, fmt):
                            timezone.localtime().strftime('%d/%m/%Y %H:%M'))
         resp = HttpResponse(buf.getvalue(), content_type='application/pdf')
         resp['Content-Disposition'] = f'attachment; filename="Analytics_{stamp}.pdf"'
+        return resp
+    if fmt == 'pptx':
+        from .pptx_report import generate_analytics_pptx
+
+        filtered = an.apply_filters(df, **flt)
+        drill = an.drill_pivot(filtered, ['region', 'site', 'cause'], limit=16)
+        buf = generate_analytics_pptx(
+            res,
+            drill=drill,
+            source=meta.get('source', '—'),
+            generated_on=timezone.localtime().strftime('%d/%m/%Y %H:%M'),
+        )
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        resp['Content-Disposition'] = f'attachment; filename="Analytics_{stamp}.pptx"'
         return resp
     raise Http404
 

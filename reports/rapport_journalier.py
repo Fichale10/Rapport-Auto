@@ -89,12 +89,12 @@ DR2_CATEGORIES = [
 ]
 
 DR2_HEADERS = ['N°', 'Numero ticket', 'SITE PARENT', 'Site Name', 'Site ID',
-               'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'POINT BLOQUANTS',
-               'Cancel Time', 'OBSERVATION', 'DR2']
+         'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'ROOT CAUSE',
+         'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
 COMPIL_DR2_HEADERS = ['N°', 'DATE DR2 ', 'Numero ticket', 'SITE PARENT',
                       'Site Name', 'Site ID', 'Alarm Time', 'DUREE',
-                      'Catégorie', 'CAUSE', 'POINT BLOQUANTS', 'Cancel Time',
-                      'OBSERVATION', 'DR2']
+             'Catégorie', 'CAUSE', 'ROOT CAUSE', 'POINT BLOQUANTS',
+             'Cancel Time', 'OBSERVATION', 'DR2']
 
 
 # ─────────────────────────── Helpers données ───────────────────────────
@@ -271,6 +271,45 @@ def _cell_str(row, col) -> str:
 
 def _fmt_dt(ts) -> str:
     return ts.strftime('%d-%m-%Y %H:%M:%S') if pd.notna(ts) else ''
+
+
+def _fixe_daily_outputs(df_raw: pd.DataFrame | None, year: int, month: int,
+                        last_day: int) -> tuple[pd.DataFrame | None, dict[int, tuple]]:
+    """Applique le traitement commun à chaque jour Fixe du mois.
+
+    Contrairement au Mobile, toutes les valeurs de ``Alarm text`` et toutes
+    les escalades sont conservées. Le détail retourné correspond à J-1 et les
+    agrégats alimentent ``MTTR FIXE``.
+    """
+    if df_raw is None or df_raw.empty:
+        return None, {}
+
+    from treatement import process_file
+
+    detail_last = None
+    rows: dict[int, tuple] = {}
+    for day_number in range(1, last_day + 1):
+        current_day = date(year, month, day_number)
+        try:
+            detailed, _dedup, synthesis = process_file(
+                df_raw.copy(), current_day.isoformat(),
+                filter_alarm_text=False, include_all_escalations=True)
+        except Exception as exc:
+            logger.warning('RJ: traitement fixe impossible pour %s : %s',
+                           current_day, exc)
+            continue
+        if day_number == last_day:
+            detail_last = _parse_time_cols(detailed)
+        total = next((row for row in synthesis.to_dict('records')
+                      if str(row.get('Escalade') or '').strip() == 'TOTAL'), {})
+        try:
+            count = int(total.get('Inc count') or 0)
+        except (TypeError, ValueError):
+            count = 0
+        duration = _parse_hms(total.get('DUREE')) or timedelta(0)
+        mttr = _parse_hms(total.get('MTTR')) or timedelta(0)
+        rows[day_number] = (count, duration, mttr)
+    return detail_last, rows
 
 
 # ───────────────────────── Feuilles incidents ─────────────────────────
@@ -488,40 +527,18 @@ def build_rapport_journalier(day: date) -> bytes:
     for col, w in (('A', 35.9), ('B', 10.9), ('C', 11.0), ('D', 8.4), ('E', 10.3), ('F', 13.9)):
         ws.column_dimensions[col].width = w
 
-    # ── 4/5. FIXE J-1 + MTTR FIXE (via API — non stocké en base) ──
-    df_fixe_month = _fetch_api_df('fixe', date(year, month, 1), day)
-    df_fixe_j = None
-    fixe_rows: dict[int, tuple] = {}
-    if df_fixe_month is not None and not df_fixe_month.empty:
-        df_fixe_j = df_fixe_month[_day_mask(df_fixe_month, day)]
-        # stats journalières (regroupées par date d'alarme)
-        dd = df_fixe_month
-        if 'Numero du ticket' in dd.columns:
-            dd = dd.drop_duplicates(subset=['Numero du ticket'], keep='first')
-        dd = dd[dd['_Alarm Time'].notna()]
-        end_bound = pd.Timestamp(f'{day} 23:59:00')
-        for d in range(1, day.day + 1):
-            dt_d = date(year, month, d)
-            sub = dd[dd['_Alarm Time'].dt.date == dt_d]
-            if sub.empty:
-                fixe_rows[d] = (0, timedelta(0), timedelta(0))
-                continue
-            total = timedelta(0)
-            for _, row in sub.iterrows():
-                end = row['_Cancel Time'] if pd.notna(row['_Cancel Time']) else end_bound
-                dur = end - row['_Alarm Time']
-                if dur.total_seconds() > 0:
-                    total += dur.to_pytimedelta()
-            n = len(sub)
-            mttr = timedelta(seconds=int(total.total_seconds() / n)) if n else timedelta(0)
-            fixe_rows[d] = (n, total, mttr)
+    # ── 4/5. FIXE J-1 + MTTR FIXE (même traitement que Mobile, mais toutes
+    # les alarmes sont conservées et toutes les escalades contribuent).
+    df_fixe_raw = _fetch_api_raw('fixe', date(year, month, 1), day)
+    df_fixe_j, fixe_rows = _fixe_daily_outputs(
+        df_fixe_raw, year, month, day.day)
     _sheet_incidents(wb, 'FIXE J-1', df_fixe_j)
     _sheet_mttr(wb, 'MTTR FIXE', ['DATE  ', 'Inc count ', 'DUREE', 'MTTR'],
                 fixe_rows, year, month, day.day)
 
     # ── 6. DR2 J-1 (calcul auto depuis dispo horaire 2G/3G, voir dr2_availability.py) ──
     ws = wb.create_sheet(' DR2 J-1')
-    ws.merge_cells('A1:M1')
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(DR2_HEADERS))
     t = ws.cell(row=1, column=1, value=f'CAS DE VIOLATION DR2  {day.strftime("%d-%m-%Y")} ')
     t.font, t.fill = Font(bold=True, size=18), FILL_DR2_TITLE
     t.alignment = Alignment(horizontal='center')
@@ -541,7 +558,7 @@ def build_rapport_journalier(day: date) -> bytes:
         values = [num, rec.numero_ticket, parent,
                   rec.site_name, rec.site_id,
                   alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree, esc,
-                  rec.cause, rec.point_bloquant,
+                  rec.cause, rec.root_cause, rec.point_bloquant,
                   cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
                   rec.observation, 'OUI']
         for j, v in enumerate(values, 1):
@@ -566,8 +583,8 @@ def build_rapport_journalier(day: date) -> bytes:
         c = ws.cell(row=i, column=3, value=pct)
         c.fill, c.font, c.number_format = FILL_GREEN2, Font(bold=True), '0%'
     for col, w in (('A', 3.4), ('B', 25.3), ('C', 14.7), ('D', 18.3), ('E', 9.1),
-                   ('F', 17.9), ('G', 12.7), ('H', 19.7), ('I', 56.1), ('J', 41.0),
-                   ('K', 18.1), ('L', 19.4), ('M', 5.1)):
+                   ('F', 17.9), ('G', 12.7), ('H', 19.7), ('I', 42.0), ('J', 56.1),
+                   ('K', 41.0), ('L', 18.1), ('M', 19.4), ('N', 5.1)):
         ws.column_dimensions[col].width = w
 
     # ── 7. COMPILATION DR2 (cumul du mois en cours, jour par jour) ──
@@ -586,7 +603,8 @@ def build_rapport_journalier(day: date) -> bytes:
         values = [num, rec.date.strftime('%d-%m-%Y'), rec.numero_ticket,
                   (rec.site_parent or '').strip(), rec.site_name, rec.site_id,
                   alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree,
-                  (rec.categorie or '').strip(), rec.cause, rec.point_bloquant,
+                  (rec.categorie or '').strip(), rec.cause, rec.root_cause,
+                  rec.point_bloquant,
                   cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
                   rec.observation, 'OUI']
         for j, v in enumerate(values, 1):
@@ -596,7 +614,7 @@ def build_rapport_journalier(day: date) -> bytes:
         i += 1
     for col, w in (('A', 5.7), ('B', 13.4), ('C', 22.0), ('D', 19.0), ('E', 28.0),
                    ('F', 20.3), ('G', 25.9), ('H', 11.7), ('I', 46.0), ('J', 42.0),
-                   ('K', 43.4), ('L', 18.0), ('M', 11.4), ('N', 4.7)):
+                   ('K', 42.0), ('L', 43.4), ('M', 18.0), ('N', 11.4), ('O', 4.7)):
         ws.column_dimensions[col].width = w
 
     # ── 8. COMPIL OUTAGE MOB ──

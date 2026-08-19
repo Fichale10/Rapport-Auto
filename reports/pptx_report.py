@@ -1782,6 +1782,609 @@ def generate_ftth_editable(report, generated_on='',
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RAPPORT ANALYTICS — SUPPORT COMPLET, NATIF ET MODIFIABLE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_AN_SERIES_COLORS = (
+    C_NAVY_T, C_YELL, C_BLUE2, C_ORANGE_F, C_LBLUE_F,
+    RGBColor(0x2F, 0xA8, 0x7A), RGBColor(0x9B, 0x59, 0xB6),
+)
+
+
+def _an_short(value, limit=42):
+    text = str(value or '—').replace('\n', ' ').strip() or '—'
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
+
+
+def _an_shape_text(shape, text, size=10, color=C_NAVY_T, bold=False,
+                   align=PP_ALIGN.CENTER):
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = Inches(0.06)
+    tf.margin_right = Inches(0.06)
+    p = tf.paragraphs[0]
+    p.alignment = align
+    r = p.add_run()
+    r.text = str(text)
+    r.font.size = Pt(size)
+    r.font.bold = bold
+    r.font.color.rgb = color
+
+
+def _an_badge(slide, left, label, value):
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, left, Inches(0.25),
+        Inches(0.92), Inches(0.49))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = RGBColor(0x1B, 0x3A, 0x85)
+    shape.line.color.rgb = RGBColor(0x66, 0x82, 0xBA)
+    shape.line.width = Pt(0.8)
+    tf = shape.text_frame
+    tf.clear()
+    tf.word_wrap = False
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = Inches(0.03)
+    tf.margin_right = Inches(0.03)
+    for index, (text, size, color) in enumerate((
+            (label, 6.5, RGBColor(0xB7, 0xC6, 0xE5)),
+            (value, 10, C_WHITE))):
+        p = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.CENTER
+        p.space_after = Pt(0)
+        p.space_before = Pt(0)
+        r = p.add_run()
+        r.text = str(text)
+        r.font.size = Pt(size)
+        r.font.bold = True
+        r.font.color.rgb = color
+
+
+def _an_base(prs, section_title, subtitle, kpi, page, total_pages):
+    slide = _blank(prs)
+    _rect(slide, 0, 0, SW, SH, RGBColor(0xEC, 0xF0, 0xF9))
+    _rect(slide, 0, 0, SW, Inches(1.02), C_NAVY_T)
+    _rect(slide, 0, 0, Inches(0.08), Inches(1.02), C_YELL)
+    _txt(slide, 'Rapport Analytics', MARGIN, Inches(0.17), Inches(4.6),
+         Inches(0.34), size=20, bold=True, color=C_WHITE)
+    _txt(slide, 'Pilotage des incidents réseau', MARGIN, Inches(0.55),
+         Inches(4.6), Inches(0.24), size=9, bold=True,
+         color=RGBColor(0xB7, 0xC6, 0xE5))
+
+    _an_badge(slide, Inches(8.35), 'INCIDENTS', kpi.get('incidents', 0))
+    _an_badge(slide, Inches(9.38), 'SITES', kpi.get('sites', 0))
+    _an_badge(slide, Inches(10.41), 'RÉGIONS', kpi.get('regions', 0))
+    _t_logo(slide)
+
+    frame = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.18), Inches(1.18),
+        SW - Inches(0.36), SH - Inches(1.54))
+    frame.fill.solid()
+    frame.fill.fore_color.rgb = C_WHITE
+    frame.line.color.rgb = RGBColor(0xC8, 0xD3, 0xE8)
+    frame.line.width = Pt(1)
+
+    band = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.4), Inches(1.36),
+        SW - Inches(0.8), Inches(0.45))
+    band.fill.solid()
+    band.fill.fore_color.rgb = C_YELL
+    band.line.fill.background()
+    _an_shape_text(band, section_title, size=12.5, bold=True)
+
+    if subtitle:
+        _txt(slide, subtitle, Inches(0.52), Inches(1.84),
+             SW - Inches(1.04), Inches(0.26), size=8.5,
+             color=RGBColor(0x6B, 0x78, 0x94), align=PP_ALIGN.CENTER)
+
+    _rect(slide, 0, SH - Inches(0.27), SW, Inches(0.27), C_NAVY_T)
+    footer = f"{kpi.get('period', '—')}  ·  {kpi.get('incidents', 0)} incidents  ·  Yas Togo / DT / DCO"
+    _txt(slide, footer, Inches(0.28), SH - Inches(0.21),
+         Inches(10.9), Inches(0.14), size=6.8,
+         color=RGBColor(0xB7, 0xC6, 0xE5), wrap=False)
+    _txt(slide, f'{page} / {total_pages}', SW - Inches(1.05),
+         SH - Inches(0.21), Inches(0.72), Inches(0.14), size=7,
+         bold=True, color=C_WHITE, align=PP_ALIGN.RIGHT, wrap=False)
+    return slide
+
+
+def _an_table(slide, headers, rows, left, top, width, height,
+              col_widths=None, font_size=7.5, accent_cols=()):
+    rows = list(rows)
+    table = slide.shapes.add_table(
+        len(rows) + 1, len(headers), left, top, width, height).table
+    table.first_row = False
+    table.horz_banding = False
+    if col_widths:
+        total = sum(col_widths)
+        for index, col_width in enumerate(col_widths):
+            table.columns[index].width = int(width * col_width / total)
+    else:
+        for column in table.columns:
+            column.width = width // len(headers)
+    row_height = height // (len(rows) + 1)
+    for row in table.rows:
+        row.height = row_height
+    for index, header in enumerate(headers):
+        _t_cell(table.cell(0, index), header, C_BLUE3,
+                C_YELL if index in accent_cols else C_WHITE,
+                size=font_size, bold=True)
+    for row_index, row in enumerate(rows, start=1):
+        background = C_GCELL if row_index % 2 else C_WHITE
+        for column_index, value in enumerate(row):
+            align = PP_ALIGN.LEFT if column_index == 0 else PP_ALIGN.CENTER
+            _t_cell(table.cell(row_index, column_index), value, background,
+                    C_NAVY_T, size=font_size, bold=(column_index == 0),
+                    align=align)
+    return table
+
+
+def _an_chart_style(chart, legend=True):
+    chart.has_title = False
+    chart.has_legend = legend
+    if legend:
+        chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+        chart.legend.include_in_layout = False
+        chart.legend.font.size = Pt(8)
+    try:
+        chart.category_axis.tick_labels.font.size = Pt(8)
+        chart.category_axis.tick_labels.font.color.rgb = C_NAVY_T
+        chart.value_axis.tick_labels.font.size = Pt(8)
+        chart.value_axis.tick_labels.font.color.rgb = C_NAVY_T
+        chart.value_axis.has_major_gridlines = True
+    except (AttributeError, ValueError):
+        pass
+
+
+def _an_bar_chart(slide, categories, series, left, top, width, height,
+                  horizontal=False, stacked=False, legend=True):
+    data = CategoryChartData()
+    cats = list(categories)
+    values = [(name, list(items)) for name, items in series]
+    if horizontal:
+        cats.reverse()
+        values = [(name, list(reversed(items))) for name, items in values]
+    data.categories = [_an_short(value, 28) for value in cats]
+    for name, items in values:
+        data.add_series(name, items)
+    if horizontal:
+        chart_type = XL_CHART_TYPE.BAR_CLUSTERED
+    elif stacked:
+        chart_type = XL_CHART_TYPE.COLUMN_STACKED
+    else:
+        chart_type = XL_CHART_TYPE.COLUMN_CLUSTERED
+    chart = slide.shapes.add_chart(
+        chart_type, left, top, width, height, data).chart
+    _an_chart_style(chart, legend=legend)
+    plot = chart.plots[0]
+    plot.gap_width = 55 if horizontal else 75
+    for index, chart_series in enumerate(plot.series):
+        chart_series.format.fill.solid()
+        chart_series.format.fill.fore_color.rgb = _AN_SERIES_COLORS[index % len(_AN_SERIES_COLORS)]
+    if len(cats) <= 15 and len(series) <= 2:
+        plot.has_data_labels = True
+        labels = plot.data_labels
+        labels.number_format = '0.0'
+        labels.number_format_is_linked = False
+        labels.position = XL_LABEL_POSITION.OUTSIDE_END
+        labels.font.size = Pt(7)
+        labels.font.bold = True
+        labels.font.color.rgb = C_NAVY_T
+    return chart
+
+
+def _an_combo_chart(slide, categories, primary_name, primary_values,
+                    secondary_name, secondary_values, secondary_format,
+                    left, top, width, height):
+    data = CategoryChartData()
+    data.categories = [_an_short(value, 22) for value in categories]
+    data.add_series(primary_name, primary_values)
+    data.add_series(secondary_name, secondary_values)
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, left, top, width, height, data).chart
+    _an_chart_style(chart, legend=True)
+    plot = chart.plots[0]
+    plot.gap_width = 70
+    primary = plot.series[0]
+    primary.format.fill.solid()
+    primary.format.fill.fore_color.rgb = C_NAVY_T
+    _f_combo_secondary_line(chart)
+    from pptx.oxml.ns import qn
+    plot_area = chart._chartSpace.find(qn('c:chart')).find(qn('c:plotArea'))
+    value_axes = plot_area.findall(qn('c:valAx'))
+    if len(value_axes) > 1:
+        number_format = value_axes[-1].find(qn('c:numFmt'))
+        if number_format is not None:
+            number_format.set('formatCode', secondary_format)
+    return chart
+
+
+def _an_kpi_card(slide, left, top, width, label, value, color):
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, Inches(1.05))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = C_LGRAY
+    shape.line.color.rgb = C_MGRAY
+    _rect(slide, left, top, Inches(0.07), Inches(1.05), color)
+    tf = shape.text_frame
+    tf.clear()
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    tf.margin_left = Inches(0.18)
+    for index, (text, size, text_color) in enumerate((
+            (label.upper(), 7.5, RGBColor(0x7B, 0x88, 0xA3)),
+            (_an_short(value, 30), 16, C_NAVY_T))):
+        p = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        p.space_after = Pt(0)
+        p.space_before = Pt(2)
+        r = p.add_run()
+        r.text = str(text)
+        r.font.size = Pt(size)
+        r.font.bold = True
+        r.font.color.rgb = text_color
+
+
+def _an_overview(prs, res, source, generated_on, total_pages):
+    kpi = res['kpi']
+    slide = _an_base(
+        prs, 'SYNTHÈSE EXÉCUTIVE',
+        f"Source : {_an_short(source, 110)}  ·  Généré le {generated_on}",
+        kpi, 1, total_pages)
+    card_width = Inches(3.82)
+    xs = (Inches(0.52), Inches(4.75), Inches(8.98))
+    cards = (
+        ('Incidents', kpi.get('incidents'), C_BLUE),
+        ('Indisponibilité totale', kpi.get('outage'), C_RED_T),
+        ('MTTR', kpi.get('mttr'), C_ORANGE_F),
+        ('Sites impactés', kpi.get('sites'), C_BLUE2),
+        ('Régions couvertes', kpi.get('regions'), C_LBLUE_F),
+        ('Cause dominante', kpi.get('top_cause'), C_YELL),
+    )
+    for index, (label, value, color) in enumerate(cards):
+        _an_kpi_card(slide, xs[index % 3], Inches(2.2 + (index // 3) * 1.28),
+                     card_width, label, value, color)
+
+    insight = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.52), Inches(4.92),
+        SW - Inches(1.04), Inches(1.46))
+    insight.fill.solid()
+    insight.fill.fore_color.rgb = RGBColor(0xEE, 0xF3, 0xFC)
+    insight.line.color.rgb = RGBColor(0xC8, 0xD3, 0xE8)
+    tf = insight.text_frame
+    tf.clear()
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.22)
+    tf.margin_right = Inches(0.22)
+    tf.margin_top = Inches(0.15)
+    for index, (text, size, color) in enumerate((
+            ('LECTURE RAPIDE', 9, C_BLUE),
+            (f"La période {kpi.get('period', '—')} totalise {kpi.get('incidents', 0)} incidents "
+             f"sur {kpi.get('sites', 0)} sites. La cause dominante est « {_an_short(kpi.get('top_cause'), 70)} » "
+             f"et le MTTR global atteint {kpi.get('mttr', '—')}.", 12, C_NAVY_T))):
+        p = tf.paragraphs[0] if index == 0 else tf.add_paragraph()
+        p.space_after = Pt(3)
+        r = p.add_run()
+        r.text = text
+        r.font.size = Pt(size)
+        r.font.bold = index == 0
+        r.font.color.rgb = color
+
+
+def _an_slide_exploration(prs, res, drill, page, total_pages):
+    slide = _an_base(
+        prs, '1 · EXPLORATION MULTI-NIVEAUX',
+        'Croisement par région, site et cause — groupes classés par indisponibilité.',
+        res['kpi'], page, total_pages)
+    rows = []
+    for row in (drill or {}).get('rows', [])[:16]:
+        keys = list(row.get('k') or []) + ['—', '—', '—']
+        rows.append((_an_short(keys[0], 22), _an_short(keys[1], 28),
+                     _an_short(keys[2], 34), row.get('n', 0), row.get('outage', '0:00:00')))
+    if not rows:
+        rows = [('—', '—', '—', 0, '0:00:00')]
+    _an_table(slide, ['RÉGION', 'SITE', 'CAUSE', 'INC.', 'OUTAGE'], rows,
+              Inches(0.5), Inches(2.18), SW - Inches(1.0), Inches(4.7),
+              col_widths=(18, 24, 38, 8, 12), font_size=7.3,
+              accent_cols=(2,))
+
+
+def _an_slide_region_site(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '2 · INDISPONIBILITÉ PAR RÉGION & SITE',
+        'Histogramme empilé — top 6 des sites de chaque région, puis autres sites.',
+        res['kpi'], page, total_pages)
+    a1 = res['a1']
+    series = [(dataset['label'], dataset['data']) for dataset in a1['datasets']]
+    _an_bar_chart(slide, a1['labels'], series, Inches(0.5), Inches(2.16),
+                  SW - Inches(1.0), Inches(4.72), stacked=True, legend=True)
+
+
+def _an_slide_pareto(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '3 · PARETO DES CAUSES (80/20)',
+        'Barres : heures d’indisponibilité · Courbe orange : pourcentage cumulé.',
+        res['kpi'], page, total_pages)
+    a6 = res['a6']
+    _an_combo_chart(slide, a6['labels'], 'Outage (h)', a6['outage_h'],
+                    'Cumul (%)', a6['cum_pct'], '0"%"',
+                    Inches(0.5), Inches(2.16), SW - Inches(1.0), Inches(4.72))
+
+
+def _an_slide_sites(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '4 · INDISPONIBILITÉ PAR SITE & CAUSE',
+        'Top 15 des sites par durée totale — la cause principale complète le classement.',
+        res['kpi'], page, total_pages)
+    rows = res['a2'][:15]
+    _an_bar_chart(slide, [row['site'] for row in rows],
+                  [('Outage (h)', [row['outage_h'] for row in rows])],
+                  Inches(0.48), Inches(2.17), Inches(7.25), Inches(4.7),
+                  horizontal=True, legend=False)
+    table_rows = [(_an_short(row['site'], 22), row['n'],
+                   _an_short(row['cause'], 30)) for row in rows[:10]]
+    _an_table(slide, ['SITE', 'INC.', 'CAUSE PRINCIPALE'], table_rows,
+              Inches(7.88), Inches(2.22), Inches(4.93), Inches(4.55),
+              col_widths=(36, 14, 50), font_size=6.8, accent_cols=(2,))
+
+
+def _an_slide_cause_site(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '5 · CORRÉLATION CAUSE & SITE',
+        'Barres : nombre d’incidents · Courbe orange : heures d’indisponibilité.',
+        res['kpi'], page, total_pages)
+    a3 = res['a3']
+    _an_combo_chart(slide, a3['labels'], 'Incidents', a3['counts'],
+                    'Outage (h)', a3['outage_h'], '0.0"h"',
+                    Inches(0.48), Inches(2.17), Inches(7.45), Inches(4.7))
+    table_rows = [(_an_short(row['cause'], 27), row['n'],
+                   _an_short(row['top_site'], 22)) for row in a3['table'][:10]]
+    _an_table(slide, ['CAUSE', 'INC.', 'SITE + IMPACTÉ'], table_rows,
+              Inches(8.05), Inches(2.22), Inches(4.75), Inches(4.55),
+              col_widths=(46, 13, 41), font_size=6.7, accent_cols=(0,))
+
+
+def _an_togo_map_image(rows):
+    import json
+    import os
+
+    from PIL import Image, ImageDraw
+    from .gdi_core import _load_font
+
+    geo_path = os.path.join(os.path.dirname(__file__), 'static', 'reports',
+                            'togo_geo.js')
+    try:
+        with open(geo_path, 'r', encoding='utf-8') as stream:
+            raw = stream.read()
+        geo = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+    def _rings(geometry):
+        coordinates = geometry.get('coordinates') or []
+        if geometry.get('type') == 'Polygon':
+            return coordinates[:1]
+        if geometry.get('type') == 'MultiPolygon':
+            return [polygon[0] for polygon in coordinates if polygon]
+        return []
+
+    features = []
+    all_points = []
+    for feature in geo.get('features') or []:
+        rings = _rings(feature.get('geometry') or {})
+        if not rings:
+            continue
+        features.append((feature, rings))
+        all_points.extend(point for ring in rings for point in ring)
+    if not all_points:
+        return None
+
+    width, height, padding = 480, 650, 24
+    min_lon = min(point[0] for point in all_points)
+    max_lon = max(point[0] for point in all_points)
+    min_lat = min(point[1] for point in all_points)
+    max_lat = max(point[1] for point in all_points)
+    scale = min((width - 2 * padding) / max(max_lon - min_lon, 0.01),
+                (height - 2 * padding) / max(max_lat - min_lat, 0.01))
+    offset_x = (width - (max_lon - min_lon) * scale) / 2
+    offset_y = (height - (max_lat - min_lat) * scale) / 2
+
+    def _project(point):
+        return (offset_x + (point[0] - min_lon) * scale,
+                offset_y + (max_lat - point[1]) * scale)
+
+    values = {str(row.get('region') or '').upper(): row for row in rows}
+    maximum = max([float(row.get('outage_h') or 0) for row in rows] + [1])
+
+    def _row_for(name):
+        key = str(name or '').split()[0].upper()
+        return values.get(key, {})
+
+    def _fill(value):
+        ratio = max(0.12, min(float(value or 0) / maximum, 1.0))
+        light, dark = (222, 230, 244), (31, 79, 176)
+        return tuple(round(light[index] + (dark[index] - light[index]) * ratio)
+                     for index in range(3))
+
+    image = Image.new('RGB', (width, height), (237, 242, 251))
+    draw = ImageDraw.Draw(image)
+    font_region = _load_font(18, bold=True)
+    font_value = _load_font(15, bold=True)
+    for feature, rings in features:
+        shape_name = (feature.get('properties') or {}).get('shapeName', '')
+        row = _row_for(shape_name)
+        projected_rings = [[_project(point) for point in ring] for ring in rings]
+        for polygon in projected_rings:
+            draw.polygon(polygon, fill=_fill(row.get('outage_h')), outline=(77, 96, 137), width=2)
+        points = [point for polygon in projected_rings for point in polygon]
+        center_x = (min(point[0] for point in points) + max(point[0] for point in points)) / 2
+        center_y = (min(point[1] for point in points) + max(point[1] for point in points)) / 2
+        label = str(shape_name).split()[0].capitalize()
+        draw.text((center_x, center_y - 9), label, font=font_region,
+                  fill=(13, 36, 97), anchor='mm', stroke_width=2,
+                  stroke_fill=(255, 255, 255))
+        draw.text((center_x, center_y + 13), f"{row.get('n', 0)} inc.",
+                  font=font_value, fill=(13, 36, 97), anchor='mm',
+                  stroke_width=2, stroke_fill=(255, 255, 255))
+
+    lome = values.get('LOME')
+    if lome:
+        x, y = _project((1.23, 6.17))
+        draw.ellipse((x - 13, y - 13, x + 13, y + 13),
+                     fill=(255, 199, 44), outline=(227, 0, 19), width=4)
+        draw.text((x + 21, y), f"LOMÉ · {lome.get('n', 0)} inc.",
+                  font=font_value, fill=(13, 36, 97), anchor='lm',
+                  stroke_width=2, stroke_fill=(255, 255, 255))
+
+    buf = BytesIO()
+    image.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+
+def _an_map_panel(slide, rows, left, top, width, height):
+    panel = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+    panel.fill.solid()
+    panel.fill.fore_color.rgb = RGBColor(0xEE, 0xF3, 0xFC)
+    panel.line.color.rgb = RGBColor(0xC8, 0xD3, 0xE8)
+    _txt(slide, 'CARTE TOGO PAR RÉGION', left + Inches(0.12), top + Inches(0.12),
+         width - Inches(0.24), Inches(0.26), size=9, bold=True,
+         color=C_BLUE, align=PP_ALIGN.CENTER)
+    map_image = _an_togo_map_image(rows)
+    if map_image:
+        image_height = height - Inches(0.62)
+        image_width = int(image_height * 480 / 650)
+        image_left = left + int((width - image_width) / 2)
+        slide.shapes.add_picture(map_image, image_left, top + Inches(0.48),
+                                 width=image_width, height=image_height)
+    else:
+        _txt(slide, 'Carte indisponible', left + Inches(0.2), top + Inches(2.0),
+             width - Inches(0.4), Inches(0.3), size=10, color=C_RED_T,
+             align=PP_ALIGN.CENTER)
+
+
+def _an_slide_regions(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '6 · SYNTHÈSE RÉGIONALE — TOGO',
+        'Nombre de sites, incidents, outage et MTTR pour chaque région opérationnelle.',
+        res['kpi'], page, total_pages)
+    rows = res['a4']
+    table_rows = [(_an_short(row['region'], 20), row['sites'], row['n'],
+                   row['outage'], row['mttr'], _an_short(row['top_site'], 24))
+                  for row in rows[:10]]
+    _an_table(slide, ['RÉGION', 'SITES', 'INC.', 'OUTAGE', 'MTTR', 'SITE + IMPACTÉ'],
+              table_rows, Inches(0.48), Inches(2.22), Inches(8.1), Inches(4.55),
+              col_widths=(19, 9, 8, 15, 15, 34), font_size=6.9,
+              accent_cols=(0, 5))
+    _an_map_panel(slide, rows, Inches(8.76), Inches(2.22),
+                  Inches(4.05), Inches(4.55))
+
+
+def _an_slide_bases(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '7 · PERFORMANCE OPÉRATIONNELLE PAR BASE',
+        'Comparaison du volume, de l’indisponibilité et du MTTR des bases techniques.',
+        res['kpi'], page, total_pages)
+    rows = res['a10'][:15]
+    table_rows = [(_an_short(row['base'], 26), row['sites'], row['n'],
+                   row['outage'], row['mttr'], _an_short(row['top_site'], 32))
+                  for row in rows]
+    _an_table(slide, ['BASE', 'SITES', 'INC.', 'OUTAGE', 'MTTR', 'SITE + IMPACTÉ'],
+              table_rows, Inches(0.5), Inches(2.18), SW - Inches(1.0), Inches(4.7),
+              col_widths=(23, 8, 8, 14, 14, 33), font_size=7.1,
+              accent_cols=(0, 5))
+
+
+def _an_slide_classification(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '8 · CLASSIFICATION DES SITES',
+        'Volume d’incidents, indisponibilité et cause dominante par classification.',
+        res['kpi'], page, total_pages)
+    rows = res['a5'][:15]
+    table_rows = [(_an_short(row['classification'], 34), row['sites'], row['n'],
+                   row['outage'], _an_short(row['top_cause'], 42)) for row in rows]
+    _an_table(slide, ['CLASSIFICATION', 'SITES', 'INC.', 'OUTAGE', 'CAUSE PRINCIPALE'],
+              table_rows, Inches(0.5), Inches(2.18), SW - Inches(1.0), Inches(4.7),
+              col_widths=(25, 9, 9, 16, 41), font_size=7.2,
+              accent_cols=(0, 4))
+
+
+def _an_slide_equipment(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '9 · ÉQUIPEMENTS LES MOINS FIABLES',
+        'Top 10 classé par nombre d’incidents, avec l’outage en seconde série.',
+        res['kpi'], page, total_pages)
+    rows = res['a7']
+    _an_bar_chart(slide, [row['equipement'] for row in rows],
+                  [('Incidents', [row['n'] for row in rows]),
+                   ('Outage (h)', [row['outage_h'] for row in rows])],
+                  Inches(0.5), Inches(2.16), SW - Inches(1.0), Inches(4.72),
+                  horizontal=True, legend=True)
+
+
+def _an_slide_responsibilities(prs, res, page, total_pages):
+    slide = _an_base(
+        prs, '10 · RÉPARTITION DES RESPONSABILITÉS',
+        'Part de l’indisponibilité par entité d’escalade et principales causes associées.',
+        res['kpi'], page, total_pages)
+    a9 = res['a9']
+    data = CategoryChartData()
+    data.categories = [_an_short(label, 24) for label in a9['labels']]
+    data.add_series('Outage (h)', a9['outage_h'])
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.DOUGHNUT, Inches(0.48), Inches(2.18),
+        Inches(5.1), Inches(4.55), data).chart
+    _an_chart_style(chart, legend=True)
+    chart.legend.position = XL_LEGEND_POSITION.RIGHT
+    plot = chart.plots[0]
+    plot.hole_size = 58
+    for index, point in enumerate(plot.series[0].points):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = _AN_SERIES_COLORS[index % len(_AN_SERIES_COLORS)]
+    table_rows = [(_an_short(row['escalade'], 20), _an_short(row['cause'], 30),
+                   row['n'], row['outage'], f"{row['pct']} %")
+                  for row in a9['table'][:12]]
+    _an_table(slide, ['ESCALADE', 'CAUSE', 'INC.', 'OUTAGE', '%'], table_rows,
+              Inches(5.7), Inches(2.22), Inches(7.1), Inches(4.5),
+              col_widths=(22, 38, 9, 20, 11), font_size=6.5,
+              accent_cols=(0, 1))
+
+
+def generate_analytics_pptx(res, drill=None, source='—', generated_on=''):
+    """Génère le support Analytics complet selon la charte du rapport FTTH.
+
+    Toutes les zones sont natives PowerPoint : textes, tableaux et graphiques
+    restent modifiables après téléchargement.
+    """
+    prs = Presentation()
+    prs.slide_width = SW
+    prs.slide_height = SH
+    total_pages = 11
+    _an_overview(prs, res, source, generated_on, total_pages)
+    builders = (
+        _an_slide_exploration,
+        _an_slide_region_site,
+        _an_slide_pareto,
+        _an_slide_sites,
+        _an_slide_cause_site,
+        _an_slide_regions,
+        _an_slide_bases,
+        _an_slide_classification,
+        _an_slide_equipment,
+        _an_slide_responsibilities,
+    )
+    for index, builder in enumerate(builders, start=2):
+        if builder is _an_slide_exploration:
+            builder(prs, res, drill, index, total_pages)
+        else:
+            builder(prs, res, index, total_pages)
+    buf = BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # EXPORT STATISTIQUES PPTX
 # ═══════════════════════════════════════════════════════════════════════════════
 

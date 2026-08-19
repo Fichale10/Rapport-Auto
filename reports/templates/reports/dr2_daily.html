@@ -529,6 +529,7 @@
         <th style="padding:8px 10px;border-bottom:2px solid #e0e8f8">Escalade</th>
         <th style="padding:8px 10px;border-bottom:2px solid #e0e8f8">Ticket</th>
         <th style="padding:8px 10px;border-bottom:2px solid #e0e8f8">Cause</th>
+        <th style="padding:8px 10px;border-bottom:2px solid #e0e8f8">Root Cause</th>
         <th style="padding:8px 10px;border-bottom:2px solid #e0e8f8">Résolu</th>
       </tr>
     </thead>
@@ -542,10 +543,11 @@
         <td style="padding:7px 10px">{{ r.categorie|default:"—" }}</td>
         <td style="padding:7px 10px">{{ r.ticket|default:"—" }}</td>
         <td style="padding:7px 10px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.cause }}">{{ r.cause|default:"—" }}</td>
+        <td style="padding:7px 10px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.root_cause }}">{{ r.root_cause|default:"—" }}</td>
         <td style="padding:7px 10px">{% if r.is_resolved %}<span style="color:#276221;font-weight:700">✔</span>{% else %}<span style="color:#9c0006;font-weight:700">✘</span>{% endif %}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="8" style="text-align:center;color:#aaa;padding:20px">Aucun site DR2 pour cette période</td></tr>
+      <tr><td colspan="9" style="text-align:center;color:#aaa;padding:20px">Aucun site DR2 pour cette période</td></tr>
       {% endfor %}
     </tbody>
   </table>

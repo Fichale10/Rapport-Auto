@@ -193,6 +193,7 @@ def build_dr2_rows(sites: list[dict], mobile_df: pd.DataFrame | None, day: date)
             'numero_ticket':  _val('Numero du ticket'),
             'categorie':      _val('Escalade'),
             'cause':          _val('Cause'),
+            'root_cause':     _val('Root Cause'),
             'point_bloquant': _val('Point bloquant'),
             'observation':    _val('Observation'),
             'alarm_time':     alarm_time.to_pydatetime() if alarm_time is not None and pd.notna(alarm_time) else None,
