@@ -160,6 +160,18 @@ def _match_ticket_row(site_key: str, mobile_df: pd.DataFrame | None):
     return matches.iloc[0]
 
 
+def parse_ticket_datetime(value):
+    """Parse les horodatages ticketing au format français JJ-MM-AA(AA).
+
+    ``dayfirst=True`` est indispensable pour les dates ambiguës comme
+    05-08-2026, qui doivent représenter le 5 août et non le 8 mai.
+    """
+    if value is None or pd.isna(value):
+        return None
+    parsed = pd.to_datetime(value, dayfirst=True, format='mixed', errors='coerce')
+    return parsed if pd.notna(parsed) else None
+
+
 def build_dr2_rows(sites: list[dict], mobile_df: pd.DataFrame | None, day: date) -> list[dict]:
     """Construit, pour chaque site DR2 détecté, un dict prêt à persister en
     base (`Dr2ViolationRecord`) — enrichi avec les infos du ticket
@@ -178,8 +190,8 @@ def build_dr2_rows(sites: list[dict], mobile_df: pd.DataFrame | None, day: date)
         if ticket is not None:
             at = ticket.get('Alarm Time')
             ct = ticket.get('Cancel Time')
-            alarm_time = pd.to_datetime(at, errors='coerce') if pd.notna(at) else None
-            cancel_time = pd.to_datetime(ct, errors='coerce') if pd.notna(ct) else None
+            alarm_time = parse_ticket_datetime(at)
+            cancel_time = parse_ticket_datetime(ct)
             is_resolved = cancel_time is not None and pd.notna(cancel_time)
 
         rows.append({

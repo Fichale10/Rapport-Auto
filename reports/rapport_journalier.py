@@ -44,6 +44,7 @@ FONT_HDR_12 = Font(bold=True, size=12, color='FFFFFF')
 FONT_HDR_14 = Font(bold=True, size=14, color='FFFFFF')
 FMT_DUR  = '[h]:mm:ss;@'
 FMT_DATE = 'mm-dd-yy'
+FMT_DR2_DATETIME = 'dd-mm-yy hh:mm:ss'
 
 # ─────────────────────── Colonnes / correspondances ──────────────────────
 # En-têtes FR du modèle (25 colonnes) et équivalents EN des fichiers API.
@@ -557,9 +558,9 @@ def build_rapport_journalier(day: date) -> bytes:
         duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
         values = [num, rec.numero_ticket, parent,
                   rec.site_name, rec.site_id,
-                  alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree, esc,
+                  alarm or '', duree, esc,
                   rec.cause, rec.root_cause, rec.point_bloquant,
-                  cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
+                  cancel if resolved else 'EN COURS',
                   rec.observation, 'OUI']
         for j, v in enumerate(values, 1):
             c = ws.cell(row=i, column=j, value=v)
@@ -570,6 +571,8 @@ def build_rapport_journalier(day: date) -> bytes:
                 c.font = Font(bold=True)
             if j == 7 and resolved:
                 c.number_format = FMT_DUR
+            if j in (6, 12) and isinstance(v, datetime):
+                c.number_format = FMT_DR2_DATETIME
         i += 1
     # bloc de synthèse
     i += 1
@@ -600,17 +603,21 @@ def build_rapport_journalier(day: date) -> bytes:
         cancel = rec.cancel_time.replace(tzinfo=None) if rec.cancel_time else None
         resolved = rec.is_resolved and cancel is not None
         duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
-        values = [num, rec.date.strftime('%d-%m-%Y'), rec.numero_ticket,
+        values = [num, rec.date, rec.numero_ticket,
                   (rec.site_parent or '').strip(), rec.site_name, rec.site_id,
-                  alarm.strftime('%d-%m-%Y %H:%M:%S') if alarm else '', duree,
+                  alarm or '', duree,
                   (rec.categorie or '').strip(), rec.cause, rec.root_cause,
                   rec.point_bloquant,
-                  cancel.strftime('%d-%m-%Y %H:%M:%S') if resolved else 'EN COURS',
+                  cancel if resolved else 'EN COURS',
                   rec.observation, 'OUI']
         for j, v in enumerate(values, 1):
             c = ws.cell(row=i, column=j, value=v)
             if j == 8 and resolved:
                 c.number_format = FMT_DUR
+            if j == 2 and isinstance(v, date):
+                c.number_format = 'dd-mm-yy'
+            if j in (7, 13) and isinstance(v, datetime):
+                c.number_format = FMT_DR2_DATETIME
         i += 1
     for col, w in (('A', 5.7), ('B', 13.4), ('C', 22.0), ('D', 19.0), ('E', 28.0),
                    ('F', 20.3), ('G', 25.9), ('H', 11.7), ('I', 46.0), ('J', 42.0),
