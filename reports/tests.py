@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 from django.test import SimpleTestCase, TestCase
 
 from .dr2_analytics import compute
-from .dr2_availability import compute_dr2_sites, filter_availability_day
+from .dr2_availability import (
+	compute_dr2_sites, filter_availability_day, normalize_dr2_datetimes,
+)
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
 
@@ -25,6 +27,48 @@ class Dr2AvailabilityTests(SimpleTestCase):
 
 		self.assertEqual(len(selected), 2)
 		self.assertEqual(compute_dr2_sites(selected, selected), [])
+
+	def test_normalize_dr2_datetimes_repairs_day_month_inversion(self):
+		alarm = datetime(2026, 5, 8, 23, 0, tzinfo=timezone.utc)
+		cancel = datetime(2026, 6, 8, 2, 0, tzinfo=timezone.utc)
+
+		normalized_alarm, normalized_cancel = normalize_dr2_datetimes(
+			date(2026, 8, 6), alarm, cancel)
+
+		self.assertEqual(
+			normalized_alarm,
+			datetime(2026, 8, 5, 23, 0, tzinfo=timezone.utc),
+		)
+		self.assertEqual(
+			normalized_cancel,
+			datetime(2026, 8, 6, 2, 0, tzinfo=timezone.utc),
+		)
+		self.assertEqual(normalized_cancel - normalized_alarm, timedelta(hours=3))
+
+	def test_normalize_dr2_datetimes_preserves_legitimate_long_outage(self):
+		alarm = datetime(2026, 7, 1, 8, 0, tzinfo=timezone.utc)
+		cancel = datetime(2026, 7, 11, 8, 0, tzinfo=timezone.utc)
+
+		self.assertEqual(
+			normalize_dr2_datetimes(date(2026, 7, 11), alarm, cancel),
+			(alarm, cancel),
+		)
+
+	def test_normalize_dr2_datetimes_rejects_distant_swap(self):
+		alarm = datetime(2026, 7, 8, 8, 0, tzinfo=timezone.utc)
+
+		self.assertEqual(
+			normalize_dr2_datetimes(date(2026, 8, 31), alarm, None),
+			(alarm, None),
+		)
+
+	def test_normalize_dr2_datetimes_does_not_move_alarm_after_report_day(self):
+		alarm = datetime(2026, 7, 8, 8, 0, tzinfo=timezone.utc)
+
+		self.assertEqual(
+			normalize_dr2_datetimes(date(2026, 8, 6), alarm, None),
+			(alarm, None),
+		)
 
 
 class Dr2AnalyticsTests(TestCase):

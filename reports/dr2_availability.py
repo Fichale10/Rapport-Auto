@@ -190,6 +190,49 @@ def parse_ticket_datetime(value):
     return parsed if pd.notna(parsed) else None
 
 
+def _swapped_day_month(value, report_day: date, allow_future=False):
+    """Retourne la variante JJ/MM d'un horodatage probablement lu MM/JJ.
+
+    La correction n'est proposée que si le mois stocké diffère du mois DR2,
+    que son jour correspond à ce mois et que l'échange rapproche fortement
+    l'horodatage de la date du rapport.
+    """
+    if value is None or report_day is None:
+        return None
+    if value.year != report_day.year or value.month == report_day.month:
+        return None
+    if value.day != report_day.month or value.month > 12:
+        return None
+    try:
+        candidate = value.replace(month=value.day, day=value.month)
+    except ValueError:
+        return None
+    original_gap = abs((value.date() - report_day).days)
+    candidate_gap = abs((candidate.date() - report_day).days)
+    if not allow_future and candidate.date() > report_day:
+        return None
+    if candidate_gap <= 7 and candidate_gap + 14 < original_gap:
+        return candidate
+    return None
+
+
+def normalize_dr2_datetimes(report_day: date, alarm_time, cancel_time):
+    """Corrige les anciennes dates DR2 stockées avec jour et mois inversés.
+
+    Le helper est idempotent et conserve les pannes longues légitimes dont le
+    mois est déjà cohérent avec la date DR2. Il est utilisé avant tout calcul
+    de durée dans les exports Excel et PowerPoint.
+    """
+    alarm_candidate = _swapped_day_month(alarm_time, report_day)
+    cancel_candidate = _swapped_day_month(cancel_time, report_day, allow_future=True)
+    normalized_alarm = alarm_candidate or alarm_time
+    normalized_cancel = cancel_candidate or cancel_time
+    if (normalized_alarm is not None and normalized_cancel is not None
+            and normalized_cancel < normalized_alarm):
+        return alarm_time, cancel_time
+    return normalized_alarm, normalized_cancel
+
+
 def build_dr2_rows(sites: list[dict], mobile_df: pd.DataFrame | None, day: date) -> list[dict]:
     """Construit, pour chaque site DR2 détecté, un dict prêt à persister en
     base (`Dr2ViolationRecord`) — enrichi avec les infos du ticket
@@ -210,6 +253,8 @@ def build_dr2_rows(sites: list[dict], mobile_df: pd.DataFrame | None, day: date)
             ct = ticket.get('Cancel Time')
             alarm_time = parse_ticket_datetime(at)
             cancel_time = parse_ticket_datetime(ct)
+            alarm_time, cancel_time = normalize_dr2_datetimes(
+                day, alarm_time, cancel_time)
             is_resolved = cancel_time is not None and pd.notna(cancel_time)
 
         rows.append({

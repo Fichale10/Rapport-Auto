@@ -384,6 +384,7 @@ def _sheet_mttr(wb: Workbook, title: str, headers, day_rows: dict, year, month, 
 # ───────────────────────────── Construction ─────────────────────────────
 def build_rapport_journalier(day: date) -> bytes:
     """Construit le classeur complet pour la journée `day` (J-1)."""
+    from .dr2_availability import normalize_dr2_datetimes
     from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
     year, month = day.year, day.month
@@ -552,8 +553,10 @@ def build_rapport_journalier(day: date) -> bytes:
         parent = (rec.site_parent or '').strip()
         esc = (rec.categorie or '').strip()
         cat_counts[esc] = cat_counts.get(esc, 0) + 1
-        alarm = rec.alarm_time.replace(tzinfo=None) if rec.alarm_time else None
-        cancel = rec.cancel_time.replace(tzinfo=None) if rec.cancel_time else None
+        alarm, cancel = normalize_dr2_datetimes(
+            rec.date, rec.alarm_time, rec.cancel_time)
+        alarm = alarm.replace(tzinfo=None) if alarm else None
+        cancel = cancel.replace(tzinfo=None) if cancel else None
         resolved = rec.is_resolved and cancel is not None
         duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
         values = [num, rec.numero_ticket, parent,
@@ -599,8 +602,10 @@ def build_rapport_journalier(day: date) -> bytes:
                       .order_by('date', 'site_name'))
     i = 2
     for num, rec in enumerate(dr2_month, start=1):
-        alarm = rec.alarm_time.replace(tzinfo=None) if rec.alarm_time else None
-        cancel = rec.cancel_time.replace(tzinfo=None) if rec.cancel_time else None
+        alarm, cancel = normalize_dr2_datetimes(
+            rec.date, rec.alarm_time, rec.cancel_time)
+        alarm = alarm.replace(tzinfo=None) if alarm else None
+        cancel = cancel.replace(tzinfo=None) if cancel else None
         resolved = rec.is_resolved and cancel is not None
         duree = (cancel - alarm) if (resolved and alarm) else 'ENCOURS'
         values = [num, rec.date, rec.numero_ticket,
