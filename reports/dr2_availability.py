@@ -111,6 +111,24 @@ def parse_3g_file(fileobj) -> pd.DataFrame:
     )
 
 
+def filter_availability_day(df: pd.DataFrame, day: date, technology: str) -> pd.DataFrame:
+    """Conserve strictement les mesures de ``day`` et refuse une source vide.
+
+    Les exports reçus par mail peuvent contenir des heures adjacentes. Sans ce
+    bornage, elles seraient cumulées puis enregistrées sur la date choisie.
+    """
+    if df is None or df.empty or 'period' not in df.columns:
+        raise ValueError(f'Le fichier {technology} ne contient aucune mesure exploitable.')
+    periods = pd.to_datetime(df['period'], errors='coerce')
+    filtered = df[periods.dt.date == day].copy()
+    if filtered.empty:
+        available = sorted({d.isoformat() for d in periods.dropna().dt.date.unique()})
+        suffix = f" Dates présentes : {', '.join(available[:5])}." if available else ''
+        raise ValueError(
+            f'Le fichier {technology} ne contient aucune mesure pour le {day.strftime("%d/%m/%Y")}.{suffix}')
+    return filtered
+
+
 def compute_dr2_sites(df_2g: pd.DataFrame, df_3g: pd.DataFrame) -> list[dict]:
     """Sites en violation DR2 : disponibilité nulle simultanément en 2G ET
     3G sur >= DR2_THRESHOLD_HOURS heures cumulées (même non consécutives).
@@ -221,16 +239,19 @@ def save_dr2_day(day: date, rows: list[dict], filename_2g: str = '', filename_3g
     les anciens enregistrements du jour puis recrée, et marque le jour
     comme traité (`Dr2ProcessedDate`) — même si `rows` est vide (0 DR2 ce
     jour-là, à distinguer d'un jour non traité)."""
+    from django.db import transaction
+
     from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
-    Dr2ViolationRecord.objects.filter(date=day).delete()
-    Dr2ViolationRecord.objects.bulk_create([Dr2ViolationRecord(**r) for r in rows])
-    Dr2ProcessedDate.objects.update_or_create(
-        date=day,
-        defaults={
-            'sites_count': len(rows),
-            'filename_2g': filename_2g,
-            'filename_3g': filename_3g,
-            'uploaded_by': user if user and user.is_authenticated else None,
-        },
-    )
+    with transaction.atomic():
+        Dr2ViolationRecord.objects.filter(date=day).delete()
+        Dr2ViolationRecord.objects.bulk_create([Dr2ViolationRecord(**r) for r in rows])
+        Dr2ProcessedDate.objects.update_or_create(
+            date=day,
+            defaults={
+                'sites_count': len(rows),
+                'filename_2g': filename_2g,
+                'filename_3g': filename_3g,
+                'uploaded_by': user if user and user.is_authenticated else None,
+            },
+        )

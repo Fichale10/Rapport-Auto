@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Analytics DR2 — Yas NOC{% endblock %}
+{% block breadcrumb %}Analytics / DR2{% endblock %}
+
+{% block extra_css %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  :root { --ad-blue:#003087; --ad-yellow:#ffc72c; --ad-ink:#21304f; --ad-line:#e8edf5; }
+  .ad-hero { background:linear-gradient(135deg,#003087 0%,#0047cc 60%,#003087 100%); color:#fff;
+    padding:28px 36px; border-radius:20px; margin-bottom:24px; position:relative; overflow:hidden;
+    box-shadow:0 8px 40px rgba(0,48,135,.30); }
+  .ad-hero::before { content:'📊'; font-size:150px; position:absolute; right:30px; top:-20px;
+    opacity:.06; pointer-events:none; line-height:1; }
+  .ad-eyebrow { display:inline-flex; align-items:center; background:rgba(255,199,44,.15);
+    border:1px solid rgba(255,199,44,.35); color:var(--ad-yellow); font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:2px; padding:4px 14px; border-radius:20px; margin-bottom:12px; }
+  .ad-title { font-family:'Bebas Neue',sans-serif; font-size:36px; font-weight:400; letter-spacing:2px;
+    line-height:1.05; margin:0 0 6px; }
+  .ad-sub { color:rgba(255,255,255,.55); font-size:13px; max-width:720px; }
+  .ad-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; position:relative; z-index:1; }
+  .ad-tab { padding:8px 16px; border:1px solid rgba(255,255,255,.28); color:#fff; text-decoration:none;
+    border-radius:7px; font-size:12px; font-weight:800; white-space:nowrap; }
+  .ad-tab.active { background:var(--ad-yellow); border-color:var(--ad-yellow); color:#002869; }
+  .ad-sourcebar { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    background:linear-gradient(90deg,#eaf1ff,#f6f9ff); border:1px solid #d8e3f8;
+    border-radius:14px; padding:12px 18px; margin-bottom:18px; font-size:12.5px; }
+  .ad-sourcebar b { color:var(--ad-blue); }
+  .ad-sourcebar .spacer { flex:1; }
+  .ad-panel { background:#fff; border:1px solid var(--ad-line); border-radius:16px; padding:22px 24px;
+    margin-bottom:20px; box-shadow:0 2px 16px rgba(0,48,135,.07); }
+  .ad-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+  .ad-panel-title { color:var(--ad-blue); font-size:14px; font-weight:800; }
+  .ad-panel-sub { color:#7887a2; font-size:11.5px; margin-top:3px; }
+  .ad-form { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .ad-field { min-width:150px; flex:1; }
+  .ad-field.wide { min-width:230px; }
+  .ad-field label { display:block; font-size:11px; color:#56637f; font-weight:700; text-transform:uppercase;
+    margin-bottom:5px; letter-spacing:.6px; }
+  .ad-field input,.ad-field select { width:100%; min-height:38px; border:1.5px solid #dbe3f0; border-radius:10px;
+    padding:9px 12px; background:#f8faff; color:var(--ad-ink); font-size:13px; outline:none; }
+  .ad-field input:focus,.ad-field select:focus { border-color:var(--ad-blue); background:#fff; }
+  .ad-btn { min-height:38px; border:0; border-radius:10px; padding:10px 22px; background:var(--ad-blue); color:#fff;
+    font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+  .ad-btn.secondary { background:#eef3fb; color:var(--ad-blue); }
+  .ad-btn.yellow { background:var(--ad-yellow); color:#002869; }
+  .ad-chip { background:#eef2fb; color:var(--ad-blue); padding:2px 10px;
+    border-radius:12px; font-size:10.5px; font-weight:700; }
+  .ad-chip.warn { background:#fff7dd; border-color:#f3d77b; color:#7b5b00; }
+  .ad-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:20px; }
+  .ad-kpi { background:#fff; border:1px solid var(--ad-line); border-radius:14px; padding:16px 18px;
+    box-shadow:0 2px 12px rgba(0,48,135,.06); position:relative; overflow:hidden; }
+  .ad-kpi::after { content:''; position:absolute; left:0; top:0; bottom:0; width:4px;
+    background:linear-gradient(180deg,var(--ad-blue),var(--ad-yellow)); }
+  .ad-kpi-label { color:#8794ad; font-size:10.5px; text-transform:uppercase; font-weight:700; letter-spacing:.8px; }
+  .ad-kpi-value { color:var(--ad-blue); font-size:22px; font-weight:800; margin-top:4px; }
+  .ad-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .ad-grid > .ad-panel { min-width:0; }
+  .ad-chart { height:320px; position:relative; }
+  .ad-chart canvas { max-width:100%; }
+  .ad-table-wrap { overflow:auto; max-height:520px; border:1px solid var(--ad-line); border-radius:10px; }
+  .ad-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .ad-table th { position:sticky; top:0; background:var(--ad-blue); color:#fff; text-align:left; padding:8px 10px;
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; white-space:nowrap; z-index:1; }
+  .ad-table td { padding:7px 10px; border-bottom:1px solid #eef2f9; color:var(--ad-ink); white-space:nowrap; }
+  .ad-table tr:nth-child(even) td { background:#f8faff; }
+  .ad-status { font-size:10px; font-weight:800; padding:3px 8px; border-radius:10px; }
+  .ad-status.ok { color:#176b3a; background:#e7f6ed; }
+  .ad-status.open { color:#a23030; background:#fdeaea; }
+  .ad-empty { padding:46px 20px; text-align:center; color:#7b89a2; }
+  html[data-theme="dark"] .ad-panel,html[data-theme="dark"] .ad-kpi { background:#101828; border-color:#24365a; }
+  html[data-theme="dark"] .ad-sourcebar { background:#101828; border-color:#24365a; color:#c7d3e8; }
+  html[data-theme="dark"] .ad-panel-title,html[data-theme="dark"] .ad-kpi-value { color:#9db6ff; }
+  html[data-theme="dark"] .ad-field input,html[data-theme="dark"] .ad-field select { background:#0a0f1c; color:#c7d3e8; border-color:#33456a; }
+  html[data-theme="dark"] .ad-table td { color:#c7d3e8; border-color:#24365a; }
+  html[data-theme="dark"] .ad-table tr:nth-child(even) td { background:#0d1425; }
+  @media(max-width:1100px){.ad-kpis{grid-template-columns:repeat(3,1fr)}.ad-grid{grid-template-columns:1fr}}
+  @media(max-width:700px){.ad-hero{padding:24px 22px}.ad-kpis{grid-template-columns:repeat(2,1fr)}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ad-hero">
+  <div class="ad-eyebrow">⚡ Module d'analyses automatiques</div>
+  <div class="ad-title">Analytics</div>
+  <div class="ad-sub">Analyse des violations DR2 calculées à partir des disponibilités horaires 2G et 3G : tendances, régions, sites récurrents, escalades et causes.</div>
+  <nav class="ad-tabs" aria-label="Sections Analytics">
+    <a class="ad-tab" href="{% url 'analytics' %}">Incidents</a>
+    <a class="ad-tab active" href="{% url 'analytics_dr2' %}">DR2</a>
+  </nav>
+</div>
+
+<div class="ad-sourcebar">
+  <span>📌 Source : <b>Historique DR2 enregistré</b></span>
+  <span class="ad-chip">{{ res.kpi.processed_days }} jour{{ res.kpi.processed_days|pluralize }} traité{{ res.kpi.processed_days|pluralize }}</span>
+  <span class="ad-chip">{{ res.kpi.violations }} violation{{ res.kpi.violations|pluralize }}</span>
+  {% if res.unprocessed_days %}<span class="ad-chip warn">{{ res.unprocessed_days }} jour{{ res.unprocessed_days|pluralize }} sans fichier</span>{% endif %}
+  <span class="spacer"></span>
+  <a class="ad-btn secondary" href="{% url 'analytics_dr2_export' %}{% if qs %}?{{ qs }}{% endif %}">📥 Excel</a>
+</div>
+
+{% if can_write %}
+<section class="ad-panel">
+  <div class="ad-panel-head">
+    <div><div class="ad-panel-title">📂 Importer une journée DR2</div>
+      <div class="ad-panel-sub">Le calcul utilise le moteur officiel : disponibilité simultanément nulle en 2G et 3G pendant au moins 3 heures cumulées.</div></div>
+  </div>
+  <form class="ad-form" method="post" action="{% url 'analytics_dr2_import' %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="ad-field"><label>Date analysée</label><input type="date" name="avail_date" value="{{ fin|date:'Y-m-d' }}" required></div>
+    <div class="ad-field wide"><label>Disponibilité 2G</label><input type="file" name="file_2g" accept=".xlsx,.xls" required></div>
+    <div class="ad-field wide"><label>Disponibilité 3G</label><input type="file" name="file_3g" accept=".xlsx,.xls" required></div>
+    <button class="ad-btn yellow" type="submit">Calculer et enregistrer</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="ad-panel">
+  <div class="ad-panel-head">
+    <div><div class="ad-panel-title">🎛️ Filtres dynamiques</div><div class="ad-panel-sub">Définissez le périmètre d’analyse. Les filtres s’appliquent également à l’export Excel.</div></div>
+  </div>
+  <form class="ad-form" method="get">
+    <div class="ad-field"><label>Du</label><input type="date" name="debut" value="{{ debut|date:'Y-m-d' }}"></div>
+    <div class="ad-field"><label>Au</label><input type="date" name="fin" value="{{ fin|date:'Y-m-d' }}"></div>
+    <div class="ad-field"><label>Région</label><select name="region"><option value="">Toutes</option>{% for value in res.filters.regions %}<option value="{{ value }}" {% if value in flt.regions %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="ad-field"><label>Site</label><select name="site"><option value="">Tous</option>{% for value in res.filters.sites %}<option value="{{ value }}" {% if value in flt.sites %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="ad-field"><label>Escalade</label><select name="escalade"><option value="">Toutes</option>{% for value in res.filters.escalades %}<option value="{{ value }}" {% if value in flt.escalades %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="ad-field"><label>Cause</label><select name="cause"><option value="">Toutes</option>{% for value in res.filters.causes %}<option value="{{ value }}" {% if value in flt.causes %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+    <div class="ad-field"><label>Statut</label><select name="status"><option value="">Tous</option><option value="open" {% if flt.status == 'open' %}selected{% endif %}>Non résolu</option><option value="resolved" {% if flt.status == 'resolved' %}selected{% endif %}>Résolu</option></select></div>
+    <button class="ad-btn" type="submit">Appliquer</button><a class="ad-btn secondary" href="{% url 'analytics_dr2' %}">Réinitialiser</a>
+  </form>
+</section>
+
+<div class="ad-kpis">
+  <div class="ad-kpi"><div class="ad-kpi-label">Violations DR2</div><div class="ad-kpi-value">{{ res.kpi.violations }}</div></div>
+  <div class="ad-kpi"><div class="ad-kpi-label">Sites concernés</div><div class="ad-kpi-value">{{ res.kpi.sites }}</div></div>
+  <div class="ad-kpi"><div class="ad-kpi-label">Moyenne / jour traité</div><div class="ad-kpi-value">{{ res.kpi.average }}</div></div>
+  <div class="ad-kpi"><div class="ad-kpi-label">Taux de résolution</div><div class="ad-kpi-value">{{ res.kpi.resolution_rate }}%</div></div>
+  <div class="ad-kpi"><div class="ad-kpi-label">Heures moyennes</div><div class="ad-kpi-value">{{ res.kpi.average_hours }} h</div></div>
+  <div class="ad-kpi"><div class="ad-kpi-label">Sites récurrents</div><div class="ad-kpi-value">{{ res.kpi.recurrent_sites }}</div></div>
+</div>
+
+<div class="ad-grid">
+  <section class="ad-panel"><div class="ad-panel-title">Évolution quotidienne</div><div class="ad-panel-sub">Les ruptures correspondent aux journées non traitées.</div><div class="ad-chart"><canvas id="dr2Trend"></canvas></div></section>
+  <section class="ad-panel"><div class="ad-panel-title">Répartition régionale</div><div class="ad-panel-sub">Violations DR2 par région sur le périmètre filtré.</div><div class="ad-chart"><canvas id="dr2Regions"></canvas></div></section>
+  <section class="ad-panel"><div class="ad-panel-title">Sites les plus récurrents</div><div class="ad-panel-sub">Classement par nombre de journées en violation.</div><div class="ad-chart"><canvas id="dr2Sites"></canvas></div></section>
+  <section class="ad-panel"><div class="ad-panel-title">Répartition par escalade</div><div class="ad-panel-sub">Responsabilité issue du ticket NetXcare associé.</div><div class="ad-chart"><canvas id="dr2Escalades"></canvas></div></section>
+</div>
+
+<section class="ad-panel">
+  <div class="ad-panel-head"><div><div class="ad-panel-title">Détail des violations</div><div class="ad-panel-sub">{{ res.details|length }} ligne{{ res.details|length|pluralize }} affichée{{ res.details|length|pluralize }}.</div></div></div>
+  {% if res.details %}<div class="ad-table-wrap"><table class="ad-table"><thead><tr><th>Date</th><th>Site</th><th>Site ID</th><th>Région</th><th>Ticket</th><th>Escalade</th><th>Cause</th><th>Heures</th><th>Statut</th></tr></thead><tbody>
+  {% for row in res.details %}<tr><td>{{ row.date }}</td><td><b>{{ row.site }}</b></td><td>{{ row.site_id|default:'—' }}</td><td>{{ row.region }}</td><td>{{ row.ticket|default:'—' }}</td><td>{{ row.escalade }}</td><td title="{{ row.cause }}">{{ row.cause|truncatechars:48 }}</td><td>{{ row.hours }} h</td><td>{% if row.resolved %}<span class="ad-status ok">Résolu</span>{% else %}<span class="ad-status open">Non résolu</span>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="ad-empty">Aucune violation DR2 pour ce périmètre. Importez une journée ou élargissez la période.</div>{% endif %}
+</section>
+
+{{ res|json_script:"dr2AnalyticsData" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('dr2AnalyticsData').textContent);
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const ink = dark ? '#c7d3e8' : '#44516c';
+  const grid = dark ? 'rgba(150,170,210,.12)' : 'rgba(0,48,135,.08)';
+  Chart.defaults.color = ink; Chart.defaults.font.family = "'Segoe UI', sans-serif";
+  const base = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:grid},ticks:{precision:0}}} };
+  new Chart(document.getElementById('dr2Trend'), {type:'line',data:{labels:data.trend.map(x=>x.label),datasets:[{data:data.trend.map(x=>x.count),borderColor:'#003087',backgroundColor:'rgba(0,48,135,.12)',fill:true,tension:.25,pointRadius:3,spanGaps:false}]},options:base});
+  new Chart(document.getElementById('dr2Regions'), {type:'bar',data:{labels:data.regions.map(x=>x.label),datasets:[{data:data.regions.map(x=>x.violations),backgroundColor:'#ffc72c',borderRadius:4}]},options:base});
+  new Chart(document.getElementById('dr2Sites'), {type:'bar',data:{labels:data.top_sites.slice(0,12).map(x=>x.site),datasets:[{data:data.top_sites.slice(0,12).map(x=>x.violations),backgroundColor:'#075fc4',borderRadius:4}]},options:{...base,indexAxis:'y'}});
+  new Chart(document.getElementById('dr2Escalades'), {type:'doughnut',data:{labels:data.escalades.map(x=>x.label),datasets:[{data:data.escalades.map(x=>x.violations),backgroundColor:['#003087','#ffc72c','#2f7ed8','#e4572e','#17a398','#8093f1','#5c7457']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'right',labels:{boxWidth:10}}}}});
+})();
+</script>
+{% endblock %}

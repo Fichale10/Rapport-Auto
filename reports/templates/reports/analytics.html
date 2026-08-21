@@ -28,6 +28,10 @@
     letter-spacing: 2px; line-height: 1.05; margin-bottom: 6px;
   }
   .an-hero-sub { color: rgba(255,255,255,.55); font-size: 13px; max-width: 720px; }
+  .an-mode-tabs { display:flex; gap:8px; margin-top:16px; position:relative; z-index:1; }
+  .an-mode-tab { padding:8px 16px; border:1px solid rgba(255,255,255,.28); border-radius:7px;
+    color:#fff; text-decoration:none; font-size:12px; font-weight:800; }
+  .an-mode-tab.active { background:var(--yas-yellow); border-color:var(--yas-yellow); color:#002869; }
 
   /* ── Cartes génériques ── */
   .an-card {
@@ -233,6 +237,10 @@
     automatiquement KPIs, tableaux croisés et visualisations : régions, sites, causes,
     équipements, classifications, escalades et bases.
   </div>
+  <nav class="an-mode-tabs" aria-label="Sections Analytics">
+    <a class="an-mode-tab active" href="{% url 'analytics' %}">Incidents</a>
+    <a class="an-mode-tab" href="{% url 'analytics_dr2' %}">DR2</a>
+  </nav>
 </div>
 
 {% if not meta %}

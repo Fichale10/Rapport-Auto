@@ -5442,8 +5442,10 @@ def dr2_daily_report(request):
     if request.method == 'POST' and request.FILES.get('file_2g') and request.FILES.get('file_3g'):
         try:
             import pandas as pd
-            from .dr2_availability import (parse_2g_file, parse_3g_file, compute_dr2_sites,
-                                            build_dr2_rows, save_dr2_day)
+            from .dr2_availability import (
+                build_dr2_rows, compute_dr2_sites, filter_availability_day,
+                parse_2g_file, parse_3g_file, save_dr2_day,
+            )
 
             day_str = request.POST.get('avail_date', '').strip()
             try:
@@ -5453,6 +5455,8 @@ def dr2_daily_report(request):
 
             df_2g = parse_2g_file(request.FILES['file_2g'])
             df_3g = parse_3g_file(request.FILES['file_3g'])
+            df_2g = filter_availability_day(df_2g, day, '2G')
+            df_3g = filter_availability_day(df_3g, day, '3G')
             sites = compute_dr2_sites(df_2g, df_3g)
 
             mobile_df = None
@@ -9338,6 +9342,127 @@ def analytics_export_section(request, key):
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     resp['Content-Disposition'] = f'attachment; filename="Analytics_{key}_{stamp}.xlsx"'
     return resp
+
+
+def _analytics_dr2_params(request):
+    """Période et filtres partagés par le dashboard et son export."""
+    from .models import Dr2ProcessedDate
+
+    latest = Dr2ProcessedDate.objects.order_by('-date').values_list('date', flat=True).first()
+    default_fin = latest or (date.today() - timedelta(days=1))
+    default_debut = date(default_fin.year, default_fin.month, 1)
+
+    try:
+        debut = date.fromisoformat((request.GET.get('debut') or '').strip())
+    except ValueError:
+        debut = default_debut
+    try:
+        fin = date.fromisoformat((request.GET.get('fin') or '').strip())
+    except ValueError:
+        fin = default_fin
+    if fin < debut:
+        debut, fin = fin, debut
+    if (fin - debut).days > 365:
+        debut = fin - timedelta(days=365)
+
+    def _multi(name):
+        return [value.strip() for value in request.GET.getlist(name) if value.strip()]
+
+    return debut, fin, {
+        'regions': _multi('region'),
+        'sites': _multi('site'),
+        'escalades': _multi('escalade'),
+        'causes': _multi('cause'),
+        'status': (request.GET.get('status') or '').strip(),
+    }
+
+
+def analytics_dr2(request):
+    """Analytics des violations DR2 persistées par le traitement 2G/3G."""
+    from . import dr2_analytics as dr2_an
+
+    debut, fin, filters = _analytics_dr2_params(request)
+    result = dr2_an.compute(debut, fin, **filters)
+    return render(request, 'reports/analytics_dr2.html', {
+        'res': result,
+        'debut': debut,
+        'fin': fin,
+        'flt': filters,
+        'qs': request.GET.urlencode(),
+    })
+
+
+@gestionnaire_required
+def analytics_dr2_import(request):
+    """Importe une journée 2G/3G avec le même moteur que DR2 Daily."""
+    if request.method != 'POST':
+        return redirect('analytics_dr2')
+
+    file_2g = request.FILES.get('file_2g')
+    file_3g = request.FILES.get('file_3g')
+    try:
+        if not file_2g or not file_3g:
+            raise ValueError('Sélectionnez les deux fichiers de disponibilité 2G et 3G.')
+        for uploaded, technology in ((file_2g, '2G'), (file_3g, '3G')):
+            if uploaded.size > 50 * 1024 * 1024:
+                raise ValueError(f'Le fichier {technology} dépasse la limite de 50 Mo.')
+            if os.path.splitext(uploaded.name)[1].lower() not in ('.xlsx', '.xls'):
+                raise ValueError(f'Le fichier {technology} doit être au format Excel.')
+
+        day_text = (request.POST.get('avail_date') or '').strip()
+        day = date.fromisoformat(day_text)
+        if day > date.today():
+            raise ValueError('La date de disponibilité ne peut pas être dans le futur.')
+
+        import pandas as pd
+
+        from .api_import import fetch_api_excel
+        from .dr2_availability import (
+            build_dr2_rows, compute_dr2_sites, filter_availability_day,
+            parse_2g_file, parse_3g_file, save_dr2_day,
+        )
+
+        df_2g = filter_availability_day(parse_2g_file(file_2g), day, '2G')
+        df_3g = filter_availability_day(parse_3g_file(file_3g), day, '3G')
+        sites = compute_dr2_sites(df_2g, df_3g)
+        mobile_df = None
+        try:
+            buffer, _filename = fetch_api_excel(day.isoformat(), day.isoformat(), 'mobile')
+            mobile_df = pd.read_excel(buffer)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                'Analytics DR2 : enrichissement NetXcare indisponible pour %s : %s', day, exc)
+
+        rows = build_dr2_rows(sites, mobile_df, day)
+        save_dr2_day(
+            day, rows, filename_2g=file_2g.name, filename_3g=file_3g.name,
+            user=request.user,
+        )
+        messages.success(
+            request,
+            f'{day.strftime("%d/%m/%Y")} traitée : {len(rows)} violation(s) DR2 détectée(s).')
+    except Exception as exc:
+        messages.error(request, f'Import DR2 impossible : {exc}')
+    return redirect('analytics_dr2')
+
+
+def analytics_dr2_export(request):
+    """Exporte le dashboard Analytics DR2 filtré au format Excel."""
+    from django.http import HttpResponse
+    from django.utils import timezone
+
+    from . import dr2_analytics as dr2_an
+
+    debut, fin, filters = _analytics_dr2_params(request)
+    result = dr2_an.compute(debut, fin, **filters)
+    buffer = dr2_an.build_excel(result, debut, fin)
+    stamp = timezone.localtime().strftime('%Y%m%d_%H%M')
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="Analytics_DR2_{stamp}.xlsx"'
+    return response
 
 
 # ═══════════════════════════════════════════════════════════════════════
