@@ -11,6 +11,7 @@ Design : calqué sur les 2 fichiers de référence (logo YAS, bandeau titre bleu
 from io import BytesIO
 from datetime import date, timedelta
 from collections import Counter
+from pathlib import Path
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -20,7 +21,7 @@ from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 
 from .pptx_report import (
-    _blank, _rect, _txt, _table,
+    _blank as _plain_blank, _rect, _txt, _table,
     SW, SH, MARGIN, CONTENT_TOP, CONTENT_H,
     C_BLUE, C_WHITE, C_DTEXT, C_LGRAY, C_BLUE3, C_YELL,
     C_RED_BG, C_RED_FG, C_YELL_BG, C_YELL_FG, C_GREEN_BG, C_GREEN_FG,
@@ -28,15 +29,69 @@ from .pptx_report import (
 from .dr2_availability import DR2_REGION_TARGETS, DR2_ESCALADE_ORDER
 
 C_RED_T = RGBColor(0xC0, 0x00, 0x00)
+C_DETAIL_HDR = RGBColor(0x44, 0x54, 0x6A)
+C_DETAIL_GREEN = RGBColor(0x70, 0xAD, 0x47)
+C_DETAIL_GRAY = RGBColor(0xD9, 0xD9, 0xD9)
+C_SUMMARY_GRAY = RGBColor(0xE1, 0xE3, 0xE8)
+C_CAUSE_HDR = RGBColor(0xD9, 0xE8, 0xF5)
 
 _JOURS_FR = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE']
 _MOIS_FR = ['', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
             'JUILLET', 'AOUT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_GDI_REFERENCE = 'presentation a automatiser GDI.pptx'
+_REUNION_REFERENCE = 'PRESENTATION REUNION[1] vendredi NEW (9).pptx'
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # BAS NIVEAU — bandeau titre / logo / diapos fixes
 # ═══════════════════════════════════════════════════════════════════════════
+
+def _layout(prs, name):
+    for master in prs.slide_masters:
+        for layout in master.slide_layouts:
+            if layout.name == name:
+                return layout
+    return None
+
+
+def _remove_slide(prs, slide):
+    for slide_id in list(prs.slides._sldIdLst):
+        if int(slide_id.id) == slide.slide_id:
+            prs.part.drop_rel(slide_id.rId)
+            prs.slides._sldIdLst.remove(slide_id)
+            return
+
+
+def _reference_deck(filename):
+    """Charge le vrai support YAS et conserve ses gardes natives.
+
+    Les diapositives de contenu sont recréées avec le layout ``Pic1`` du
+    modèle. En cas de modèle absent, la génération autonome reste disponible.
+    """
+    template_path = _PROJECT_ROOT / filename
+    if not template_path.is_file():
+        prs = Presentation()
+        prs.slide_width = SW
+        prs.slide_height = SH
+        return prs
+
+    prs = Presentation(str(template_path))
+    for slide in list(prs.slides):
+        if slide.slide_layout.name != 'Pause':
+            _remove_slide(prs, slide)
+    return prs
+
+
+def _blank(prs):
+    layout = _layout(prs, 'Pic1')
+    if layout is None:
+        return _plain_blank(prs)
+    slide = prs.slides.add_slide(layout)
+    for placeholder in list(slide.placeholders):
+        slide.shapes._spTree.remove(placeholder._element)
+    return slide
 
 def _logo(slide, l=None, t=Inches(0.16), h=Inches(0.78)):
     from .gdi_core import yas_logo_bytes
@@ -52,16 +107,19 @@ def _logo(slide, l=None, t=Inches(0.16), h=Inches(0.78)):
 
 
 def _header(slide, tag, subtitle='', extra_right=''):
-    _rect(slide, 0, 0, SW, SH, C_WHITE)
+    uses_reference_layout = slide.slide_layout.name == 'Pic1'
+    if not uses_reference_layout:
+        _rect(slide, 0, 0, SW, SH, C_WHITE)
     _txt(slide, tag, MARGIN, Inches(0.16), Inches(9.5), Inches(0.45),
          size=20, bold=True, color=C_BLUE)
     if subtitle:
         _txt(slide, subtitle, MARGIN, Inches(0.64), Inches(9.5), Inches(0.4),
-             size=14, bold=True, color=C_RED_T)
+             size=20, bold=True, color=C_RED_T)
     if extra_right:
         _txt(slide, extra_right, Inches(8.6), Inches(0.66), Inches(3.0), Inches(0.35),
              size=12, bold=True, color=C_RED_T, align=PP_ALIGN.RIGHT)
-    _logo(slide)
+    if not uses_reference_layout:
+        _logo(slide)
 
 
 def _blob(slide, points_frac, color):
@@ -89,7 +147,11 @@ _MERCI_BLOB_PTS = [
 def _cover(prs):
     """Diapositive de garde — identique à la diapo 1 (layout « Pause ») des 2
     fichiers de référence : uniquement le logo YAS centré sur fond jaune."""
-    sl = _blank(prs)
+    for slide in prs.slides:
+        if slide.slide_layout.name == 'Pause':
+            return slide
+    layout = _layout(prs, 'Pause')
+    sl = prs.slides.add_slide(layout) if layout is not None else _plain_blank(prs)
     _rect(sl, 0, 0, SW, SH, C_YELL)
     _logo(sl, l=Inches(4.9), t=Inches(2.35), h=Inches(2.8))
     return sl
@@ -98,7 +160,29 @@ def _cover(prs):
 def _closing(prs):
     """Diapositive de fin — reproduit la diapo « MERCI » (layout « End1 ») :
     blob bleu en haut à gauche, texte MERCI, mention YAS Togo, logo en bas à droite."""
-    sl = _blank(prs)
+    layout = _layout(prs, 'End1')
+    if layout is not None:
+        sl = prs.slides.add_slide(layout)
+        placeholders = sorted(sl.placeholders, key=lambda shape: shape.top)
+        if placeholders:
+            merci = placeholders[0]
+            merci.left = Inches(1.0)
+            merci.top = Inches(1.65)
+            merci.width = Inches(5.0)
+            merci.height = Inches(1.2)
+            merci.text_frame.word_wrap = False
+            merci.text = 'MERCI'
+            run = merci.text_frame.paragraphs[0].runs[0]
+            run.font.size = Pt(54)
+            run.font.bold = True
+            run.font.italic = True
+            run.font.color.rgb = RGBColor(0x7E, 0xA6, 0xD9)
+        footer = next((shape for shape in placeholders if shape.top > Inches(5)), None)
+        if footer is not None:
+            footer.text = 'YAS Togo / DT / DOC / iSOC / GDI'
+        return sl
+
+    sl = _plain_blank(prs)
     _rect(sl, 0, 0, SW, SH, C_YELL)
     _blob(sl, _MERCI_BLOB_PTS, C_BLUE)
     _txt(sl, 'MERCI', Inches(1.0), Inches(1.95), Inches(4.6), Inches(1.1),
@@ -143,8 +227,10 @@ def _duree_str(rec):
 
 
 _DETAIL_HEADERS = ['N°', 'Ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time',
-                    'Durée', 'Catégorie', 'Cause', 'Pt bloquant', 'Cancel Time', 'DR2']
-_DETAIL_COL_W = [0.5, 1.6, 1.4, 1.7, 1.0, 1.5, 1.0, 1.4, 2.2, 1.6, 1.5, 0.6]
+                    'Durée', 'Catégorie', 'Cause', 'Root Cause', 'Pt bloquant',
+                    'Cancel Time', 'Observation', 'DR2']
+_DETAIL_COL_W = [0.35, 1.4, 0.7, 1.1, 0.55, 0.95, 0.8, 0.75,
+                   1.45, 1.55, 1.35, 1.35, 0.65, 0.45]
 
 
 def _detail_rows(qs):
@@ -160,11 +246,76 @@ def _detail_rows(qs):
             _duree_str(rec),
             rec.categorie or '—',
             (rec.cause or '')[:38],
+            (rec.root_cause or '')[:42],
             rec.point_bloquant or 'N/A',
             rec.cancel_time.strftime('%d-%m-%Y %H:%M') if rec.cancel_time else '\xa0',
+            (rec.observation or '')[:45],
             'OUI',
         ])
     return rows
+
+
+def _set_header_text_color(table, color):
+    for cell in table.rows[0].cells:
+        for paragraph in cell.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.color.rgb = color
+
+
+def _detail_table(slide, rows, day, count, height=Inches(2.45)):
+    top = CONTENT_TOP + Inches(0.14)
+    band_h = Inches(0.22)
+    width = SW - 2 * MARGIN
+    _rect(slide, MARGIN, top, width, band_h, C_DETAIL_GRAY)
+    _txt(slide, f'CAS DE VIOLATION DR2 {day.strftime("%d-%m-%Y")}',
+         MARGIN, top, width, band_h, size=9, bold=True, color=C_DTEXT,
+         align=PP_ALIGN.CENTER)
+    _rect(slide, MARGIN, top + band_h, width, band_h, C_YELL)
+    _txt(slide, f'{count} DR2', MARGIN, top + band_h, width, band_h,
+         size=9, bold=True, color=C_DTEXT, align=PP_ALIGN.CENTER)
+
+    cell_fmts = {}
+    for row_idx, row in enumerate(rows):
+        for col_idx in range(len(_DETAIL_HEADERS)):
+            cell_fmts[(row_idx, col_idx)] = (C_DETAIL_GREEN, C_DTEXT)
+        if str(row[2]).strip():
+            cell_fmts[(row_idx, 2)] = (C_YELL, C_DTEXT)
+        cell_fmts[(row_idx, len(_DETAIL_HEADERS) - 1)] = (
+            RGBColor(0xFF, 0x00, 0x00), C_DTEXT,
+        )
+
+    return _table(
+        slide, _DETAIL_HEADERS, rows, col_widths=_DETAIL_COL_W,
+        top=top + 2 * band_h, height=height, font_size=6, hdr_size=6,
+        hdr_bg=C_DETAIL_HDR, alt=False, cell_fmts=cell_fmts,
+    )
+
+
+def _dr2_summary_tables(slide, qs, total, top=Inches(4.75), height=Inches(1.8)):
+    esc = _escalade_breakdown(qs, total)[:6]
+    summary_rows = [[e, k, f'{p}%'] for e, k, p in esc]
+    summary_fmts = {
+        (i, j): (C_SUMMARY_GRAY, C_DTEXT)
+        for i in range(len(summary_rows))
+        for j in range(3)
+    }
+    summary_table = _table(
+        slide, [f'TOTAL DR2 = {total}', 'NBRE INC', '% GENERAL'],
+        summary_rows, left=MARGIN, top=top, width=Inches(4.4), height=height,
+        col_widths=[3, 1, 1], font_size=8, hdr_size=8, hdr_bg=C_YELL,
+        alt=False, cell_fmts=summary_fmts,
+    )
+    _set_header_text_color(summary_table, C_DTEXT)
+
+    causes = _causes_breakdown(qs, 6)
+    causes_table = _table(
+        slide, ['TOP RECURRENT CAUSES', 'Nombre de CAUSE', '% CAUSE'],
+        [[c[:35], k, f'{p}%'] for c, k, p in causes],
+        left=Inches(5.0), top=top, width=Inches(7.6), height=height,
+        col_widths=[5, 1, 1], font_size=8, hdr_size=8,
+        hdr_bg=C_CAUSE_HDR, alt=False,
+    )
+    _set_header_text_color(causes_table, C_DTEXT)
 
 
 def _escalade_breakdown(qs, total=None):
@@ -265,8 +416,8 @@ def _line_chart(slide, categories, values, l, t, w, h, title=''):
         chart.has_title = True
         chart.chart_title.text_frame.text = title
     plot = chart.plots[0]
-    plot.series[0].format.line.color.rgb = C_BLUE
-    plot.series[0].format.line.width = Pt(2.25)
+    plot.series[0].format.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
+    plot.series[0].format.line.width = Pt(3)
     return chart
 
 
@@ -305,11 +456,18 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label):
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2 TREND')
     days = _daily_counts(_dr2_qs(d['debut'], d['fin']), d['debut'], d['fin'])
     _line_chart(sl, [x[0] for x in days], [x[1] for x in days],
-                MARGIN, CONTENT_TOP, SW - Inches(3.2), CONTENT_H - Inches(0.1),
-                title=period_label)
-    _kpi_text(sl, f"{kpi_label} = {d['total_dr2']}", Inches(10.3), CONTENT_TOP + Inches(0.3), Inches(2.7))
-    _kpi_text(sl, f"Moyenne = {d['moyenne']}".replace('.', ','),
-              Inches(10.3), CONTENT_TOP + Inches(0.9), Inches(2.7), size=13)
+             MARGIN, CONTENT_TOP + Inches(0.45), SW - 2 * MARGIN,
+             CONTENT_H - Inches(0.55))
+    trend_label = f"TREND DR2 {_MOIS_FR[d['fin'].month]} {d['fin'].year}"
+    _rect(sl, Inches(4.7), CONTENT_TOP, Inches(3.2), Inches(0.42), C_YELL)
+    _txt(sl, trend_label, Inches(4.7), CONTENT_TOP + Inches(0.03),
+        Inches(3.2), Inches(0.34), size=17, bold=True, color=C_DTEXT,
+        align=PP_ALIGN.CENTER)
+    _rect(sl, Inches(10.2), CONTENT_TOP + Inches(0.65), Inches(2.2), Inches(1.0), C_BLUE)
+    kpi_text = f"{kpi_label} = {d['total_dr2']}\nMOY = {str(d['moyenne']).replace('.', ',')}"
+    _txt(sl, kpi_text, Inches(10.2), CONTENT_TOP + Inches(0.78),
+        Inches(2.2), Inches(0.75), size=16, color=C_WHITE,
+        align=PP_ALIGN.CENTER)
     return sl
 
 
@@ -339,9 +497,7 @@ def _slide_merci(prs):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def generate_gdi_daily(debut, fin, generated_on):
-    prs = Presentation()
-    prs.slide_width = SW
-    prs.slide_height = SH
+    prs = _reference_deck(_GDI_REFERENCE)
 
     d = _dr2_dataset(debut, fin)
     qs = _dr2_qs(debut, fin)
@@ -355,21 +511,24 @@ def generate_gdi_daily(debut, fin, generated_on):
 
     # 3. Cas de violation DR2 (période) + répartition escalade + top causes
     sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS',
-            f'CAS DE VIOLATION DR2 {period_label}  —  {d["total_dr2"]} DR2')
-    rows = _detail_rows(qs)[:12]
-    _table(sl, _DETAIL_HEADERS, rows, col_widths=_DETAIL_COL_W,
-           top=CONTENT_TOP, height=Inches(2.9), font_size=7, hdr_size=7)
-    esc = _escalade_breakdown(qs, d['total_dr2'])[:6]
-    _table(sl, [f'TOTAL DR2 = {d["total_dr2"]}', 'NB', '%'],
-           [[e, k, f'{p}%'] for e, k, p in esc],
-           left=MARGIN, top=CONTENT_TOP + Inches(3.1), width=Inches(4.2), height=Inches(2.2),
-           col_widths=[3, 1, 1], font_size=9)
-    causes = _causes_breakdown(qs, 6)
-    _table(sl, ['TOP CAUSES', 'NB', '%'],
-           [[c[:35], k, f'{p}%'] for c, k, p in causes],
-           left=Inches(4.6), top=CONTENT_TOP + Inches(3.1), width=Inches(7.9), height=Inches(2.2),
-           col_widths=[5, 1, 1], font_size=9)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2')
+    detail_day = qs.order_by('-date').values_list('date', flat=True).first() or fin
+    qs_day = qs.filter(date=detail_day)
+    rows = _detail_rows(qs_day)[:7]
+    separate_summary = len(rows) > 3
+    _detail_table(
+        sl, rows, detail_day, qs_day.count(),
+        height=Inches(4.55) if separate_summary else Inches(2.45),
+    )
+    if separate_summary:
+        sl = _blank(prs)
+        _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
+        _dr2_summary_tables(
+            sl, qs, d['total_dr2'], top=CONTENT_TOP + Inches(0.55),
+            height=Inches(3.0),
+        )
+    else:
+        _dr2_summary_tables(sl, qs, d['total_dr2'])
 
     # 4. Top site occurrence DR2
     sl = _blank(prs)
@@ -457,9 +616,7 @@ _DEF_ROWS = [
 
 
 def generate_reunion_hebdo(debut, fin, generated_on):
-    prs = Presentation()
-    prs.slide_width = SW
-    prs.slide_height = SH
+    prs = _reference_deck(_REUNION_REFERENCE)
 
     d = _dr2_dataset(debut, fin)
     qs_period = _dr2_qs(debut, fin)
@@ -504,22 +661,19 @@ def generate_reunion_hebdo(debut, fin, generated_on):
         sl = _blank(prs)
         _header(sl, 'REUNION GESTION DES INCIDENTS', title)
         rows = _detail_rows(qs_day)
-        tbl_h = Inches(3.1) if is_last else Inches(5.3)
-        _table(sl, _DETAIL_HEADERS, rows, col_widths=_DETAIL_COL_W,
-               top=CONTENT_TOP, height=tbl_h, font_size=8, hdr_size=8)
-        _txt(sl, f'CAS DE VIOLATION DR2 {day.strftime("%d-%m-%Y")}  —  {nb} DR2',
-             MARGIN, CONTENT_TOP - Inches(0.32), Inches(9), Inches(0.3), size=11, bold=True, color=C_BLUE3)
+        separate_summary = is_last and len(rows) > 3
+        table_height = Inches(4.8) if separate_summary or not is_last else Inches(2.75)
+        _detail_table(sl, rows, day, nb, height=table_height)
         if is_last:
-            esc = _escalade_breakdown(qs_period, d['total_dr2'])[:6]
-            _table(sl, [f'S = {d["total_dr2"]} DR2', 'DR2', '%'],
-                   [[e, k, f'{p}%'] for e, k, p in esc],
-                   left=MARGIN, top=CONTENT_TOP + Inches(3.3), width=Inches(4.2), height=Inches(2.0),
-                   col_widths=[3, 1, 1], font_size=9)
-            causes = _causes_breakdown(qs_period, 6)
-            _table(sl, [f'TOP CAUSES RECURRENTES ({d["total_dr2"]})', '', ''],
-                   [[c[:35], k, f'{p}%'] for c, k, p in causes],
-                   left=Inches(4.6), top=CONTENT_TOP + Inches(3.3), width=Inches(7.9), height=Inches(2.0),
-                   col_widths=[5, 1, 1], font_size=9)
+            if separate_summary:
+                sl = _blank(prs)
+                _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
+                _dr2_summary_tables(
+                    sl, qs_period, d['total_dr2'],
+                    top=CONTENT_TOP + Inches(0.55), height=Inches(3.0),
+                )
+            else:
+                _dr2_summary_tables(sl, qs_period, d['total_dr2'])
 
     # N+1. Aperçu global et comparatif des tendances DR2
     _slide_apercu_global(prs, d)
