@@ -39,7 +39,7 @@
   .btn-back:hover { border-color:rgba(255,255,255,.6);color:#fff; }
 
   /* ── Grid ── */
-  .drd-grid { display:grid; grid-template-columns: 1.35fr 1fr; gap:18px; align-items:start; }
+  .drd-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:18px; align-items:start; }
   @media (max-width: 1100px) { .drd-grid { grid-template-columns: 1fr; } }
 
   .drd-card { background:#fff;border-radius:16px;border:1px solid #e8edf5;box-shadow:0 1px 4px rgba(0,48,135,.06);overflow:hidden; }
@@ -67,26 +67,26 @@
   }
   .drd-icon-btn:hover { background:rgba(255,255,255,.2); }
 
-  .drd-right-body { display:grid; grid-template-columns: 170px 1fr 220px; gap:0; min-height:520px; }
+  .drd-right-body { display:grid; grid-template-columns:170px 1fr 220px; grid-template-rows:minmax(0,1fr); gap:0; height:500px; min-height:0; overflow:hidden; }
   @media (max-width: 1400px) { .drd-right-body { grid-template-columns: 150px 1fr 200px; } }
-  @media (max-width: 900px)  { .drd-right-body { grid-template-columns: 1fr; } }
+  @media (max-width: 900px)  { .drd-right-body { grid-template-columns:1fr; grid-template-rows:auto 460px auto; height:auto; overflow:visible; } }
 
   /* ── Gauges column ── */
-  .drd-gauges { background:#0d1b3a; padding:14px 12px; display:flex; flex-direction:column; gap:10px; }
-  .drd-gauge-card { background:#132550; border-radius:10px; padding:10px 12px 6px; }
+  .drd-gauges { background:#0d1b3a; padding:8px; display:flex; flex-direction:column; gap:6px; }
+  .drd-gauge-card { background:#132550; border-radius:8px; padding:6px 8px 2px; }
   .drd-gauge-top { display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;color:#fff;font-weight:700;text-transform:uppercase;letter-spacing:.3px; }
   .drd-gauge-top span:last-child { font-size:9.5px;color:#8fa3d6;font-weight:600;text-transform:none; }
-  .drd-gauge-svg { width:100%; height:46px; display:block; margin-top:2px; }
+  .drd-gauge-svg { width:100%; height:34px; display:block; }
   .drd-gauge-bg  { fill:none; stroke:#0a1730; stroke-width:10; stroke-linecap:round; }
   .drd-gauge-fill{ fill:none; stroke-width:10; stroke-linecap:round; transition:stroke-dasharray .4s; }
   .drd-gauge-red    { stroke:#e53e3e; }
   .drd-gauge-yellow { stroke:#f5b642; }
   .drd-gauge-green  { stroke:#2ecc71; }
   .drd-gauge-none   { stroke:#2a3f6e; }
-  .drd-gauge-val { text-align:center;font-family:'Bebas Neue',sans-serif;font-size:22px;color:#fff;margin-top:-8px; }
+  .drd-gauge-val { text-align:center;font-family:'Bebas Neue',sans-serif;font-size:18px;color:#fff;margin-top:-7px; }
 
   /* ── Map ── */
-  .drd-map-wrap { position:relative; min-height:460px; }
+  .drd-map-wrap { position:relative; min-height:0; }
   #drdMap { position:absolute; inset:0; }
 
   /* ── Sidebar (search + list) ── */
@@ -109,20 +109,6 @@
   .drd-badge-orange { background:#ffedd5; color:#c2660a; }
   .drd-badge-green  { background:#e3f9e5; color:#1e8449; }
   .drd-empty { padding:24px; text-align:center; color:#aaa; font-size:12.5px; }
-
-  /* ── Écrans de supervision / TV ── */
-  @media (min-width: 1500px) {
-    .drd-grid {
-      grid-template-columns: minmax(0, .85fr) minmax(0, 1.5fr);
-      gap:24px;
-    }
-    .drd-right-body {
-      grid-template-columns: 180px minmax(0, 1fr) 250px;
-      min-height:clamp(680px, calc(100vh - 230px), 960px);
-    }
-    .drd-map-wrap { min-height:clamp(680px, calc(100vh - 230px), 960px); }
-    .drd-site-list { max-height:none; }
-  }
 
   .geo-popup-name { font-weight:700; color:#1e3a6e; font-size:12.5px; }
   .geo-popup-meta { font-size:11px; color:#667; margin-top:2px; }
