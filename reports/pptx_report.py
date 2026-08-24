@@ -1974,6 +1974,48 @@ def _an_bar_chart(slide, categories, series, left, top, width, height,
     return chart
 
 
+def _an_region_site_labels(slide, a1, left, top, width):
+    regions = list(a1.get('labels') or [])
+    if not regions:
+        return
+
+    datasets = [dataset for dataset in a1.get('datasets', [])
+                if dataset.get('label') != 'Autres sites']
+    plot_left = left + Inches(0.38)
+    column_width = (width - Inches(0.52)) // len(regions)
+    line_height = Inches(0.16)
+
+    for region_index in range(len(regions)):
+        names = []
+        for dataset_index, dataset in enumerate(datasets):
+            site_names = dataset.get('siteNames') or []
+            if region_index < len(site_names) and site_names[region_index]:
+                names.append((site_names[region_index], _AN_SERIES_COLORS[
+                    dataset_index % len(_AN_SERIES_COLORS)]))
+
+        column_left = plot_left + column_width * region_index
+        for line_index, (name, color) in enumerate(names[:4]):
+            textbox = _txt(
+                slide, f'■ {_an_short(name, 20)}', column_left,
+                top + line_height * line_index, column_width, line_height,
+                size=5.8, color=color, align=PP_ALIGN.CENTER, wrap=False)
+            textbox.text_frame.margin_left = 0
+            textbox.text_frame.margin_right = 0
+            textbox.text_frame.margin_top = 0
+            textbox.text_frame.margin_bottom = 0
+
+        extra = len(names) - 4
+        if extra > 0:
+            textbox = _txt(
+                slide, f'+{extra} autres', column_left,
+                top + line_height * 4, column_width, line_height,
+                size=5.6, color=C_NAVY_T, align=PP_ALIGN.CENTER, wrap=False)
+            textbox.text_frame.margin_left = 0
+            textbox.text_frame.margin_right = 0
+            textbox.text_frame.margin_top = 0
+            textbox.text_frame.margin_bottom = 0
+
+
 def _an_combo_chart(slide, categories, primary_name, primary_values,
                     secondary_name, secondary_values, secondary_format,
                     left, top, width, height):
@@ -2095,8 +2137,12 @@ def _an_slide_region_site(prs, res, page, total_pages):
         res['kpi'], page, total_pages)
     a1 = res['a1']
     series = [(dataset['label'], dataset['data']) for dataset in a1['datasets']]
-    _an_bar_chart(slide, a1['labels'], series, Inches(0.5), Inches(2.16),
-                  SW - Inches(1.0), Inches(4.72), stacked=True, legend=True)
+    chart_left = Inches(0.5)
+    chart_width = SW - Inches(1.0)
+    _an_bar_chart(slide, a1['labels'], series, chart_left, Inches(2.16),
+                  chart_width, Inches(3.5), stacked=True, legend=False)
+    _an_region_site_labels(
+        slide, a1, chart_left, Inches(5.78), chart_width)
 
 
 def _an_slide_pareto(prs, res, page, total_pages):
