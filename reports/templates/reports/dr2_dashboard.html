@@ -110,6 +110,20 @@
   .drd-badge-green  { background:#e3f9e5; color:#1e8449; }
   .drd-empty { padding:24px; text-align:center; color:#aaa; font-size:12.5px; }
 
+  /* ── Écrans de supervision / TV ── */
+  @media (min-width: 1500px) {
+    .drd-grid {
+      grid-template-columns: minmax(0, .85fr) minmax(0, 1.5fr);
+      gap:24px;
+    }
+    .drd-right-body {
+      grid-template-columns: 180px minmax(0, 1fr) 250px;
+      min-height:clamp(680px, calc(100vh - 230px), 960px);
+    }
+    .drd-map-wrap { min-height:clamp(680px, calc(100vh - 230px), 960px); }
+    .drd-site-list { max-height:none; }
+  }
+
   .geo-popup-name { font-weight:700; color:#1e3a6e; font-size:12.5px; }
   .geo-popup-meta { font-size:11px; color:#667; margin-top:2px; }
 </style>
@@ -303,7 +317,8 @@
     var COLOR_HEX = { red: '#e53e3e', orange: '#f5a742', green: '#2ecc71' };
 
     drdMap = L.map('drdMap', {
-      zoomControl: true, scrollWheelZoom: false, attributionControl: false, preferCanvas: true
+      zoomControl: true, scrollWheelZoom: false, attributionControl: false,
+      preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18, minZoom: 6, attribution: '&copy; OpenStreetMap'
