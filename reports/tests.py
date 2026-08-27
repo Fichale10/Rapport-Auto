@@ -7,6 +7,7 @@ from .dr2_analytics import compute
 from .dr2_availability import (
 	compute_dr2_sites, filter_availability_day, normalize_dr2_datetimes,
 )
+from .dr2_meeting_pptx import _dr2_dataset, _gdi_reporting_periods
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
 
@@ -70,8 +71,34 @@ class Dr2AvailabilityTests(SimpleTestCase):
 			(alarm, None),
 		)
 
+	def test_gdi_reporting_periods_use_last_completed_weekend(self):
+		periods = _gdi_reporting_periods(date(2026, 8, 26))
+
+		self.assertEqual(periods['month_start'], date(2026, 8, 1))
+		self.assertEqual(periods['detail_start'], date(2026, 8, 21))
+		self.assertEqual(periods['detail_end'], date(2026, 8, 23))
+		self.assertEqual(periods['meeting_day'], date(2026, 8, 24))
+
 
 class Dr2AnalyticsTests(TestCase):
+	def test_gdi_dataset_uses_processed_days_and_selected_period_end(self):
+		for day in (date(2026, 8, 21), date(2026, 8, 22), date(2026, 8, 23)):
+			Dr2ProcessedDate.objects.create(date=day, sites_count=0)
+		Dr2ViolationRecord.objects.create(
+			date=date(2026, 8, 21), site_name='SITE-A', region='LOME',
+			categorie='ENERGIE', hours_down=3,
+		)
+		Dr2ViolationRecord.objects.create(
+			date=date(2026, 8, 23), site_name='SITE-B', region='KARA',
+			categorie='RAN-FIELD O', hours_down=4,
+		)
+
+		result = _dr2_dataset(date(2026, 8, 1), date(2026, 8, 23))
+
+		self.assertEqual(result['period_days'], 3)
+		self.assertEqual(result['moyenne'], 0.67)
+		self.assertEqual(result['nbre_j1'], 1)
+
 	def test_average_and_trend_use_processed_days(self):
 		for day, count in ((date(2026, 8, 10), 2), (date(2026, 8, 11), 1),
 						   (date(2026, 8, 12), 0)):

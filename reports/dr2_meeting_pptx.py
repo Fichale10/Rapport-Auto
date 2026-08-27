@@ -211,6 +211,88 @@ def _kpi_text(slide, text, l, t, w=Inches(3), h=Inches(0.5), size=16, color=C_RE
     _txt(slide, text, l, t, w, h, size=size, bold=True, color=color, align=align)
 
 
+def _set_placeholder(slide, idx, text):
+    shape = next(
+        (item for item in slide.placeholders if item.placeholder_format.idx == idx),
+        None,
+    )
+    if shape is not None:
+        shape.text = text
+    return shape
+
+
+def _meeting_title(prs, meeting_day):
+    layout = _layout(prs, 'Title1')
+    if layout is None:
+        sl = _blank(prs)
+        _header(sl, 'REUNION GESTION DES INCIDENTS', meeting_day.strftime('%d/%m/%Y'))
+        return sl
+    sl = prs.slides.add_slide(layout)
+    _set_placeholder(sl, 0, 'REUNION GESTION DES INCIDENTS')
+    _set_placeholder(sl, 1, '')
+    _set_placeholder(
+        sl, 11,
+        f'{_JOURS_FR[meeting_day.weekday()].title()} {meeting_day.day} '
+        f'{_MOIS_FR[meeting_day.month]} {meeting_day.year}',
+    )
+    _set_placeholder(sl, 10, 'Yas Togo / DT / DOC / iSOC / GDI')
+    return sl
+
+
+def _section(prs, title, month_day, number):
+    layout = _layout(prs, 'Section1')
+    if layout is None:
+        sl = _blank(prs)
+        _header(sl, title, f'{_MOIS_FR[month_day.month]} {month_day.year}')
+        return sl
+    sl = prs.slides.add_slide(layout)
+    _set_placeholder(sl, 0, title)
+    _set_placeholder(sl, 1, f'{_MOIS_FR[month_day.month]} {month_day.year}')
+    _set_placeholder(sl, 10, f'{number:02d}')
+    return sl
+
+
+def _slide_definitions(prs):
+    sl = _blank(prs)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'Définition DR1/DR2')
+    _table(
+        sl, ['Code', 'Indicateur', 'Définition', 'Seuil (2G,3G,4G)'],
+        _DEF_ROWS, col_widths=[1, 3, 5, 1.5], top=CONTENT_TOP + Inches(1.0),
+        height=Inches(3.2), font_size=10,
+    )
+    return sl
+
+
+def _slide_dr1_violations(prs, fin):
+    sl = _blank(prs)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'Cas de violation DR1')
+    dr1 = _dr1_violations(fin)
+    period_start = fin - timedelta(days=29)
+    _txt(
+        sl, f'Du {period_start.strftime("%d/%m/%Y")} au {fin.strftime("%d/%m/%Y")}',
+        MARGIN, CONTENT_TOP, Inches(4.0), Inches(0.35), size=11, bold=True,
+        color=C_RED_T,
+    )
+    if dr1 is None:
+        _txt(sl, 'Données ticketing indisponibles pour le calcul DR1.',
+             MARGIN, CONTENT_TOP + Inches(0.55), SW - 2 * MARGIN,
+             Inches(0.5), size=13, color=C_RED_FG)
+        return sl
+    _kpi_text(sl, f'TDR1 = {len(dr1)} DR1', MARGIN, CONTENT_TOP + Inches(0.48))
+    if dr1:
+        rows = [[r['site'], r['cnt'], r['region'], str(r['cause'])[:45]] for r in dr1[:12]]
+        _table(
+            sl, ['SITE NAME', 'COUNT', 'RÉGION', 'CAUSES'], rows,
+            col_widths=[3, 1, 2, 6], top=CONTENT_TOP + Inches(1.0),
+            height=Inches(4.7), font_size=10,
+        )
+    else:
+        _txt(sl, 'Aucun site en violation DR1 sur les 30 derniers jours.',
+             MARGIN, CONTENT_TOP + Inches(1.25), SW - 2 * MARGIN,
+             Inches(0.5), size=13, color=C_DTEXT)
+    return sl
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # DONNÉES
 # ═══════════════════════════════════════════════════════════════════════════
@@ -242,6 +324,23 @@ def _dr2_dataset(debut, fin):
             if not row.get('region') or row.get('region') == '—':
                 row['region'] = region_fallback.get(row['site_name']) or 'INCONNU'
     dataset = _build_dr2_from_rows(rows, debut, fin)
+    from .models import Dr2ProcessedDate
+    processed_dates = set(Dr2ProcessedDate.objects.filter(
+        date__gte=debut, date__lte=fin,
+    ).values_list('date', flat=True))
+    if not processed_dates and rows:
+        processed_dates = {
+            date.fromisoformat(row['date']) for row in rows if row.get('date')
+        }
+    dataset['processed_dates'] = processed_dates
+    dataset['period_days'] = len(processed_dates)
+    dataset['moyenne'] = (
+        round(dataset['total_dr2'] / len(processed_dates), 2)
+        if processed_dates else 0
+    )
+    dataset['nbre_j1'] = sum(
+        1 for row in dataset['detail_rows'] if row['date'] == fin
+    )
     unknown_rows = [row for row in dataset['detail_rows'] if row['region'] == 'INCONNU']
     if unknown_rows:
         dataset['region_rows'].append({
@@ -430,6 +529,23 @@ def _shift_month(day, offset):
     return date(year, month_zero + 1, 1)
 
 
+def _gdi_reporting_periods(fin):
+    """Retourne les périmètres du support GDI de la réunion du lundi.
+
+    La date de fin choisie peut être postérieure au week-end présenté. Le
+    support s'arrête alors au dernier dimanche achevé : tendances depuis le
+    premier du mois, détails du vendredi au dimanche, réunion le lundi.
+    """
+    last_sunday = fin - timedelta(days=(fin.weekday() - 6) % 7)
+    return {
+        'month_start': last_sunday.replace(day=1),
+        'data_end': last_sunday,
+        'detail_start': last_sunday - timedelta(days=2),
+        'detail_end': last_sunday,
+        'meeting_day': last_sunday + timedelta(days=1),
+    }
+
+
 def _monthly_comparison(fin, count=3):
     """Séries journalières des derniers mois, issues des mêmes DR2 que le
     tableau quotidien. La moyenne utilise uniquement les jours traités."""
@@ -535,7 +651,12 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2 TREND')
     days = _daily_counts(_dr2_qs(d['debut'], d['fin']), d['debut'], d['fin'])
-    _line_chart(sl, [x[0] for x in days], [x[1] for x in days],
+    processed_dates = d.get('processed_dates', set())
+    values = [
+        count if day in processed_dates or count else None
+        for day, count in days
+    ]
+    _line_chart(sl, [x[0] for x in days], values,
              MARGIN, CONTENT_TOP + Inches(0.45), SW - 2 * MARGIN,
              CONTENT_H - Inches(0.55))
     trend_label = f"TREND DR2 {_MOIS_FR[d['fin'].month]} {d['fin'].year}"
@@ -544,7 +665,10 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label):
         Inches(3.2), Inches(0.34), size=17, bold=True, color=C_DTEXT,
         align=PP_ALIGN.CENTER)
     _rect(sl, Inches(10.2), CONTENT_TOP + Inches(0.65), Inches(2.2), Inches(1.0), C_BLUE)
-    kpi_text = f"{kpi_label} = {d['total_dr2']}\nMOY = {str(d['moyenne']).replace('.', ',')}"
+    if processed_dates:
+        kpi_text = f"{kpi_label} = {d['total_dr2']}\nMOY = {str(d['moyenne']).replace('.', ',')}"
+    else:
+        kpi_text = f'{kpi_label} = N/D\nMOY = N/D'
     _txt(sl, kpi_text, Inches(10.2), CONTENT_TOP + Inches(0.78),
         Inches(2.2), Inches(0.75), size=16, color=C_WHITE,
         align=PP_ALIGN.CENTER)
@@ -624,9 +748,9 @@ def _category_matches(row, category):
     )
 
 
-def _slide_apercu_global(prs, d):
+def _slide_apercu_global(prs, d, subtitle='Aperçu global et comparatif des tendances DR2'):
     sl = _blank(prs)
-    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'Aperçu global et comparatif des tendances DR2')
+    _header(sl, 'RAPPORT GESTION DES INCIDENTS', subtitle)
     esc_stats = _daily_report_stats(d)
     esc_names = [stat['escalade'] for stat in esc_stats]
 
@@ -867,77 +991,117 @@ def _slide_merci(prs):
 def generate_gdi_daily(debut, fin, generated_on):
     prs = _reference_deck(_GDI_REFERENCE)
 
-    d = _dr2_dataset(debut, fin)
-    qs = _dr2_qs(debut, fin)
-    period_label = f"{debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
+    periods = _gdi_reporting_periods(fin)
+    month_start = periods['month_start']
+    data_end = periods['data_end']
+    detail_start = periods['detail_start']
+    detail_end = periods['detail_end']
+    meeting_day = periods['meeting_day']
+
+    month_data = _dr2_dataset(month_start, data_end)
+    detail_data = _dr2_dataset(detail_start, detail_end)
+    qs_month = _dr2_qs(month_start, data_end)
+    qs_detail = _dr2_qs(detail_start, detail_end)
+    detail_label = f"{detail_start.strftime('%d/%m/%Y')} au {detail_end.strftime('%d/%m/%Y')}"
 
     # 1. Cover
     _cover(prs)
 
-    # 2. DR2 Trend
-    _slide_dr2_trend(prs, d, 'TDR2', period_label)
+    # 2. Page de titre datée
+    _meeting_title(prs, meeting_day)
 
-    # 3. Cas de violation DR2 (période) + répartition escalade + top causes
-    sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2')
-    detail_day = qs.order_by('-date').values_list('date', flat=True).first() or fin
-    qs_day = qs.filter(date=detail_day)
-    rows = _detail_rows(qs_day)[:7]
-    separate_summary = len(rows) > 3
-    _detail_table(
-        sl, rows, detail_day, qs_day.count(),
-        height=Inches(4.55) if separate_summary else Inches(2.45),
-    )
-    if separate_summary:
+    # 3. Définitions réglementaires
+    _slide_definitions(prs)
+
+    # 4-5. DR1
+    _section(prs, 'TENDANCE DR1', data_end, 1)
+    _slide_dr1_violations(prs, data_end)
+
+    # 6-7. DR2 du dernier vendredi au dimanche achevé
+    _section(prs, 'TENDANCE DR2', data_end, 2)
+    _slide_dr2_trend(prs, detail_data, 'TDR2', detail_label)
+
+    # 8-10. Une diapositive lisible par journée, y compris à zéro DR2
+    day = detail_start
+    while day <= detail_end:
+        qs_day = qs_detail.filter(date=day)
         sl = _blank(prs)
-        _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
+        _header(sl, 'REUNION GESTION DES INCIDENTS', f'DETAIL DR2 {_JOURS_FR[day.weekday()]}')
+        if day in detail_data['processed_dates'] or qs_day.exists():
+            _detail_table(sl, _detail_rows(qs_day), day, qs_day.count(), height=Inches(4.9))
+        else:
+            _txt(
+                sl, f'Journée du {day.strftime("%d/%m/%Y")} non traitée',
+                MARGIN, CONTENT_TOP + Inches(1.7), SW - 2 * MARGIN,
+                Inches(0.6), size=20, bold=True, color=C_RED_T,
+                align=PP_ALIGN.CENTER,
+            )
+            _txt(
+                sl, 'Importez les fichiers de disponibilité 2G et 3G avant de générer le support GDI.',
+                MARGIN, CONTENT_TOP + Inches(2.35), SW - 2 * MARGIN,
+                Inches(0.5), size=12, color=C_DTEXT, align=PP_ALIGN.CENTER,
+            )
+        day += timedelta(days=1)
+
+    # 11. Synthèse du week-end
+    sl = _blank(prs)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
+    _txt(sl, detail_label, MARGIN, CONTENT_TOP, SW - 2 * MARGIN,
+         Inches(0.35), size=11, bold=True, color=C_RED_T,
+         align=PP_ALIGN.CENTER)
+    if detail_data['processed_dates']:
         _dr2_summary_tables(
-            sl, qs, d['total_dr2'], top=CONTENT_TOP + Inches(0.55),
-            height=Inches(3.0),
+            sl, qs_detail, detail_data['total_dr2'],
+            top=CONTENT_TOP + Inches(0.55), height=Inches(3.0),
         )
     else:
-        _dr2_summary_tables(sl, qs, d['total_dr2'])
+        _txt(
+            sl, 'Synthèse indisponible : aucune journée traitée sur ce week-end.',
+            MARGIN, CONTENT_TOP + Inches(2.0), SW - 2 * MARGIN,
+            Inches(0.6), size=18, bold=True, color=C_RED_T,
+            align=PP_ALIGN.CENTER,
+        )
 
-    # 4. Top site occurrence DR2
+    # 12. Top sites — mois jusqu'au dimanche de référence
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'TOP SITE OCCURRENCE DR2')
-    top_sites = _top_sites(qs, 15)
+    top_sites = _top_sites(qs_month, 15)
     if top_sites:
         _bar_chart(sl, [s for s, _ in reversed(top_sites)], [c for _, c in reversed(top_sites)],
                    MARGIN, CONTENT_TOP, SW - 2 * MARGIN, CONTENT_H - Inches(0.1))
 
-    # 5. Répartition DR2 Région / Bases
+    # 13. Répartition région / bases — mois
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'Répartition DR2 Région / Bases')
-    regs = [(r['region'], r['dr2']) for r in d['region_rows'] if r['dr2']]
+    regs = [(r['region'], r['dr2']) for r in month_data['region_rows'] if r['dr2']]
     if regs:
         _pie_chart(sl, [r for r, _ in regs], [c for _, c in regs],
                    MARGIN, CONTENT_TOP, Inches(4.6), CONTENT_H - Inches(0.1))
-    bases = _base_breakdown(qs)[:15]
+    bases = _base_breakdown(qs_month)[:15]
     if bases:
         _bar_chart(sl, [b for b, _ in reversed(bases)], [c for _, c in reversed(bases)],
                    Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN, CONTENT_H - Inches(0.1))
 
-    # 6. Efficacité DR2 (par région, vs cible)
+    # 14. Efficacité — formule actuelle conservée jusqu'à validation métier
     sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2')
-    rows_eff = [[r['region'], r['dr2'], r['tget'], f"{r['pct_tget']}%"] for r in d['region_rows']]
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2 — ATTEINTE DES CIBLES')
+    rows_eff = [[r['region'], r['dr2'], r['tget'], f"{r['pct_tget']}%"] for r in month_data['region_rows']]
     fmts = {}
-    for i, r in enumerate(d['region_rows']):
+    for i, r in enumerate(month_data['region_rows']):
         fmts[(i, 3)] = {'red': (C_RED_BG, C_RED_FG), 'yellow': (C_YELL_BG, C_YELL_FG),
                          'green': (C_GREEN_BG, C_GREEN_FG)}[r['color']]
     _table(sl, ['RÉGION', 'DR2', 'CIBLE', '% CIBLE ATTEINTE'], rows_eff,
            col_widths=[3, 2, 2, 2], cell_fmts=fmts, font_size=11,
            top=CONTENT_TOP, height=Inches(3.2))
-    labels = [r['region'] for r in d['region_rows']]
-    vals = [r['pct_tget'] for r in d['region_rows']]
+    labels = [r['region'] for r in month_data['region_rows']]
+    vals = [r['pct_tget'] for r in month_data['region_rows']]
     if labels:
         _bar_chart(sl, labels, vals, MARGIN, CONTENT_TOP + Inches(3.4), SW - 2 * MARGIN, Inches(1.9), horizontal=False)
 
-    # 7. Points bloquants
+    # 15. Points bloquants — mois
     sl = _blank(prs)
-    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'Points Bloquants', extra_right=f'DR2- PB = {sum(k for _, k in _points_bloquants(qs))}')
-    pb = _points_bloquants(qs)
+    pb = _points_bloquants(qs_month)
+    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS', extra_right=f'DR2- PB = {sum(k for _, k in pb)}')
     rows_pb = [[p[:55], k] for p, k in pb]
     if rows_pb:
         _table(sl, ['POINT BLOQUANT', 'NB'], rows_pb, col_widths=[8, 2],
@@ -946,13 +1110,13 @@ def generate_gdi_daily(debut, fin, generated_on):
         _bar_chart(sl, [p for p, _ in reversed(pb[:8])], [k for _, k in reversed(pb[:8])],
                    MARGIN, CONTENT_TOP + Inches(3.6), SW - 2 * MARGIN, Inches(1.7))
 
-    # 8. Aperçu global et comparatif des tendances DR2
-    _slide_apercu_global(prs, d)
+    # 16. Tableau de croisement Région / Métiers — mois
+    _slide_apercu_global(prs, month_data, 'TABLEAU DE CROISEMENT REGION / METIERS')
 
-    # 9. DR2 comparative mensuel
-    _slide_monthly_comparison(prs, d)
+    # 17. Comparatif mensuel
+    _slide_monthly_comparison(prs, month_data)
 
-    # 10. Merci
+    # 18. Merci
     _slide_merci(prs)
 
     buf = BytesIO()
