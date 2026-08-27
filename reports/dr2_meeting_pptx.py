@@ -25,7 +25,7 @@ from pptx.enum.chart import (
 )
 
 from .pptx_report import (
-    _blank as _plain_blank, _rect, _txt, _table,
+    _blank as _plain_blank, _rect, _txt, _table as _base_table,
     SW, SH, MARGIN, CONTENT_TOP, CONTENT_H,
     C_BLUE, C_WHITE, C_DTEXT, C_LGRAY, C_BLUE3, C_YELL,
     C_RED_BG, C_RED_FG, C_YELL_BG, C_YELL_FG, C_GREEN_BG, C_GREEN_FG,
@@ -56,6 +56,26 @@ _MOIS_FR = ['', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GDI_REFERENCE = 'presentation a automatiser GDI.pptx'
 _REUNION_REFERENCE = 'PRESENTATION REUNION[1] vendredi NEW (9).pptx'
+
+
+def _table(*args, **kwargs):
+    """Tableau GDI homogène, compact et lisible sur écran de réunion."""
+    table = _base_table(*args, **kwargs)
+    for row_idx, row in enumerate(table.rows):
+        for cell in row.cells:
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.margin_left = Inches(0.04)
+            cell.margin_right = Inches(0.04)
+            cell.margin_top = Inches(0.025)
+            cell.margin_bottom = Inches(0.025)
+            for paragraph in cell.text_frame.paragraphs:
+                paragraph.space_before = Pt(0)
+                paragraph.space_after = Pt(0)
+                for run in paragraph.runs:
+                    run.font.name = 'Arial'
+                    if row_idx == 0:
+                        run.font.bold = True
+    return table
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -419,12 +439,14 @@ def _detail_table(slide, rows, day, count, height=Inches(2.45)):
 
     cell_fmts = {}
     for row_idx, row in enumerate(rows):
+        row_bg = C_WHITE if row_idx % 2 == 0 else C_LGRAY
         for col_idx in range(len(_DETAIL_HEADERS)):
-            cell_fmts[(row_idx, col_idx)] = (C_DETAIL_GREEN, C_DTEXT)
+            cell_fmts[(row_idx, col_idx)] = (row_bg, C_DTEXT)
         if str(row[2]).strip():
             cell_fmts[(row_idx, 2)] = (C_YELL, C_DTEXT)
+        cell_fmts[(row_idx, 7)] = (C_CAUSE_HDR, C_DTEXT)
         cell_fmts[(row_idx, len(_DETAIL_HEADERS) - 1)] = (
-            RGBColor(0xFF, 0x00, 0x00), C_DTEXT,
+            C_DETAIL_GREEN, C_DTEXT,
         )
 
     return _table(
@@ -601,6 +623,52 @@ def _dr1_violations(fin):
 # GRAPHIQUES NATIFS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _style_count_axes(chart, values):
+    """Style commun aux graphes de volumes : aucune graduation fractionnaire."""
+    numeric_values = [float(value) for value in values if value is not None]
+    maximum = max(numeric_values, default=0)
+    if maximum <= 5:
+        major_unit = 1
+    elif maximum <= 10:
+        major_unit = 2
+    elif maximum <= 30:
+        major_unit = 5
+    elif maximum <= 60:
+        major_unit = 10
+    elif maximum <= 100:
+        major_unit = 20
+    else:
+        major_unit = max(10, int((maximum + 49) // 50) * 10)
+    value_axis = chart.value_axis
+    value_axis.minimum_scale = 0
+    value_axis.major_unit = major_unit
+    value_axis.tick_labels.number_format = '0'
+    value_axis.tick_labels.font.name = 'Arial'
+    value_axis.tick_labels.font.size = Pt(9)
+    value_axis.tick_labels.font.color.rgb = C_REPORT_BLUE
+    value_axis.has_major_gridlines = True
+    value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xE2, 0xF3)
+    value_axis.format.line.color.rgb = RGBColor(0x9E, 0xAD, 0xC7)
+    category_axis = chart.category_axis
+    category_axis.tick_labels.font.name = 'Arial'
+    category_axis.tick_labels.font.size = Pt(9)
+    category_axis.tick_labels.font.color.rgb = C_REPORT_BLUE
+    category_axis.format.line.color.rgb = RGBColor(0x9E, 0xAD, 0xC7)
+
+
+def _show_count_labels(plot, position=XL_DATA_LABEL_POSITION.OUTSIDE_END):
+    plot.has_data_labels = True
+    labels = plot.data_labels
+    labels.show_value = True
+    labels.show_legend_key = False
+    labels.show_category_name = False
+    labels.number_format = '0'
+    labels.position = position
+    labels.font.name = 'Arial'
+    labels.font.size = Pt(9)
+    labels.font.bold = True
+    labels.font.color.rgb = C_REPORT_BLUE
+
 def _line_chart(slide, categories, values, l, t, w, h, title=''):
     data = CategoryChartData()
     data.categories = [c.strftime('%d/%m') if hasattr(c, 'strftime') else str(c) for c in categories]
@@ -608,12 +676,14 @@ def _line_chart(slide, categories, values, l, t, w, h, title=''):
     gframe = slide.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, l, t, w, h, data)
     chart = gframe.chart
     chart.has_legend = False
+    _style_count_axes(chart, values)
     if title:
         chart.has_title = True
         chart.chart_title.text_frame.text = title
     plot = chart.plots[0]
     plot.series[0].format.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
-    plot.series[0].format.line.width = Pt(3)
+    plot.series[0].format.line.width = Pt(2.5)
+    _show_count_labels(plot, XL_DATA_LABEL_POSITION.ABOVE)
     return chart
 
 
@@ -625,9 +695,13 @@ def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True, color=C_B
     gframe = slide.shapes.add_chart(ctype, l, t, w, h, data)
     chart = gframe.chart
     chart.has_legend = False
+    _style_count_axes(chart, values)
     plot = chart.plots[0]
     plot.series[0].format.fill.solid()
     plot.series[0].format.fill.fore_color.rgb = color
+    plot.series[0].format.line.fill.background()
+    plot.gap_width = 55
+    _show_count_labels(plot)
     return chart
 
 
@@ -640,6 +714,18 @@ def _pie_chart(slide, categories, values, l, t, w, h):
     chart.has_legend = True
     chart.legend.position = XL_LEGEND_POSITION.RIGHT
     chart.legend.include_in_layout = False
+    chart.legend.font.name = 'Arial'
+    chart.legend.font.size = Pt(9)
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    labels = plot.data_labels
+    labels.show_category_name = True
+    labels.show_percentage = True
+    labels.show_legend_key = False
+    labels.position = XL_DATA_LABEL_POSITION.BEST_FIT
+    labels.font.name = 'Arial'
+    labels.font.size = Pt(8)
+    labels.font.bold = True
     return chart
 
 
@@ -928,11 +1014,12 @@ def _slide_monthly_comparison(prs, d):
     )
     chart = frame.chart
     chart.has_legend = True
+    _style_count_axes(
+        chart,
+        [value for month in months for value in month['values']],
+    )
     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
     chart.legend.include_in_layout = False
-    chart.value_axis.minimum_scale = 0
-    chart.value_axis.has_major_gridlines = True
-    chart.value_axis.tick_labels.font.size = Pt(8)
     chart.category_axis.tick_labels.font.size = Pt(8)
     line_colors = [RGBColor(0x5B, 0x9B, 0xD5), RGBColor(0xFF, 0xC0, 0x00), RGBColor(0xFF, 0x00, 0x00)]
     for series, color in zip(chart.plots[0].series, line_colors):
