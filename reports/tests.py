@@ -9,6 +9,7 @@ from .dr2_availability import (
 )
 from .dr2_meeting_pptx import (
 	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
+	_monthly_comparison,
 )
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
@@ -118,6 +119,18 @@ class Dr2AnalyticsTests(TestCase):
 		self.assertEqual(result['period_days'], 3)
 		self.assertEqual(result['moyenne'], 0.67)
 		self.assertEqual(result['nbre_j1'], 1)
+
+	def test_monthly_comparison_keeps_unprocessed_months_unavailable(self):
+		Dr2ProcessedDate.objects.create(date=date(2026, 8, 1), sites_count=1)
+		Dr2ViolationRecord.objects.create(
+			date=date(2026, 8, 1), site_name='SITE-A', region='LOME',
+			categorie='ENERGIE', hours_down=3,
+		)
+
+		months = _monthly_comparison(date(2026, 8, 23))
+
+		self.assertEqual([month['moyenne'] for month in months], [None, None, 1.0])
+		self.assertEqual([month['processed_days'] for month in months], [0, 0, 1])
 
 	def test_average_and_trend_use_processed_days(self):
 		for day, count in ((date(2026, 8, 10), 2), (date(2026, 8, 11), 1),

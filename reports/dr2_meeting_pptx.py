@@ -672,7 +672,8 @@ def _monthly_comparison(fin, count=3):
             'label': _MOIS_FR[start.month],
             'year': start.year,
             'total': total,
-            'moyenne': round(total / len(processed_dates), 2) if processed_dates else 0,
+            'moyenne': round(total / len(processed_dates), 2) if processed_dates else None,
+            'processed_days': len(processed_dates),
             'values': [
                 counts.get(current_day, 0) if current_day in processed_dates else None
                 for day in range(1, end.day + 1)
@@ -1204,6 +1205,40 @@ def _share_bar_chart(slide, categories, values, left, top, width, height,
     return chart
 
 
+def _percent_bar_chart(slide, categories, values, left, top, width, height, title):
+    data = CategoryChartData()
+    data.categories = categories
+    data.add_series('Taux', values)
+    frame = slide.shapes.add_chart(
+        XL_CHART_TYPE.BAR_CLUSTERED, left, top, width, height, data,
+    )
+    chart = frame.chart
+    chart.has_legend = False
+    chart.has_title = True
+    chart.chart_title.text_frame.text = title
+    title_font = chart.chart_title.text_frame.paragraphs[0].font
+    title_font.name = 'Arial'
+    title_font.size = Pt(14)
+    title_font.bold = True
+    title_font.color.rgb = C_REPORT_BLUE
+    _style_count_axes(chart, values)
+    chart.value_axis.maximum_scale = max(max(values, default=0) + 1, 2)
+    chart.value_axis.has_major_gridlines = False
+    chart.value_axis.format.line.fill.background()
+    chart.value_axis.tick_labels.font.size = Pt(1)
+    chart.value_axis.tick_labels.font.color.rgb = C_WHITE
+    chart.category_axis.format.line.fill.background()
+    chart.category_axis.tick_labels.font.size = Pt(10)
+    plot = chart.plots[0]
+    plot.gap_width = 90
+    plot.series[0].format.fill.solid()
+    plot.series[0].format.fill.fore_color.rgb = C_REPORT_BLUE
+    plot.series[0].format.line.fill.background()
+    _show_count_labels(plot)
+    plot.data_labels.number_format = '0" %"'
+    return chart
+
+
 def _slide_monthly_comparison(prs, d):
     sl = _blank(prs)
     _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'DR2 COMPARATIVE MENSUEL')
@@ -1214,43 +1249,66 @@ def _slide_monthly_comparison(prs, d):
     chart_months = [month for month in months if any(
         value is not None for value in month['values']
     )]
-    data = CategoryChartData()
-    data.categories = list(range(1, 32))
-    for month in chart_months:
-        data.add_series(month['label'], month['values'] + [None] * (31 - len(month['values'])))
-    frame = sl.shapes.add_chart(
-        XL_CHART_TYPE.LINE_MARKERS, Inches(0.65), Inches(1.05), Inches(10.85), Inches(3.55), data,
-    )
-    chart = frame.chart
-    chart.has_legend = True
-    chart.has_title = False
-    _style_count_axes(
-        chart,
-        [value for month in chart_months for value in month['values']],
-    )
-    chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-    chart.legend.include_in_layout = False
-    chart.legend.font.name = 'Arial'
-    chart.legend.font.size = Pt(9)
-    chart.category_axis.tick_labels.font.size = Pt(8)
-    line_colors = [RGBColor(0x5B, 0x9B, 0xD5), RGBColor(0xFF, 0xC0, 0x00), RGBColor(0xFF, 0x00, 0x00)]
-    color_by_label = dict(zip([month['label'] for month in months], line_colors))
-    for series, month in zip(chart.plots[0].series, chart_months):
-        color = color_by_label[month['label']]
-        series.format.line.color.rgb = color
-        series.format.line.width = Pt(2.25)
-
-    center_table = sl.shapes.add_table(4, 2, Inches(5.35), Inches(1.32),
-                                       Inches(2.05), Inches(1.05)).table
-    _report_cell(center_table.cell(0, 0), 'MOYENNE-J', C_DETAIL_GRAY,
-                 C_REPORT_BLUE, True, 9)
-    _report_cell(center_table.cell(0, 1), '', C_DETAIL_GRAY)
-    for row_idx, month in enumerate(months, 1):
-        _report_cell(center_table.cell(row_idx, 0), month['label'], C_DETAIL_GRAY,
-                     C_REPORT_BLUE, True, 9, PP_ALIGN.LEFT)
-        _report_cell(center_table.cell(row_idx, 1),
-                     str(month['moyenne']).replace('.', ','), C_DETAIL_GRAY,
-                     C_REPORT_BLUE, True, 9)
+    if chart_months:
+        data = CategoryChartData()
+        data.categories = list(range(1, 32))
+        for month in chart_months:
+            data.add_series(
+                month['label'],
+                month['values'] + [None] * (31 - len(month['values'])),
+            )
+        single_month = len(chart_months) == 1
+        chart_type = (
+            XL_CHART_TYPE.COLUMN_CLUSTERED
+            if single_month else XL_CHART_TYPE.LINE_MARKERS
+        )
+        frame = sl.shapes.add_chart(
+            chart_type, Inches(0.65), Inches(1.28),
+            Inches(10.85), Inches(3.32), data,
+        )
+        chart = frame.chart
+        chart.has_legend = not single_month
+        chart.has_title = False
+        _style_count_axes(
+            chart,
+            [value for month in chart_months for value in month['values']],
+        )
+        chart.category_axis.tick_labels.font.size = Pt(8)
+        if single_month:
+            series = chart.plots[0].series[0]
+            series.format.fill.solid()
+            series.format.fill.fore_color.rgb = C_REPORT_BLUE
+            series.format.line.fill.background()
+            chart.plots[0].gap_width = 65
+            _txt(
+                sl, f"ÉVOLUTION JOURNALIÈRE — {chart_months[0]['label']}",
+                Inches(0.65), Inches(1.02), Inches(10.85), Inches(0.28),
+                size=10, bold=True, color=C_REPORT_BLUE,
+                align=PP_ALIGN.CENTER,
+            )
+        else:
+            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            chart.legend.include_in_layout = False
+            chart.legend.font.name = 'Arial'
+            chart.legend.font.size = Pt(9)
+            line_colors = [
+                RGBColor(0x5B, 0x9B, 0xD5),
+                RGBColor(0xFF, 0xC0, 0x00),
+                RGBColor(0xFF, 0x00, 0x00),
+            ]
+            color_by_label = dict(zip(
+                [month['label'] for month in months], line_colors,
+            ))
+            for series, month in zip(chart.plots[0].series, chart_months):
+                color = color_by_label[month['label']]
+                series.format.line.color.rgb = color
+                series.format.line.width = Pt(2.25)
+    else:
+        _txt(
+            sl, 'Comparatif indisponible : aucun mois traité.',
+            Inches(0.65), Inches(2.25), Inches(10.85), Inches(0.50),
+            size=16, bold=True, color=C_DTEXT, align=PP_ALIGN.CENTER,
+        )
 
     average_table = sl.shapes.add_table(4, 2, Inches(11.65), Inches(1.55),
                                         Inches(1.45), Inches(1.45)).table
@@ -1261,8 +1319,12 @@ def _slide_monthly_comparison(prs, d):
     for row_idx, (month, color) in enumerate(zip(months, avg_colors), 1):
         _report_cell(average_table.cell(row_idx, 0), month['label'], C_WHITE,
                      C_DTEXT, True, 9, PP_ALIGN.LEFT)
+        average = (
+            str(month['moyenne']).replace('.', ',')
+            if month['moyenne'] is not None else 'N/D'
+        )
         _report_cell(average_table.cell(row_idx, 1),
-                     str(month['moyenne']).replace('.', ','), color,
+                     average, color if month['moyenne'] is not None else C_DETAIL_GRAY,
                      C_DTEXT, True, 9)
 
     region_rows = [row for row in d['region_rows'] if row['dr2']]
@@ -1419,15 +1481,16 @@ def generate_gdi_daily(debut, fin, generated_on):
         fmts[(i, 3)] = {'red': (C_RED_BG, C_RED_FG), 'yellow': (C_YELL_BG, C_YELL_FG),
                          'green': (C_GREEN_BG, C_GREEN_FG)}[r['color']]
     _table(sl, ['RÉGION', 'DR2', 'CIBLE', '% CIBLE ATTEINTE'], rows_eff,
-           col_widths=[3, 2, 2, 2], cell_fmts=fmts, font_size=11,
-            top=CONTENT_TOP, height=Inches(3.0))
+            left=Inches(0.50), top=Inches(1.45), width=Inches(6.30),
+            height=Inches(4.95), col_widths=[2.1, 1.0, 1.0, 1.6],
+            cell_fmts=fmts, font_size=10, hdr_size=9)
     labels = [r['region'] for r in month_data['region_rows']]
     vals = [r['pct_tget'] for r in month_data['region_rows']]
     if labels:
-        _bar_chart(
-            sl, labels, vals, MARGIN, CONTENT_TOP + Inches(3.15),
-            SW - 2 * MARGIN, Inches(2.25), horizontal=False,
-            title='Taux DR2 par région (%)',
+        _percent_bar_chart(
+            sl, list(reversed(labels)), list(reversed(vals)),
+            Inches(7.15), Inches(1.45), Inches(5.55), Inches(4.95),
+            title='Taux DR2 par région',
         )
 
     # 16. Points bloquants — mois
@@ -1441,12 +1504,28 @@ def generate_gdi_daily(debut, fin, generated_on):
     )
     rows_pb = [[p[:55], k] for p, k in pb]
     if rows_pb:
-        _table(sl, ['POINT BLOQUANT', 'NB'], rows_pb, col_widths=[8, 2],
-             top=CONTENT_TOP, height=Inches(3.15), font_size=10)
+        _table(
+            sl, ['POINT BLOQUANT', 'NB'], rows_pb,
+            left=Inches(0.50), top=Inches(1.45), width=Inches(6.30),
+            height=Inches(4.95), col_widths=[5.25, 1.05],
+            font_size=9, hdr_size=9,
+        )
     if pb:
-        _bar_chart(sl, [p for p, _ in reversed(pb[:8])], [k for _, k in reversed(pb[:8])],
-                   MARGIN, CONTENT_TOP + Inches(3.35), SW - 2 * MARGIN, Inches(2.0),
-                   title='Nombre de DR2 par point bloquant')
+        _bar_chart(
+            sl, [p for p, _ in reversed(pb[:8])],
+            [k for _, k in reversed(pb[:8])],
+            Inches(7.15), Inches(1.45), Inches(5.55), Inches(4.95),
+            title='DR2 par point bloquant',
+        )
+    else:
+        _rect(sl, Inches(0.75), Inches(2.15), Inches(11.85), Inches(2.25),
+              RGBColor(0xF5, 0xF7, 0xFA))
+        _txt(sl, 'AUCUN POINT BLOQUANT RENSEIGNÉ',
+             Inches(1.0), Inches(2.70), Inches(11.35), Inches(0.45),
+             size=20, bold=True, color=C_DETAIL_GREEN, align=PP_ALIGN.CENTER)
+        _txt(sl, f"{without_blocking_point} DR2 sans point bloquant déclaré",
+             Inches(1.0), Inches(3.22), Inches(11.35), Inches(0.35),
+             size=12, color=C_DTEXT, align=PP_ALIGN.CENTER)
 
     # 17-18. Lecture régionale puis matrice Région / Métiers — mois
     _slide_region_performance(prs, month_data)
