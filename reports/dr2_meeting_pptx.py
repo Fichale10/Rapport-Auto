@@ -450,7 +450,7 @@ def _dr2_summary_tables(slide, qs, total, top=Inches(4.75), height=Inches(1.8)):
     )
     _set_header_text_color(summary_table, C_DTEXT)
 
-    causes = _causes_breakdown(qs, 6)
+    causes = _causes_breakdown(qs, 6, total=total)
     causes_table = _table(
         slide, ['TOP RECURRENT CAUSES', 'Nombre de CAUSE', '% CAUSE'],
         [[c[:35], k, f'{p}%'] for c, k, p in causes],
@@ -468,10 +468,10 @@ def _escalade_breakdown(qs, total=None):
     return [(e, cnt[e], round(cnt[e] / total * 100)) for e in ordered]
 
 
-def _causes_breakdown(qs, n=10):
+def _causes_breakdown(qs, n=10, total=None):
     cnt = Counter((rec.cause or '—').strip() for rec in qs if (rec.cause or '').strip())
-    total = sum(cnt.values()) or 1
-    return [(c, k, round(k / total * 100)) for c, k in cnt.most_common(n)]
+    denominator = total or sum(cnt.values()) or 1
+    return [(c, k, round(k / denominator * 100)) for c, k in cnt.most_common(n)]
 
 
 def _points_bloquants(qs):
@@ -1101,7 +1101,12 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 15. Points bloquants — mois
     sl = _blank(prs)
     pb = _points_bloquants(qs_month)
-    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS', extra_right=f'DR2- PB = {sum(k for _, k in pb)}')
+    with_blocking_point = sum(k for _, k in pb)
+    without_blocking_point = max(month_data['total_dr2'] - with_blocking_point, 0)
+    _header(
+        sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS',
+        extra_right=f'DR2- PB = {without_blocking_point}',
+    )
     rows_pb = [[p[:55], k] for p, k in pb]
     if rows_pb:
         _table(sl, ['POINT BLOQUANT', 'NB'], rows_pb, col_widths=[8, 2],

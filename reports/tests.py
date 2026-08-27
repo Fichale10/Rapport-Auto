@@ -7,7 +7,9 @@ from .dr2_analytics import compute
 from .dr2_availability import (
 	compute_dr2_sites, filter_availability_day, normalize_dr2_datetimes,
 )
-from .dr2_meeting_pptx import _dr2_dataset, _gdi_reporting_periods
+from .dr2_meeting_pptx import (
+	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
+)
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
 
@@ -81,6 +83,24 @@ class Dr2AvailabilityTests(SimpleTestCase):
 
 
 class Dr2AnalyticsTests(TestCase):
+	def test_gdi_cause_percentages_include_records_without_cause(self):
+		day = date(2026, 8, 23)
+		for site, cause in (
+			('SITE-A', 'RADIO ODU HS'),
+			('SITE-B', 'RADIO ODU HS'),
+			('SITE-C', ''),
+			('SITE-D', ''),
+		):
+			Dr2ViolationRecord.objects.create(
+				date=day, site_name=site, cause=cause, hours_down=3,
+			)
+
+		result = _causes_breakdown(
+			Dr2ViolationRecord.objects.filter(date=day), total=4,
+		)
+
+		self.assertEqual(result, [('RADIO ODU HS', 2, 50)])
+
 	def test_gdi_dataset_uses_processed_days_and_selected_period_end(self):
 		for day in (date(2026, 8, 21), date(2026, 8, 22), date(2026, 8, 23)):
 			Dr2ProcessedDate.objects.create(date=day, sites_count=0)
