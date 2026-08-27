@@ -283,6 +283,90 @@ def _slide_definitions(prs):
     return sl
 
 
+def _summary_card(slide, label, value, detail, left, color):
+    top = Inches(1.55)
+    width = Inches(2.85)
+    height = Inches(1.35)
+    _rect(slide, left, top, width, height, RGBColor(0xF5, 0xF7, 0xFA))
+    _rect(slide, left, top, Inches(0.08), height, color)
+    _txt(slide, label, left + Inches(0.22), top + Inches(0.16),
+         width - Inches(0.35), Inches(0.24), size=10, bold=True,
+         color=C_REPORT_BLUE)
+    _txt(slide, value, left + Inches(0.22), top + Inches(0.42),
+         width - Inches(0.35), Inches(0.48), size=25, bold=True,
+         color=color)
+    _txt(slide, detail, left + Inches(0.22), top + Inches(0.98),
+         width - Inches(0.35), Inches(0.22), size=8, color=C_DTEXT)
+
+
+def _slide_executive_summary(prs, month_data, detail_data, qs_month):
+    sl = _blank(prs)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHÈSE EXÉCUTIVE DR2')
+    _txt(
+        sl,
+        f"Période analysée : {month_data['debut'].strftime('%d/%m/%Y')} au "
+        f"{month_data['fin'].strftime('%d/%m/%Y')}",
+        MARGIN, Inches(1.08), SW - 2 * MARGIN, Inches(0.28),
+        size=10, color=C_DTEXT,
+    )
+
+    recurring_sites = sum(1 for _, count in _top_sites(qs_month, 1000) if count > 1)
+    processed_day_label = (
+        'jour traité' if month_data['period_days'] == 1 else 'jours traités'
+    )
+    cards = [
+        ('TOTAL DR2', str(month_data['total_dr2']), 'Mois en cours', C_REPORT_BLUE),
+        ('MOYENNE / JOUR', str(month_data['moyenne']).replace('.', ','),
+         f"{month_data['period_days']} {processed_day_label}", C_REPORT_CYAN),
+        ('DERNIER WEEK-END', str(detail_data['total_dr2']),
+         str(detail_data['moyenne']).replace('.', ',') + ' DR2 / jour', C_RED_T),
+        ('SITES RÉCURRENTS', str(recurring_sites),
+         'Au moins 2 occurrences', C_DETAIL_GREEN),
+    ]
+    for index, (label, value, detail, color) in enumerate(cards):
+        _summary_card(sl, label, value, detail,
+                      Inches(0.55 + index * 3.15), color)
+
+    _txt(sl, 'POINTS D’ATTENTION', Inches(0.55), Inches(3.30),
+         Inches(5.8), Inches(0.32), size=14, bold=True, color=C_REPORT_BLUE)
+    _rect(sl, Inches(0.55), Inches(3.68), Inches(12.05), Inches(2.35),
+          RGBColor(0xF5, 0xF7, 0xFA))
+
+    region_rows = [row for row in month_data['region_rows'] if row['dr2']]
+    worst_region = max(region_rows, key=lambda row: row['dr2'], default=None)
+    top_causes = _causes_breakdown(qs_month, 1, total=month_data['total_dr2'])
+    blocking_count = sum(count for _, count in _points_bloquants(qs_month))
+    attention = [
+        (
+            'RÉGION PRIORITAIRE',
+            f"{worst_region['region']} — {worst_region['dr2']} DR2 "
+            f"({worst_region['pct_reg']} % du total)"
+            if worst_region else 'Aucune donnée régionale',
+            C_RED_T,
+        ),
+        (
+            'CAUSE DOMINANTE',
+            f'{top_causes[0][0]} — {top_causes[0][1]} cas ({top_causes[0][2]} %)'
+            if top_causes else 'Aucune cause renseignée',
+            C_REPORT_CYAN,
+        ),
+        (
+            'POINTS BLOQUANTS',
+            f'{blocking_count} DR2 concernés' if blocking_count
+            else 'Aucun point bloquant renseigné',
+            C_DETAIL_GREEN if not blocking_count else C_REPORT_ORANGE,
+        ),
+    ]
+    for index, (label, value, color) in enumerate(attention):
+        top = Inches(3.92 + index * 0.62)
+        _rect(sl, Inches(0.82), top, Inches(0.10), Inches(0.38), color)
+        _txt(sl, label, Inches(1.08), top - Inches(0.01), Inches(2.15),
+             Inches(0.40), size=10, bold=True, color=C_REPORT_BLUE)
+        _txt(sl, value, Inches(3.28), top - Inches(0.01), Inches(8.85),
+             Inches(0.40), size=11, bold=True, color=C_DTEXT)
+    return sl
+
+
 def _slide_dr1_violations(prs, fin):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'Cas de violation DR1')
@@ -688,7 +772,7 @@ def _line_chart(slide, categories, values, l, t, w, h, title=''):
 
 
 def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True,
-               color=C_BLUE, title='Nombre de DR2'):
+               color=C_BLUE, title='Nombre de DR2', ranked=False):
     data = CategoryChartData()
     data.categories = [str(c) for c in categories]
     data.add_series('Nb', values)
@@ -709,13 +793,38 @@ def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True,
     plot.series[0].format.fill.solid()
     plot.series[0].format.fill.fore_color.rgb = color
     plot.series[0].format.line.fill.background()
-    if len(categories) >= 8:
+    if ranked:
+        plot.gap_width = 90
+    elif len(categories) >= 8:
         plot.gap_width = 55
     elif len(categories) >= 4:
         plot.gap_width = 100
     else:
         plot.gap_width = 180
-    _show_count_labels(plot)
+    _show_count_labels(
+        plot,
+        XL_DATA_LABEL_POSITION.INSIDE_END if ranked else XL_DATA_LABEL_POSITION.OUTSIDE_END,
+    )
+    if ranked:
+        labels = plot.data_labels
+        labels.font.color.rgb = C_WHITE
+        labels.font.size = Pt(10)
+        chart.value_axis.maximum_scale = max(values) + chart.value_axis.major_unit
+        chart.value_axis.has_major_gridlines = False
+        chart.value_axis.tick_labels.font.size = Pt(1)
+        chart.value_axis.tick_labels.font.color.rgb = C_WHITE
+        chart.value_axis.format.line.fill.background()
+        chart.category_axis.format.line.fill.background()
+        chart.category_axis.tick_labels.font.size = Pt(10)
+        points = plot.series[0].points
+        podium_colors = [
+            RGBColor(0x00, 0x8F, 0xC5),
+            RGBColor(0x18, 0x72, 0xB8),
+            RGBColor(0x26, 0x25, 0x79),
+        ]
+        for point, point_color in zip(reversed(points), podium_colors):
+            point.format.fill.solid()
+            point.format.fill.fore_color.rgb = point_color
     return chart
 
 
@@ -958,52 +1067,138 @@ def _slide_apercu_global(prs, d, subtitle='Aperçu global et comparatif des tend
     return sl
 
 
-def _share_chart(slide, categories, values, left, top, width, height,
-                 title, doughnut=False):
+def _slide_region_performance(prs, d):
+    sl = _blank(prs)
+    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'PERFORMANCE DR2 PAR RÉGION')
+    _txt(
+        sl, f"Période : {d['debut'].strftime('%d/%m/%Y')} au {d['fin'].strftime('%d/%m/%Y')}",
+        MARGIN, Inches(1.08), Inches(6.8), Inches(0.28), size=10, color=C_DTEXT,
+    )
+    region_rows = sorted(d['region_rows'], key=lambda row: row['dr2'], reverse=True)
+    rows = [
+        [row['region'], row['tget'], row['dr2'], f"{row['pct_reg']} %", f"{row['pct_tget']} %"]
+        for row in region_rows
+    ]
+    cell_fmts = {}
+    for row_index, row in enumerate(region_rows):
+        cell_fmts[(row_index, 4)] = (
+            {'red': C_REPORT_RED, 'yellow': C_REPORT_YELLOW,
+             'green': C_REPORT_PALE_GREEN}[row['color']],
+            C_DTEXT,
+        )
+    _table(
+        sl, ['RÉGION', 'PARC', 'DR2', 'PART DU TOTAL', 'TAUX DU PARC'], rows,
+        left=Inches(0.50), top=Inches(1.48), width=Inches(7.20),
+        height=Inches(4.95), col_widths=[2.0, 1.15, 0.9, 1.55, 1.6],
+        font_size=10, hdr_size=9, cell_fmts=cell_fmts,
+    )
+    chart_rows = list(reversed([row for row in region_rows if row['dr2']]))
+    if chart_rows:
+        chart_height = min(Inches(4.95), Inches(max(1.50, 0.65 * len(chart_rows))))
+        chart_top = Inches(1.48) + int((Inches(4.95) - chart_height) / 2)
+        _bar_chart(
+            sl, [row['region'] for row in chart_rows],
+            [row['dr2'] for row in chart_rows],
+            Inches(8.0), chart_top, Inches(4.75), chart_height,
+            title='Volume DR2', ranked=True,
+        )
+    return sl
+
+
+def _slide_business_matrix(prs, d):
+    sl = _blank(prs)
+    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'MATRICE RÉGION × MÉTIER')
+    _txt(
+        sl, f"Période : {d['debut'].strftime('%d/%m/%Y')} au {d['fin'].strftime('%d/%m/%Y')}",
+        MARGIN, Inches(1.08), Inches(6.8), Inches(0.28), size=10, color=C_DTEXT,
+    )
+    active_stats = [stat for stat in _daily_report_stats(d) if stat['total']]
+    active_stats = sorted(active_stats, key=lambda stat: stat['total'], reverse=True)[:8]
+    business_names = [stat['escalade'] for stat in active_stats]
+    region_rows = [row for row in d['region_rows'] if row['dr2']]
+    matrix_rows = []
+    for region in region_rows:
+        counts = [
+            sum(
+                1 for row in d['detail_rows']
+                if row['region'] == region['region'] and _category_matches(row, name)
+            )
+            for name in business_names
+        ]
+        matrix_rows.append([region['region'], region['dr2'], *counts])
+    matrix_rows.append([
+        'TOTAL', d['total_dr2'], *[stat['total'] for stat in active_stats],
+    ])
+
+    matrix_max = max(
+        [value for row in matrix_rows[:-1] for value in row[2:]] or [0]
+    )
+    cell_fmts = {}
+    for row_index, row in enumerate(matrix_rows):
+        is_total = row_index == len(matrix_rows) - 1
+        for col_index in range(len(row)):
+            if is_total:
+                cell_fmts[(row_index, col_index)] = (C_REPORT_NAVY, C_WHITE)
+            elif col_index == 0:
+                cell_fmts[(row_index, col_index)] = (C_WHITE, C_DTEXT)
+            elif col_index == 1:
+                cell_fmts[(row_index, col_index)] = (C_REPORT_CYAN, C_WHITE)
+            else:
+                value = row[col_index]
+                background = _heat_color(value, matrix_max)
+                foreground = C_WHITE if value >= max(5, matrix_max * 0.5) else C_DTEXT
+                cell_fmts[(row_index, col_index)] = (background, foreground)
+
+    table_width = min(12.45, 2.45 + 1.65 * max(len(business_names), 1))
+    table_height = min(4.95, max(2.40, 0.65 * (len(matrix_rows) + 1)))
+    business_width = (table_width - 2.45) / max(len(business_names), 1)
+    _table(
+        sl, ['RÉGION', 'TOTAL', *business_names], matrix_rows,
+        left=int((SW - Inches(table_width)) / 2),
+        top=Inches(1.55) + int((Inches(4.95) - Inches(table_height)) / 2),
+        width=Inches(table_width), height=Inches(table_height),
+        col_widths=[1.55, 0.9] + [business_width] * len(business_names),
+        font_size=8, hdr_size=7, alt=False, cell_fmts=cell_fmts,
+    )
+    return sl
+
+
+def _share_bar_chart(slide, categories, values, left, top, width, height,
+                     title, color):
     if not values or not sum(values):
         return None
+    ranked = sorted(zip(categories, values), key=lambda item: item[1])
     data = CategoryChartData()
-    data.categories = categories
-    data.add_series('DR2', values)
-    chart_top = top + Inches(0.28)
-    chart_height = height - Inches(0.28)
+    data.categories = [category for category, _ in ranked]
+    data.add_series('DR2', [value for _, value in ranked])
+    available_height = height - Inches(0.28)
+    chart_height = min(
+        available_height,
+        Inches(max(1.15, 0.38 * len(ranked) + 0.30)),
+    )
+    chart_top = top + Inches(0.28) + int((available_height - chart_height) / 2)
     frame = slide.shapes.add_chart(
-        XL_CHART_TYPE.PIE, left, chart_top, width, chart_height, data,
+        XL_CHART_TYPE.BAR_CLUSTERED, left, chart_top, width, chart_height, data,
     )
     chart = frame.chart
     chart.has_title = False
     chart.has_legend = False
+    _style_count_axes(chart, [value for _, value in ranked])
     plot = chart.plots[0]
-    plot.has_data_labels = True
-    labels = plot.data_labels
-    labels.show_category_name = True
-    labels.show_percentage = True
-    labels.show_legend_key = False
-    labels.position = (
-        XL_DATA_LABEL_POSITION.OUTSIDE_END
-        if doughnut else XL_DATA_LABEL_POSITION.BEST_FIT
+    plot.series[0].format.fill.solid()
+    plot.series[0].format.fill.fore_color.rgb = color
+    plot.series[0].format.line.fill.background()
+    plot.gap_width = 160 if len(ranked) <= 3 else 70
+    _show_count_labels(plot)
+    chart.value_axis.has_major_gridlines = False
+    chart.value_axis.format.line.fill.background()
+    chart.value_axis.tick_labels.font.size = Pt(1)
+    chart.value_axis.tick_labels.font.color.rgb = C_WHITE
+    chart.value_axis.maximum_scale = (
+        max(value for _, value in ranked) + chart.value_axis.major_unit
     )
-    labels.font.size = Pt(8)
-    palette = [
-        RGBColor(0x5B, 0x9B, 0xD5), RGBColor(0xED, 0x7D, 0x31),
-        RGBColor(0xFF, 0xC0, 0x00), RGBColor(0x44, 0x72, 0xC4),
-        RGBColor(0x70, 0xAD, 0x47), RGBColor(0xA5, 0xA5, 0xA5),
-        RGBColor(0x26, 0x25, 0x79), RGBColor(0x9E, 0x48, 0x42),
-    ]
-    for idx, point in enumerate(plot.series[0].points):
-        point.format.fill.solid()
-        point.format.fill.fore_color.rgb = palette[idx % len(palette)]
-    if doughnut:
-        hole_size = min(width, chart_height) * 0.32
-        hole = slide.shapes.add_shape(
-            MSO_SHAPE.OVAL,
-            int(left + (width - hole_size) / 2),
-            int(chart_top + (chart_height - hole_size) / 2),
-            int(hole_size), int(hole_size),
-        )
-        hole.fill.solid()
-        hole.fill.fore_color.rgb = C_WHITE
-        hole.line.fill.background()
+    chart.category_axis.format.line.fill.background()
+    chart.category_axis.tick_labels.font.size = Pt(8)
     _txt(slide, title, left, top, width, Inches(0.28), size=9, bold=True,
          color=C_REPORT_NAVY, align=PP_ALIGN.CENTER)
     return chart
@@ -1024,7 +1219,7 @@ def _slide_monthly_comparison(prs, d):
     for month in chart_months:
         data.add_series(month['label'], month['values'] + [None] * (31 - len(month['values'])))
     frame = sl.shapes.add_chart(
-        XL_CHART_TYPE.LINE, Inches(0.65), Inches(1.05), Inches(10.85), Inches(3.55), data,
+        XL_CHART_TYPE.LINE_MARKERS, Inches(0.65), Inches(1.05), Inches(10.85), Inches(3.55), data,
     )
     chart = frame.chart
     chart.has_legend = True
@@ -1035,6 +1230,8 @@ def _slide_monthly_comparison(prs, d):
     )
     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
     chart.legend.include_in_layout = False
+    chart.legend.font.name = 'Arial'
+    chart.legend.font.size = Pt(9)
     chart.category_axis.tick_labels.font.size = Pt(8)
     line_colors = [RGBColor(0x5B, 0x9B, 0xD5), RGBColor(0xFF, 0xC0, 0x00), RGBColor(0xFF, 0x00, 0x00)]
     color_by_label = dict(zip([month['label'] for month in months], line_colors))
@@ -1069,17 +1266,17 @@ def _slide_monthly_comparison(prs, d):
                      C_DTEXT, True, 9)
 
     region_rows = [row for row in d['region_rows'] if row['dr2']]
-    _share_chart(
+    _share_bar_chart(
         sl, [row['region'] for row in region_rows], [row['dr2'] for row in region_rows],
         Inches(0.45), Inches(4.58), Inches(5.80), Inches(2.55),
-        'RÉPARTITION PAR RÉGION', doughnut=True,
+        'RÉPARTITION PAR RÉGION', C_REPORT_CYAN,
     )
     active_stats = [stat for stat in _daily_report_stats(d) if stat['total']]
-    _share_chart(
+    _share_bar_chart(
         sl, [stat['escalade'] for stat in active_stats],
         [stat['total'] for stat in active_stats],
         Inches(6.15), Inches(4.58), Inches(5.80), Inches(2.55),
-        'RÉPARTITION PAR MÉTIER', doughnut=False,
+        'RÉPARTITION PAR MÉTIER', C_REPORT_BLUE,
     )
     return sl
 
@@ -1114,18 +1311,21 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 2. Page de titre datée
     _meeting_title(prs, meeting_day)
 
-    # 3. Définitions réglementaires
+    # 3. Synthèse de décision — mois en cours et dernier week-end traité
+    _slide_executive_summary(prs, month_data, detail_data, qs_month)
+
+    # 4. Définitions réglementaires
     _slide_definitions(prs)
 
-    # 4-5. DR1
+    # 5-6. DR1
     _section(prs, 'TENDANCE DR1', data_end, 1)
     _slide_dr1_violations(prs, data_end)
 
-    # 6-7. DR2 du dernier vendredi au dimanche achevé
+    # 7-8. DR2 du dernier vendredi au dimanche achevé
     _section(prs, 'TENDANCE DR2', data_end, 2)
     _slide_dr2_trend(prs, detail_data, 'TDR2', detail_label)
 
-    # 8-10. Une diapositive lisible par journée, y compris à zéro DR2
+    # 9-11. Une diapositive lisible par journée, y compris à zéro DR2
     day = detail_start
     while day <= detail_end:
         qs_day = qs_detail.filter(date=day)
@@ -1147,7 +1347,7 @@ def generate_gdi_daily(debut, fin, generated_on):
             )
         day += timedelta(days=1)
 
-    # 11. Synthèse du week-end
+    # 12. Synthèse du week-end
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
     _txt(sl, detail_label, MARGIN, CONTENT_TOP, SW - 2 * MARGIN,
@@ -1166,29 +1366,51 @@ def generate_gdi_daily(debut, fin, generated_on):
             align=PP_ALIGN.CENTER,
         )
 
-    # 12. Top sites — mois jusqu'au dimanche de référence
+    # 13. Top sites — mois jusqu'au dimanche de référence
     sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'TOP SITE OCCURRENCE DR2')
-    top_sites = _top_sites(qs_month, 15)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'CLASSEMENT DES SITES RÉCURRENTS DR2')
+    top_sites = _top_sites(qs_month, 10)
     if top_sites:
-        _bar_chart(sl, [s for s, _ in reversed(top_sites)], [c for _, c in reversed(top_sites)],
-                   MARGIN, CONTENT_TOP, SW - 2 * MARGIN, CONTENT_H - Inches(0.1),
-                   title='Nombre d’occurrences par site')
+        ranked_sites = [
+            (f'{rank:02d}   {site}', count)
+            for rank, (site, count) in enumerate(top_sites, 1)
+        ]
+        available_height = CONTENT_H - Inches(0.35)
+        chart_height = min(
+            available_height,
+            Inches(max(2.2, 0.52 * len(ranked_sites) + 0.45)),
+        )
+        chart_top = CONTENT_TOP + Inches(0.15) + int(
+            (available_height - chart_height) / 2
+        )
+        _bar_chart(
+            sl,
+            [site for site, _ in reversed(ranked_sites)],
+            [count for _, count in reversed(ranked_sites)],
+            Inches(0.8), chart_top,
+            SW - Inches(1.35), chart_height,
+            title='', ranked=True,
+        )
 
-    # 13. Répartition région / bases — mois
+    # 14. Répartition région / bases — mois
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'Répartition DR2 Région / Bases')
     regs = [(r['region'], r['dr2']) for r in month_data['region_rows'] if r['dr2']]
     if regs:
-        _pie_chart(sl, [r for r, _ in regs], [c for _, c in regs],
-                   MARGIN, CONTENT_TOP, Inches(4.6), CONTENT_H - Inches(0.1))
+        _share_bar_chart(
+            sl, [r for r, _ in regs], [c for _, c in regs],
+            MARGIN, CONTENT_TOP, Inches(4.6), CONTENT_H - Inches(0.1),
+            'DR2 PAR RÉGION', C_REPORT_CYAN,
+        )
     bases = _base_breakdown(qs_month)[:15]
     if bases:
-        _bar_chart(sl, [b for b, _ in reversed(bases)], [c for _, c in reversed(bases)],
-                   Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN, CONTENT_H - Inches(0.1),
-                   title='Nombre de DR2 par base')
+        _share_bar_chart(
+            sl, [base for base, _ in bases], [count for _, count in bases],
+            Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN,
+            CONTENT_H - Inches(0.1), 'DR2 PAR BASE', C_REPORT_BLUE,
+        )
 
-    # 14. Efficacité — formule actuelle conservée jusqu'à validation métier
+    # 15. Efficacité — formule actuelle conservée jusqu'à validation métier
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2 — ATTEINTE DES CIBLES')
     rows_eff = [[r['region'], r['dr2'], r['tget'], f"{r['pct_tget']}%"] for r in month_data['region_rows']]
@@ -1208,7 +1430,7 @@ def generate_gdi_daily(debut, fin, generated_on):
             title='Taux DR2 par région (%)',
         )
 
-    # 15. Points bloquants — mois
+    # 16. Points bloquants — mois
     sl = _blank(prs)
     pb = _points_bloquants(qs_month)
     with_blocking_point = sum(k for _, k in pb)
@@ -1226,13 +1448,14 @@ def generate_gdi_daily(debut, fin, generated_on):
                    MARGIN, CONTENT_TOP + Inches(3.35), SW - 2 * MARGIN, Inches(2.0),
                    title='Nombre de DR2 par point bloquant')
 
-    # 16. Tableau de croisement Région / Métiers — mois
-    _slide_apercu_global(prs, month_data, 'TABLEAU DE CROISEMENT REGION / METIERS')
+    # 17-18. Lecture régionale puis matrice Région / Métiers — mois
+    _slide_region_performance(prs, month_data)
+    _slide_business_matrix(prs, month_data)
 
-    # 17. Comparatif mensuel
+    # 19. Comparatif mensuel
     _slide_monthly_comparison(prs, month_data)
 
-    # 18. Merci
+    # 20. Merci
     _slide_merci(prs)
 
     buf = BytesIO()
