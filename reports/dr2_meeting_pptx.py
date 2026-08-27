@@ -687,7 +687,8 @@ def _line_chart(slide, categories, values, l, t, w, h, title=''):
     return chart
 
 
-def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True, color=C_BLUE):
+def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True,
+               color=C_BLUE, title='Nombre de DR2'):
     data = CategoryChartData()
     data.categories = [str(c) for c in categories]
     data.add_series('Nb', values)
@@ -695,12 +696,25 @@ def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True, color=C_B
     gframe = slide.shapes.add_chart(ctype, l, t, w, h, data)
     chart = gframe.chart
     chart.has_legend = False
+    chart.has_title = bool(title)
+    if title:
+        chart.chart_title.text_frame.text = title
+        title_font = chart.chart_title.text_frame.paragraphs[0].font
+        title_font.name = 'Arial'
+        title_font.size = Pt(14)
+        title_font.bold = True
+        title_font.color.rgb = C_REPORT_BLUE
     _style_count_axes(chart, values)
     plot = chart.plots[0]
     plot.series[0].format.fill.solid()
     plot.series[0].format.fill.fore_color.rgb = color
     plot.series[0].format.line.fill.background()
-    plot.gap_width = 55
+    if len(categories) >= 8:
+        plot.gap_width = 55
+    elif len(categories) >= 4:
+        plot.gap_width = 100
+    else:
+        plot.gap_width = 180
     _show_count_labels(plot)
     return chart
 
@@ -874,9 +888,6 @@ def _slide_apercu_global(prs, d, subtitle='Aperçu global et comparatif des tend
 
     for row_idx in range(n_rows):
         _report_cell(table.cell(row_idx, 5), '', C_YELL, C_DTEXT, True, 7)
-        _txt(sl, 'S\nT\nA\nT\n.', left + Inches(sum(fixed_widths[:5])),
-            table_top + Inches(1.55), Inches(0.28), Inches(1.45),
-            size=8, bold=True, color=C_DTEXT, align=PP_ALIGN.CENTER)
 
     for esc_idx, stat in enumerate(esc_stats):
         col_idx = 6 + esc_idx
@@ -1005,24 +1016,30 @@ def _slide_monthly_comparison(prs, d):
     if not months:
         return sl
 
+    chart_months = [month for month in months if any(
+        value is not None for value in month['values']
+    )]
     data = CategoryChartData()
     data.categories = list(range(1, 32))
-    for month in months:
+    for month in chart_months:
         data.add_series(month['label'], month['values'] + [None] * (31 - len(month['values'])))
     frame = sl.shapes.add_chart(
         XL_CHART_TYPE.LINE, Inches(0.65), Inches(1.05), Inches(10.85), Inches(3.55), data,
     )
     chart = frame.chart
     chart.has_legend = True
+    chart.has_title = False
     _style_count_axes(
         chart,
-        [value for month in months for value in month['values']],
+        [value for month in chart_months for value in month['values']],
     )
     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
     chart.legend.include_in_layout = False
     chart.category_axis.tick_labels.font.size = Pt(8)
     line_colors = [RGBColor(0x5B, 0x9B, 0xD5), RGBColor(0xFF, 0xC0, 0x00), RGBColor(0xFF, 0x00, 0x00)]
-    for series, color in zip(chart.plots[0].series, line_colors):
+    color_by_label = dict(zip([month['label'] for month in months], line_colors))
+    for series, month in zip(chart.plots[0].series, chart_months):
+        color = color_by_label[month['label']]
         series.format.line.color.rgb = color
         series.format.line.width = Pt(2.25)
 
@@ -1054,14 +1071,14 @@ def _slide_monthly_comparison(prs, d):
     region_rows = [row for row in d['region_rows'] if row['dr2']]
     _share_chart(
         sl, [row['region'] for row in region_rows], [row['dr2'] for row in region_rows],
-        Inches(0.65), Inches(4.72), Inches(5.45), Inches(2.25),
+        Inches(0.45), Inches(4.58), Inches(5.80), Inches(2.55),
         'RÉPARTITION PAR RÉGION', doughnut=True,
     )
     active_stats = [stat for stat in _daily_report_stats(d) if stat['total']]
     _share_chart(
         sl, [stat['escalade'] for stat in active_stats],
         [stat['total'] for stat in active_stats],
-        Inches(6.25), Inches(4.72), Inches(5.45), Inches(2.25),
+        Inches(6.15), Inches(4.58), Inches(5.80), Inches(2.55),
         'RÉPARTITION PAR MÉTIER', doughnut=False,
     )
     return sl
@@ -1155,7 +1172,8 @@ def generate_gdi_daily(debut, fin, generated_on):
     top_sites = _top_sites(qs_month, 15)
     if top_sites:
         _bar_chart(sl, [s for s, _ in reversed(top_sites)], [c for _, c in reversed(top_sites)],
-                   MARGIN, CONTENT_TOP, SW - 2 * MARGIN, CONTENT_H - Inches(0.1))
+                   MARGIN, CONTENT_TOP, SW - 2 * MARGIN, CONTENT_H - Inches(0.1),
+                   title='Nombre d’occurrences par site')
 
     # 13. Répartition région / bases — mois
     sl = _blank(prs)
@@ -1167,7 +1185,8 @@ def generate_gdi_daily(debut, fin, generated_on):
     bases = _base_breakdown(qs_month)[:15]
     if bases:
         _bar_chart(sl, [b for b, _ in reversed(bases)], [c for _, c in reversed(bases)],
-                   Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN, CONTENT_H - Inches(0.1))
+                   Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN, CONTENT_H - Inches(0.1),
+                   title='Nombre de DR2 par base')
 
     # 14. Efficacité — formule actuelle conservée jusqu'à validation métier
     sl = _blank(prs)
@@ -1179,11 +1198,15 @@ def generate_gdi_daily(debut, fin, generated_on):
                          'green': (C_GREEN_BG, C_GREEN_FG)}[r['color']]
     _table(sl, ['RÉGION', 'DR2', 'CIBLE', '% CIBLE ATTEINTE'], rows_eff,
            col_widths=[3, 2, 2, 2], cell_fmts=fmts, font_size=11,
-           top=CONTENT_TOP, height=Inches(3.2))
+            top=CONTENT_TOP, height=Inches(3.0))
     labels = [r['region'] for r in month_data['region_rows']]
     vals = [r['pct_tget'] for r in month_data['region_rows']]
     if labels:
-        _bar_chart(sl, labels, vals, MARGIN, CONTENT_TOP + Inches(3.4), SW - 2 * MARGIN, Inches(1.9), horizontal=False)
+        _bar_chart(
+            sl, labels, vals, MARGIN, CONTENT_TOP + Inches(3.15),
+            SW - 2 * MARGIN, Inches(2.25), horizontal=False,
+            title='Taux DR2 par région (%)',
+        )
 
     # 15. Points bloquants — mois
     sl = _blank(prs)
@@ -1197,10 +1220,11 @@ def generate_gdi_daily(debut, fin, generated_on):
     rows_pb = [[p[:55], k] for p, k in pb]
     if rows_pb:
         _table(sl, ['POINT BLOQUANT', 'NB'], rows_pb, col_widths=[8, 2],
-               top=CONTENT_TOP, height=Inches(3.4), font_size=10)
+             top=CONTENT_TOP, height=Inches(3.15), font_size=10)
     if pb:
         _bar_chart(sl, [p for p, _ in reversed(pb[:8])], [k for _, k in reversed(pb[:8])],
-                   MARGIN, CONTENT_TOP + Inches(3.6), SW - 2 * MARGIN, Inches(1.7))
+                   MARGIN, CONTENT_TOP + Inches(3.35), SW - 2 * MARGIN, Inches(2.0),
+                   title='Nombre de DR2 par point bloquant')
 
     # 16. Tableau de croisement Région / Métiers — mois
     _slide_apercu_global(prs, month_data, 'TABLEAU DE CROISEMENT REGION / METIERS')
