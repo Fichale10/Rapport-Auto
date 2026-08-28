@@ -1,6 +1,8 @@
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pandas as pd
+from pptx import Presentation
 from django.test import SimpleTestCase, TestCase
 
 from .dr2_analytics import compute
@@ -9,7 +11,7 @@ from .dr2_availability import (
 )
 from .dr2_meeting_pptx import (
 	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
-	_monthly_comparison,
+	_monthly_comparison, generate_reunion_hebdo,
 )
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
@@ -84,6 +86,81 @@ class Dr2AvailabilityTests(SimpleTestCase):
 
 
 class Dr2AnalyticsTests(TestCase):
+	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
+		for day, count in (
+			(date(2026, 8, 21), 4),
+			(date(2026, 8, 22), 4),
+			(date(2026, 8, 23), 8),
+		):
+			Dr2ProcessedDate.objects.create(date=day, sites_count=count)
+			for index in range(count):
+				Dr2ViolationRecord.objects.create(
+					date=day, site_name=f'SITE-{day.day}-{index}',
+					region='LOME', categorie='ENERGIE', cause='PANNE',
+					hours_down=4, is_resolved=True,
+				)
+
+		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+			presentation = Presentation(generate_reunion_hebdo(
+				date(2026, 8, 21), date(2026, 8, 23), '28/08/2026',
+			))
+
+		self.assertEqual(len(presentation.slides), 10)
+		self.assertEqual(
+			sum(shape.has_table for shape in presentation.slides[6].shapes), 1,
+		)
+		self.assertEqual(
+			sum(shape.has_table for shape in presentation.slides[7].shapes), 2,
+		)
+
+	def test_weekly_deck_uses_month_trend_and_groups_sparse_tail(self):
+		plan = (
+			(date(2026, 8, 24), 6),
+			(date(2026, 8, 25), 3),
+			(date(2026, 8, 26), 2),
+			(date(2026, 8, 27), 1),
+		)
+		Dr2ProcessedDate.objects.create(date=date(2026, 8, 4), sites_count=1)
+		Dr2ViolationRecord.objects.create(
+			date=date(2026, 8, 4), site_name='MONTH-SITE', region='LOME',
+			categorie='ENERGIE', cause='PANNE', hours_down=4,
+		)
+		for day, count in plan:
+			Dr2ProcessedDate.objects.create(date=day, sites_count=count)
+			for index in range(count):
+				Dr2ViolationRecord.objects.create(
+					date=day, site_name=f'SITE-{day.day}-{index}',
+					region='LOME', categorie='ENERGIE', cause='PANNE',
+					hours_down=4, is_resolved=True,
+				)
+
+		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+			presentation = Presentation(generate_reunion_hebdo(
+				date(2026, 8, 24), date(2026, 8, 27), '28/08/2026',
+			))
+
+		self.assertEqual(len(presentation.slides), 9)
+		trend_text = ' '.join(
+			shape.text for shape in presentation.slides[3].shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('13 DR2', trend_text)
+		self.assertIn('Nbr DR2 = 12', trend_text)
+		combined_slide = presentation.slides[6]
+		self.assertEqual(sum(shape.has_table for shape in combined_slide.shapes), 4)
+		combined_text = ' '.join(
+			cell.text
+			for shape in combined_slide.shapes if shape.has_table
+			for row in shape.table.rows for cell in row.cells
+		)
+		combined_labels = ' '.join(
+			shape.text for shape in combined_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('26-08-2026', combined_labels)
+		self.assertIn('27-08-2026', combined_labels)
+		self.assertIn('TOTAL DR2 = 12', combined_text)
+
 	def test_gdi_cause_percentages_include_records_without_cause(self):
 		day = date(2026, 8, 23)
 		for site, cause in (

@@ -518,8 +518,9 @@ def _set_header_text_color(table, color):
                 run.font.color.rgb = color
 
 
-def _detail_table(slide, rows, day, count, height=Inches(2.45)):
-    top = CONTENT_TOP + Inches(0.14)
+def _detail_table(slide, rows, day, count, height=Inches(2.45), top=None):
+    if top is None:
+        top = CONTENT_TOP + Inches(0.14)
     band_h = Inches(0.22)
     width = SW - 2 * MARGIN
     _rect(slide, MARGIN, top, width, band_h, C_DETAIL_GRAY)
@@ -878,11 +879,15 @@ def _pie_chart(slide, categories, values, l, t, w, h):
 # DIAPOSITIVES PARTAGÉES (utilisées par les 2 supports)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _slide_dr2_trend(prs, d, kpi_label, period_label):
+def _slide_dr2_trend(prs, d, kpi_label, period_label, trend_data=None):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2 TREND')
-    days = _daily_counts(_dr2_qs(d['debut'], d['fin']), d['debut'], d['fin'])
-    processed_dates = d.get('processed_dates', set())
+    trend_data = trend_data or d
+    days = _daily_counts(
+        _dr2_qs(trend_data['debut'], trend_data['fin']),
+        trend_data['debut'], trend_data['fin'],
+    )
+    processed_dates = trend_data.get('processed_dates', set())
     values = [
         count if day in processed_dates or count else None
         for day, count in days
@@ -890,7 +895,7 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label):
     _line_chart(sl, [x[0] for x in days], values,
              MARGIN, CONTENT_TOP + Inches(0.45), SW - 2 * MARGIN,
              CONTENT_H - Inches(0.55))
-    trend_label = f"TREND DR2 {_MOIS_FR[d['fin'].month]} {d['fin'].year}"
+    trend_label = f"TREND DR2 {_MOIS_FR[trend_data['fin'].month]} {trend_data['fin'].year}"
     _rect(sl, Inches(4.7), CONTENT_TOP, Inches(3.2), Inches(0.42), C_YELL)
     _txt(sl, trend_label, Inches(4.7), CONTENT_TOP + Inches(0.03),
         Inches(3.2), Inches(0.34), size=17, bold=True, color=C_DTEXT,
@@ -903,6 +908,23 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label):
     _txt(sl, kpi_text, Inches(10.2), CONTENT_TOP + Inches(0.78),
         Inches(2.2), Inches(0.75), size=16, color=C_WHITE,
         align=PP_ALIGN.CENTER)
+    if trend_data is not d:
+        month_average = str(trend_data['moyenne']).replace('.', ',')
+        _rect(sl, Inches(0.65), CONTENT_TOP + Inches(0.65),
+              Inches(2.35), Inches(1.0), RGBColor(0xF2, 0xF4, 0xF7))
+        _use_office_font(_txt(
+            sl,
+            f"MOIS À DATE\n{trend_data['total_dr2']} DR2  •  MOY {month_average}",
+            Inches(0.65), CONTENT_TOP + Inches(0.82),
+            Inches(2.35), Inches(0.62), size=11, bold=True,
+            color=C_REPORT_BLUE, align=PP_ALIGN.CENTER,
+        ))
+        _use_office_font(_txt(
+            sl, f"Période réunion : {period_label}",
+            Inches(4.15), CONTENT_TOP + Inches(0.46),
+            Inches(4.0), Inches(0.25), size=8, bold=True,
+            color=C_RED_T, align=PP_ALIGN.CENTER,
+        ))
     return sl
 
 
@@ -1673,6 +1695,7 @@ def generate_reunion_hebdo(debut, fin, generated_on):
     prs = _reference_deck(_REUNION_REFERENCE)
 
     d = _dr2_dataset(debut, fin)
+    month_data = _dr2_dataset(date(fin.year, fin.month, 1), fin)
     qs_period = _dr2_qs(debut, fin)
     period_label = f"{debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
 
@@ -1702,15 +1725,23 @@ def generate_reunion_hebdo(debut, fin, generated_on):
                col_widths=[3, 1, 2, 6], top=CONTENT_TOP + Inches(0.6), height=Inches(3.2), font_size=10)
         _kpi_text(sl, f'TDR1 = {len(dr1)} DR1', MARGIN, CONTENT_TOP)
 
-    # 4. DR2 Trend (semaine)
-    _slide_dr2_trend(prs, d, 'Nbr DR2', period_label)
+    # 4. Tendance du mois à date, avec KPI de la période de réunion
+    _slide_dr2_trend(prs, d, 'Nbr DR2', period_label, trend_data=month_data)
 
-    # 5..N. Détail DR2 par jour (1 diapo par jour AVEC violations)
+    # 5..N. Détail DR2 par jour. Les deux derniers jours sont regroupés
+    # uniquement lorsqu'ils tiennent avec la synthèse sans réduire la lisibilité.
     jours_avec_dr2 = sorted({rec.date for rec in qs_period})
-    for idx, day in enumerate(jours_avec_dr2):
+    grouped_tail = []
+    if len(jours_avec_dr2) >= 2:
+        tail = jours_avec_dr2[-2:]
+        if sum(qs_period.filter(date=day).count() for day in tail) <= 3:
+            grouped_tail = tail
+
+    regular_days = jours_avec_dr2[:-2] if grouped_tail else jours_avec_dr2
+    for idx, day in enumerate(regular_days):
         qs_day = qs_period.filter(date=day)
         nb = qs_day.count()
-        is_last = (idx == len(jours_avec_dr2) - 1)
+        is_last = not grouped_tail and idx == len(regular_days) - 1
         title = 'DETAIL DR2' + (f' {_JOURS_FR[day.weekday()]}' if is_last else '')
         sl = _blank(prs)
         _header(sl, 'REUNION GESTION DES INCIDENTS', title)
@@ -1728,6 +1759,28 @@ def generate_reunion_hebdo(debut, fin, generated_on):
                 )
             else:
                 _dr2_summary_tables(sl, qs_period, d['total_dr2'])
+
+    if grouped_tail:
+        sl = _blank(prs)
+        _header(
+            sl, 'REUNION GESTION DES INCIDENTS',
+            f"DETAIL DR2 {_JOURS_FR[grouped_tail[-1].weekday()]}",
+        )
+        first_day, second_day = grouped_tail
+        first_rows = _detail_rows(qs_period.filter(date=first_day))
+        second_rows = _detail_rows(qs_period.filter(date=second_day))
+        _detail_table(
+            sl, first_rows, first_day, len(first_rows),
+            top=CONTENT_TOP + Inches(0.02), height=Inches(0.92),
+        )
+        _detail_table(
+            sl, second_rows, second_day, len(second_rows),
+            top=CONTENT_TOP + Inches(1.45), height=Inches(0.72),
+        )
+        _dr2_summary_tables(
+            sl, qs_period, d['total_dr2'],
+            top=CONTENT_TOP + Inches(2.72), height=Inches(2.05),
+        )
 
     # N+1. Aperçu global et comparatif des tendances DR2
     _slide_apercu_global(prs, d)
