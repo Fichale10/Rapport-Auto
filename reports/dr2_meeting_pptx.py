@@ -934,14 +934,22 @@ def _region_color(row):
     }[row['color']]
 
 
+def _use_office_font(text_box, name='Arial'):
+    for paragraph in text_box.text_frame.paragraphs:
+        for run in paragraph.runs:
+            run.font.name = name
+    return text_box
+
+
 def _heat_color(value, maximum):
     if not value:
-        return C_WHITE
-    if value >= max(5, maximum * 0.5):
-        return RGBColor(0xFF, 0x00, 0x00)
-    if value >= 2:
-        return C_REPORT_ORANGE
-    return RGBColor(0xFF, 0xD9, 0x66)
+        return RGBColor(0xF2, 0xF4, 0xF7)
+    intensity = value / max(maximum, 1)
+    if intensity >= 0.66:
+        return RGBColor(0x00, 0x65, 0x8F)
+    if intensity >= 0.33:
+        return RGBColor(0x00, 0xA6, 0xC8)
+    return RGBColor(0xC9, 0xEB, 0xF2)
 
 
 def _daily_report_stats(d):
@@ -1130,10 +1138,10 @@ def _slide_region_performance(prs, d):
 def _slide_business_matrix(prs, d):
     sl = _blank(prs)
     _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'MATRICE RÉGION × MÉTIER')
-    _txt(
+    _use_office_font(_txt(
         sl, f"Période : {d['debut'].strftime('%d/%m/%Y')} au {d['fin'].strftime('%d/%m/%Y')}",
         MARGIN, Inches(1.08), Inches(6.8), Inches(0.28), size=10, color=C_DTEXT,
-    )
+    ))
     active_stats = [stat for stat in _daily_report_stats(d) if stat['total']]
     active_stats = sorted(active_stats, key=lambda stat: stat['total'], reverse=True)[:8]
     business_names = [stat['escalade'] for stat in active_stats]
@@ -1168,7 +1176,7 @@ def _slide_business_matrix(prs, d):
             else:
                 value = row[col_index]
                 background = _heat_color(value, matrix_max)
-                foreground = C_WHITE if value >= max(5, matrix_max * 0.5) else C_DTEXT
+                foreground = C_WHITE if value / max(matrix_max, 1) >= 0.33 else C_DTEXT
                 cell_fmts[(row_index, col_index)] = (background, foreground)
 
     table_width = min(12.45, 2.45 + 1.65 * max(len(business_names), 1))
@@ -1221,8 +1229,10 @@ def _share_bar_chart(slide, categories, values, left, top, width, height,
     )
     chart.category_axis.format.line.fill.background()
     chart.category_axis.tick_labels.font.size = Pt(8)
-    _txt(slide, title, left, top, width, Inches(0.28), size=9, bold=True,
-         color=C_REPORT_NAVY, align=PP_ALIGN.CENTER)
+    _use_office_font(_txt(
+        slide, title, left, top, width, Inches(0.28), size=9, bold=True,
+        color=C_REPORT_NAVY, align=PP_ALIGN.CENTER,
+    ))
     return chart
 
 
@@ -1353,14 +1363,15 @@ def _slide_monthly_comparison(prs, d):
         value is not None for value in month['values']
     )]
     if chart_months:
+        single_month = len(chart_months) == 1
+        day_count = len(chart_months[0]['values']) if single_month else 31
         data = CategoryChartData()
-        data.categories = list(range(1, 32))
+        data.categories = list(range(1, day_count + 1))
         for month in chart_months:
             data.add_series(
                 month['label'],
-                month['values'] + [None] * (31 - len(month['values'])),
+                month['values'] + [None] * (day_count - len(month['values'])),
             )
-        single_month = len(chart_months) == 1
         chart_type = (
             XL_CHART_TYPE.COLUMN_CLUSTERED
             if single_month else XL_CHART_TYPE.LINE_MARKERS
@@ -1383,12 +1394,12 @@ def _slide_monthly_comparison(prs, d):
             series.format.fill.fore_color.rgb = C_REPORT_BLUE
             series.format.line.fill.background()
             chart.plots[0].gap_width = 65
-            _txt(
+            _use_office_font(_txt(
                 sl, f"ÉVOLUTION JOURNALIÈRE — {chart_months[0]['label']}",
                 Inches(0.65), Inches(1.02), Inches(10.85), Inches(0.28),
                 size=10, bold=True, color=C_REPORT_BLUE,
                 align=PP_ALIGN.CENTER,
-            )
+            ))
         else:
             chart.legend.position = XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
