@@ -289,14 +289,23 @@ def _summary_card(slide, label, value, detail, left, color):
     height = Inches(1.35)
     _rect(slide, left, top, width, height, RGBColor(0xF5, 0xF7, 0xFA))
     _rect(slide, left, top, Inches(0.08), height, color)
-    _txt(slide, label, left + Inches(0.22), top + Inches(0.16),
-         width - Inches(0.35), Inches(0.24), size=10, bold=True,
-         color=C_REPORT_BLUE)
-    _txt(slide, value, left + Inches(0.22), top + Inches(0.42),
-         width - Inches(0.35), Inches(0.48), size=25, bold=True,
-         color=color)
-    _txt(slide, detail, left + Inches(0.22), top + Inches(0.98),
-         width - Inches(0.35), Inches(0.22), size=8, color=C_DTEXT)
+    text_boxes = [
+        _txt(slide, label, left + Inches(0.22), top + Inches(0.13),
+             width - Inches(0.35), Inches(0.30), size=10, bold=True,
+             color=C_REPORT_BLUE, wrap=False),
+        _txt(slide, value, left + Inches(0.22), top + Inches(0.43),
+             width - Inches(0.35), Inches(0.46), size=25, bold=True,
+             color=color, wrap=False),
+        _txt(slide, detail, left + Inches(0.22), top + Inches(0.96),
+             width - Inches(0.35), Inches(0.28), size=8, color=C_DTEXT,
+             wrap=False),
+    ]
+    for text_box in text_boxes:
+        text_box.text_frame.margin_top = 0
+        text_box.text_frame.margin_bottom = 0
+        for paragraph in text_box.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = 'Arial'
 
 
 def _slide_executive_summary(prs, month_data, detail_data, qs_month):
@@ -474,8 +483,8 @@ def _duree_str(alarm_time, cancel_time):
 _DETAIL_HEADERS = ['N°', 'Ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time',
                     'Durée', 'Catégorie', 'Cause', 'Root Cause', 'Pt bloquant',
                     'Cancel Time', 'Observation', 'DR2']
-_DETAIL_COL_W = [0.35, 1.4, 0.7, 1.1, 0.55, 0.95, 0.8, 0.75,
-                   1.45, 1.55, 1.35, 1.35, 0.65, 0.45]
+_DETAIL_COL_W = [0.30, 1.25, 0.65, 1.0, 0.50, 0.90, 0.65, 0.70,
+                 1.20, 1.25, 1.15, 1.15, 1.55, 0.40]
 
 
 def _detail_rows(qs):
@@ -496,7 +505,7 @@ def _detail_rows(qs):
             (rec.root_cause or '')[:42],
             rec.point_bloquant or 'N/A',
             cancel_time.strftime('%d-%m-%Y %H:%M') if cancel_time else '\xa0',
-            (rec.observation or '')[:45],
+            ' '.join((rec.observation or '').split())[:45],
             'OUI',
         ])
     return rows
@@ -533,11 +542,23 @@ def _detail_table(slide, rows, day, count, height=Inches(2.45)):
             C_DETAIL_GREEN, C_DTEXT,
         )
 
-    return _table(
+    table = _table(
         slide, _DETAIL_HEADERS, rows, col_widths=_DETAIL_COL_W,
         top=top + 2 * band_h, height=height, font_size=6, hdr_size=6,
         hdr_bg=C_DETAIL_HDR, alt=False, cell_fmts=cell_fmts,
     )
+    observation_index = _DETAIL_HEADERS.index('Observation')
+    for row_index in range(1, len(table.rows)):
+        row = table.rows[row_index]
+        cell = row.cells[observation_index]
+        cell.margin_left = Inches(0.03)
+        cell.margin_right = Inches(0.03)
+        for paragraph in cell.text_frame.paragraphs:
+            paragraph.alignment = PP_ALIGN.LEFT
+            for run in paragraph.runs:
+                run.font.size = Pt(5)
+                run.font.bold = False
+    return table
 
 
 def _dr2_summary_tables(slide, qs, total, top=Inches(4.75), height=Inches(1.8)):
@@ -1239,6 +1260,88 @@ def _percent_bar_chart(slide, categories, values, left, top, width, height, titl
     return chart
 
 
+def _efficiency_dashboard(slide, region_rows):
+    def dashboard_text(*args, **kwargs):
+        text_box = _txt(*args, **kwargs)
+        text_box.text_frame.margin_top = 0
+        text_box.text_frame.margin_bottom = 0
+        for paragraph in text_box.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = 'Arial'
+        return text_box
+
+    rows = list(region_rows)
+    left = Inches(0.55)
+    top = Inches(1.42)
+    width = Inches(12.20)
+    row_height = Inches(0.72)
+    gauge_left = Inches(4.05)
+    gauge_width = Inches(7.25)
+    gauge_height = Inches(0.16)
+
+    dashboard_text(slide, 'RÉGION', left + Inches(0.18), top,
+                   Inches(1.45), Inches(0.28), size=8, bold=True,
+                   color=C_REPORT_BLUE)
+    dashboard_text(slide, 'VOLUME / CIBLE', left + Inches(1.72), top,
+                   Inches(1.70), Inches(0.28), size=8, bold=True,
+                   color=C_REPORT_BLUE)
+    dashboard_text(slide, 'CONSOMMATION DE LA CIBLE', gauge_left, top,
+                   gauge_width, Inches(0.28), size=8, bold=True,
+                   color=C_REPORT_BLUE)
+    dashboard_text(slide, 'TAUX', Inches(11.58), top,
+                   Inches(0.92), Inches(0.28), size=8, bold=True,
+                   color=C_REPORT_BLUE, align=PP_ALIGN.RIGHT)
+
+    rows_top = top + Inches(0.34)
+    for index, row in enumerate(rows):
+        row_top = rows_top + index * row_height
+        background = C_WHITE if index % 2 == 0 else RGBColor(0xF5, 0xF7, 0xFA)
+        _rect(slide, left, row_top, width, row_height - Inches(0.04), background)
+        dashboard_text(
+            slide, row['region'], left + Inches(0.18), row_top + Inches(0.19),
+            Inches(1.40), Inches(0.26), size=11, bold=True,
+            color=C_REPORT_BLUE, wrap=False,
+        )
+        dashboard_text(
+            slide, f"{row['dr2']} DR2  /  {row['tget']}",
+            left + Inches(1.72), row_top + Inches(0.19),
+            Inches(1.70), Inches(0.26), size=10, color=C_DTEXT, wrap=False,
+        )
+
+        gauge_top = row_top + Inches(0.25)
+        _rect(slide, gauge_left, gauge_top, gauge_width, gauge_height,
+              RGBColor(0xE4, 0xE9, 0xF1))
+        status_color = {
+            'red': C_REPORT_RED,
+            'yellow': C_REPORT_YELLOW,
+            'green': C_DETAIL_GREEN,
+        }[row['color']]
+        filled_width = max(
+            Inches(0.06),
+            int(gauge_width * min(max(row['pct_tget'], 0), 100) / 100),
+        )
+        _rect(slide, gauge_left, gauge_top, filled_width, gauge_height, status_color)
+        dashboard_text(
+            slide, f"{row['pct_tget']}%", Inches(11.58), row_top + Inches(0.17),
+            Inches(0.92), Inches(0.30), size=12, bold=True, color=status_color,
+            align=PP_ALIGN.RIGHT, wrap=False,
+        )
+
+    legend_top = rows_top + len(rows) * row_height + Inches(0.10)
+    legend = [
+        (C_DETAIL_GREEN, '< 70%  Maîtrisé'),
+        (C_REPORT_YELLOW, '70–99%  Vigilance'),
+        (C_REPORT_RED, '≥ 100%  Cible dépassée'),
+    ]
+    for index, (color, label) in enumerate(legend):
+        item_left = Inches(3.15 + index * 2.75)
+        _rect(slide, item_left, legend_top + Inches(0.04), Inches(0.12), Inches(0.12), color)
+        dashboard_text(
+            slide, label, item_left + Inches(0.20), legend_top,
+            Inches(2.35), Inches(0.24), size=8, color=C_DTEXT, wrap=False,
+        )
+
+
 def _slide_monthly_comparison(prs, d):
     sl = _blank(prs)
     _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'DR2 COMPARATIVE MENSUEL')
@@ -1475,23 +1578,7 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 15. Efficacité — formule actuelle conservée jusqu'à validation métier
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2 — ATTEINTE DES CIBLES')
-    rows_eff = [[r['region'], r['dr2'], r['tget'], f"{r['pct_tget']}%"] for r in month_data['region_rows']]
-    fmts = {}
-    for i, r in enumerate(month_data['region_rows']):
-        fmts[(i, 3)] = {'red': (C_RED_BG, C_RED_FG), 'yellow': (C_YELL_BG, C_YELL_FG),
-                         'green': (C_GREEN_BG, C_GREEN_FG)}[r['color']]
-    _table(sl, ['RÉGION', 'DR2', 'CIBLE', '% CIBLE ATTEINTE'], rows_eff,
-            left=Inches(0.50), top=Inches(1.45), width=Inches(6.30),
-            height=Inches(4.95), col_widths=[2.1, 1.0, 1.0, 1.6],
-            cell_fmts=fmts, font_size=10, hdr_size=9)
-    labels = [r['region'] for r in month_data['region_rows']]
-    vals = [r['pct_tget'] for r in month_data['region_rows']]
-    if labels:
-        _percent_bar_chart(
-            sl, list(reversed(labels)), list(reversed(vals)),
-            Inches(7.15), Inches(1.45), Inches(5.55), Inches(4.95),
-            title='Taux DR2 par région',
-        )
+    _efficiency_dashboard(sl, month_data['region_rows'])
 
     # 16. Points bloquants — mois
     sl = _blank(prs)
@@ -1500,31 +1587,45 @@ def generate_gdi_daily(debut, fin, generated_on):
     without_blocking_point = max(month_data['total_dr2'] - with_blocking_point, 0)
     _header(
         sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS',
-        extra_right=f'DR2- PB = {without_blocking_point}',
     )
-    rows_pb = [[p[:55], k] for p, k in pb]
-    if rows_pb:
-        _table(
-            sl, ['POINT BLOQUANT', 'NB'], rows_pb,
-            left=Inches(0.50), top=Inches(1.45), width=Inches(6.30),
-            height=Inches(4.95), col_widths=[5.25, 1.05],
-            font_size=9, hdr_size=9,
-        )
+    _summary_card(
+        sl, 'AVEC POINT BLOQUANT', str(with_blocking_point),
+        'DR2 concernés', Inches(3.65), C_RED_T,
+    )
+    _summary_card(
+        sl, 'SANS POINT BLOQUANT', str(without_blocking_point),
+        'DR2-PB', Inches(6.80), C_DETAIL_GREEN,
+    )
     if pb:
-        _bar_chart(
-            sl, [p for p, _ in reversed(pb[:8])],
-            [k for _, k in reversed(pb[:8])],
-            Inches(7.15), Inches(1.45), Inches(5.55), Inches(4.95),
-            title='DR2 par point bloquant',
+        ranked_points = [[f'{rank:02d}', label, count]
+                         for rank, (label, count) in enumerate(pb, 1)]
+        available_height = Inches(3.45)
+        table_height = min(
+            available_height,
+            Inches(max(1.70, 0.32 * (len(ranked_points) + 1))),
         )
+        blocking_table = _table(
+            sl, ['RANG', 'POINT BLOQUANT', 'NB'], ranked_points,
+            left=Inches(0.75),
+            top=Inches(3.25),
+            width=Inches(11.85), height=table_height,
+            col_widths=[0.8, 9.9, 1.15],
+            font_size=max(6, min(10, 55 // (len(ranked_points) + 1))),
+            hdr_size=9,
+        )
+        for row_index in range(1, len(blocking_table.rows)):
+            point_cell = blocking_table.rows[row_index].cells[1]
+            point_cell.margin_left = Inches(0.08)
+            for paragraph in point_cell.text_frame.paragraphs:
+                paragraph.alignment = PP_ALIGN.LEFT
     else:
-        _rect(sl, Inches(0.75), Inches(2.15), Inches(11.85), Inches(2.25),
+        _rect(sl, Inches(0.75), Inches(3.45), Inches(11.85), Inches(1.75),
               RGBColor(0xF5, 0xF7, 0xFA))
         _txt(sl, 'AUCUN POINT BLOQUANT RENSEIGNÉ',
-             Inches(1.0), Inches(2.70), Inches(11.35), Inches(0.45),
+             Inches(1.0), Inches(3.85), Inches(11.35), Inches(0.45),
              size=20, bold=True, color=C_DETAIL_GREEN, align=PP_ALIGN.CENTER)
         _txt(sl, f"{without_blocking_point} DR2 sans point bloquant déclaré",
-             Inches(1.0), Inches(3.22), Inches(11.35), Inches(0.35),
+             Inches(1.0), Inches(4.37), Inches(11.35), Inches(0.35),
              size=12, color=C_DTEXT, align=PP_ALIGN.CENTER)
 
     # 17-18. Lecture régionale puis matrice Région / Métiers — mois
