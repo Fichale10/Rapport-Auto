@@ -38,6 +38,7 @@ from .dr2_availability import (
 C_RED_T = RGBColor(0xC0, 0x00, 0x00)
 C_DETAIL_HDR = RGBColor(0x44, 0x54, 0x6A)
 C_DETAIL_GREEN = RGBColor(0x70, 0xAD, 0x47)
+C_DETAIL_RED = RGBColor(0xFF, 0x00, 0x00)
 C_DETAIL_GRAY = RGBColor(0xD9, 0xD9, 0xD9)
 C_SUMMARY_GRAY = RGBColor(0xE1, 0xE3, 0xE8)
 C_CAUSE_HDR = RGBColor(0xD9, 0xE8, 0xF5)
@@ -545,15 +546,12 @@ def _detail_table(slide, rows, day, count, height=Inches(2.45), top=None):
          size=9, bold=True, color=C_DTEXT, align=PP_ALIGN.CENTER)
 
     cell_fmts = {}
-    for row_idx, row in enumerate(rows):
-        row_bg = C_WHITE if row_idx % 2 == 0 else C_LGRAY
+    for row_idx, _row in enumerate(rows):
         for col_idx in range(len(_DETAIL_HEADERS)):
-            cell_fmts[(row_idx, col_idx)] = (row_bg, C_DTEXT)
-        if str(row[2]).strip():
-            cell_fmts[(row_idx, 2)] = (C_YELL, C_DTEXT)
-        cell_fmts[(row_idx, 7)] = (C_CAUSE_HDR, C_DTEXT)
+            cell_fmts[(row_idx, col_idx)] = (C_DETAIL_GREEN, C_DTEXT)
+        cell_fmts[(row_idx, 2)] = (C_YELL, C_DTEXT)
         cell_fmts[(row_idx, len(_DETAIL_HEADERS) - 1)] = (
-            C_DETAIL_GREEN, C_DTEXT,
+            C_DETAIL_RED, C_DTEXT,
         )
 
     table = _table(
@@ -1618,7 +1616,7 @@ def generate_gdi_daily(debut, fin, generated_on):
     while day <= detail_end:
         qs_day = qs_detail.filter(date=day)
         sl = _blank(prs)
-        _header(sl, 'REUNION GESTION DES INCIDENTS', f'DETAIL DR2 {_JOURS_FR[day.weekday()]}')
+        _header(sl, 'REUNION GESTION DES INCIDENTS', 'DETAILS DR2')
         if day in detail_data['processed_dates'] or qs_day.exists():
             _detail_table(sl, _detail_rows(qs_day), day, qs_day.count(), height=Inches(4.9))
         else:
@@ -1832,9 +1830,8 @@ def generate_reunion_hebdo(debut, fin, generated_on):
         qs_day = qs_period.filter(date=day)
         nb = qs_day.count()
         is_last = not grouped_tail and idx == len(regular_days) - 1
-        title = 'DETAIL DR2' + (f' {_JOURS_FR[day.weekday()]}' if is_last else '')
         sl = _blank(prs)
-        _header(sl, 'REUNION GESTION DES INCIDENTS', title)
+        _header(sl, 'REUNION GESTION DES INCIDENTS', 'DETAILS DR2')
         rows = _detail_rows(qs_day)
         separate_summary = is_last and len(rows) > 3
         table_height = Inches(4.8) if separate_summary or not is_last else Inches(2.75)
@@ -1852,10 +1849,7 @@ def generate_reunion_hebdo(debut, fin, generated_on):
 
     if grouped_tail:
         sl = _blank(prs)
-        _header(
-            sl, 'REUNION GESTION DES INCIDENTS',
-            f"DETAIL DR2 {_JOURS_FR[grouped_tail[-1].weekday()]}",
-        )
+        _header(sl, 'REUNION GESTION DES INCIDENTS', 'DETAILS DR2')
         first_day, second_day = grouped_tail
         first_rows = _detail_rows(qs_period.filter(date=first_day))
         second_rows = _detail_rows(qs_period.filter(date=second_day))

@@ -150,6 +150,22 @@ class Dr2AnalyticsTests(TestCase):
 		self.assertGreaterEqual(trend_slide.element.xml.count('val="dash"'), 2)
 		self.assertIn('00B050', trend_slide.element.xml)
 
+		detail_slides = [presentation.slides[index] for index in range(8, 11)]
+		self.assertEqual(len(detail_slides), 3)
+		for detail_slide in detail_slides:
+			detail_text = ' '.join(
+				shape.text for shape in detail_slide.shapes
+				if hasattr(shape, 'text')
+			)
+			self.assertIn('DETAILS DR2', detail_text)
+			self.assertNotIn('VENDREDI', detail_text)
+			self.assertNotIn('SAMEDI', detail_text)
+			self.assertNotIn('DIMANCHE', detail_text)
+			table = next(shape.table for shape in detail_slide.shapes if shape.has_table)
+			self.assertEqual(str(table.cell(1, 0).fill.fore_color.rgb), '70AD47')
+			self.assertEqual(str(table.cell(1, 2).fill.fore_color.rgb), 'FFC72C')
+			self.assertEqual(str(table.cell(1, 13).fill.fore_color.rgb), 'FF0000')
+
 	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
 		for day, count in (
 			(date(2026, 8, 21), 4),
@@ -173,6 +189,14 @@ class Dr2AnalyticsTests(TestCase):
 		self.assertEqual(
 			sum(shape.has_table for shape in presentation.slides[6].shapes), 1,
 		)
+		detail_text = ' '.join(
+			shape.text for shape in presentation.slides[6].shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('DETAILS DR2', detail_text)
+		self.assertNotIn('VENDREDI', detail_text)
+		self.assertNotIn('SAMEDI', detail_text)
+		self.assertNotIn('DIMANCHE', detail_text)
 		self.assertEqual(
 			sum(shape.has_table for shape in presentation.slides[7].shapes), 2,
 		)
