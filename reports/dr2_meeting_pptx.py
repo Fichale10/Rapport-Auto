@@ -33,6 +33,7 @@ from .pptx_report import (
 )
 from .dr2_availability import (
     DR2_REGION_TARGETS, DR2_ESCALADE_ORDER, normalize_dr2_datetimes,
+    normalize_site_key,
 )
 
 C_RED_T = RGBColor(0xC0, 0x00, 0x00)
@@ -61,6 +62,13 @@ _MOIS_FR = ['', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _GDI_REFERENCE = 'presentation a automatiser GDI.pptx'
 _REUNION_REFERENCE = 'PRESENTATION REUNION[1] vendredi NEW (9).pptx'
+
+_BASE_TECHNIQUE_ORDER = [
+    'ELAVAGNON', 'MANGO', 'KPALIME', 'KARA-EST', 'LOME-SUD', 'LOME-EST',
+    'DAPAONG', 'ATAKPAME', 'KABOU', 'KANTE', 'BLITTA', 'LOME-NORD',
+    'LOME-OUEST1', 'KARA-OUEST', 'TCHAMBA', 'BADOU', 'SOKODE', 'TSEVIE',
+    'ANEHO', 'LOME-CENTRE', 'LOME-OUEST2', 'NOTSE',
+]
 
 
 def _table(*args, **kwargs):
@@ -624,12 +632,55 @@ def _top_sites(qs, n=15):
     return cnt.most_common(n)
 
 
-def _base_breakdown(qs):
+def _base_technical_rows(qs):
     from .models import Site
-    names = {rec.site_name for rec in qs}
-    base_map = dict(Site.objects.filter(site_name__in=names).values_list('site_name', 'base'))
-    cnt = Counter(base_map.get(rec.site_name) or 'INCONNU' for rec in qs)
-    return cnt.most_common(20)
+
+    sites = list(
+        Site.objects.exclude(base='').values_list('site_name', 'site_id', 'base')
+    )
+    site_counts = Counter()
+    base_by_name = {}
+    base_by_id = {}
+    for site_name, site_id, base in sites:
+        normalized_base = (base or '').strip().upper()
+        if not normalized_base:
+            continue
+        site_counts[normalized_base] += 1
+        name_key = normalize_site_key(site_name)
+        if name_key:
+            base_by_name.setdefault(name_key, normalized_base)
+        id_key = str(site_id or '').strip().upper()
+        if id_key:
+            base_by_id.setdefault(id_key, normalized_base)
+
+    dr2_counts = Counter()
+    unmatched = 0
+    for record in qs:
+        base = base_by_name.get(normalize_site_key(record.site_name))
+        if not base:
+            base = base_by_id.get(str(record.site_id or '').strip().upper())
+        if base:
+            dr2_counts[base] += 1
+        else:
+            unmatched += 1
+
+    known_bases = set(site_counts)
+    ordered_bases = [base for base in _BASE_TECHNIQUE_ORDER if base in known_bases]
+    ordered_bases.extend(sorted(known_bases - set(ordered_bases)))
+    rows = [
+        {
+            'base': base,
+            'sites': site_counts[base],
+            'target': max(1, int(site_counts[base] * 0.08 + 0.5)),
+            'dr2': dr2_counts[base],
+        }
+        for base in ordered_bases
+    ]
+    if unmatched:
+        rows.append({
+            'base': 'INCONNU', 'sites': 0, 'target': 0, 'dr2': unmatched,
+        })
+    return rows
 
 
 def _daily_counts(qs, debut, fin):
@@ -927,6 +978,75 @@ def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True,
     return chart
 
 
+def _top_site_occurrence_chart(slide, top_sites):
+    categories = [site for site, _count in reversed(top_sites)]
+    values = [count for _site, count in reversed(top_sites)]
+    frame_left = Inches(0.55)
+    frame_top = Inches(1.05)
+    frame_width = SW - Inches(1.10)
+    frame_height = Inches(5.95)
+    frame = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, frame_left, frame_top, frame_width, frame_height,
+    )
+    frame.fill.background()
+    frame.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    frame.line.width = Pt(0.75)
+
+    band_left = Inches(4.85)
+    band_top = Inches(1.15)
+    band_width = Inches(3.35)
+    band_height = Inches(0.38)
+    _rect(slide, band_left, band_top, band_width, band_height, C_YELL)
+    _txt(
+        slide, 'TOP SITE OCCURRENCE DR2', band_left, band_top + Inches(0.025),
+        band_width, Inches(0.30), size=15, bold=False, color=C_DTEXT,
+        align=PP_ALIGN.CENTER, wrap=False,
+    )
+
+    chart = _bar_chart(
+        slide, categories, values,
+        Inches(0.95), Inches(1.70), SW - Inches(1.65), Inches(4.95),
+        color=C_REPORT_RED, title='', ranked=False,
+    )
+    plot = chart.plots[0]
+    plot.gap_width = 70
+    labels = plot.data_labels
+    labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
+    labels.font.name = 'Arial'
+    labels.font.size = Pt(10)
+    labels.font.bold = False
+    labels.font.color.rgb = C_DTEXT
+
+    chart.category_axis.tick_labels.font.name = 'Arial'
+    chart.category_axis.tick_labels.font.size = Pt(10)
+    chart.category_axis.tick_labels.font.color.rgb = C_DTEXT
+    chart.value_axis.tick_labels.font.name = 'Arial'
+    chart.value_axis.tick_labels.font.size = Pt(9)
+    chart.value_axis.tick_labels.font.color.rgb = C_DTEXT
+    chart.value_axis.minimum_scale = 0
+    maximum = max(values, default=0)
+    if maximum <= 2:
+        chart.value_axis.major_unit = 0.5
+        chart.value_axis.maximum_scale = 2.5
+        chart.value_axis.tick_labels.number_format = '0.0'
+    else:
+        chart.value_axis.major_unit = 1
+        chart.value_axis.maximum_scale = maximum + 1
+        chart.value_axis.tick_labels.number_format = '0'
+    chart.value_axis.has_major_gridlines = True
+    chart.value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    chart.value_axis.format.line.color.rgb = RGBColor(0xB7, 0xB7, 0xB7)
+    chart.category_axis.format.line.fill.background()
+
+    for point, count in zip(plot.series[0].points, values):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = (
+            RGBColor(0xFF, 0x00, 0x00) if count >= 2 else C_YELL
+        )
+        point.format.line.fill.background()
+    return chart
+
+
 def _pie_chart(slide, categories, values, l, t, w, h):
     data = CategoryChartData()
     data.categories = [str(c) for c in categories]
@@ -1031,6 +1151,159 @@ def _report_cell(cell, value='', bg=C_WHITE, fg=C_DTEXT, bold=False,
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = fg
+
+
+def _region_base_summary_slide(prs, dataset, qs):
+    sl = _blank(prs)
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'Répartition DR2 Région / Bases')
+
+    region_counts = {
+        row['region']: row['dr2'] for row in dataset['region_rows']
+    }
+    region_order = list(DR2_REGION_TARGETS)
+    table = sl.shapes.add_table(
+        len(region_order) + 3, 4,
+        Inches(0.28), Inches(2.62), Inches(4.58), Inches(3.18),
+    ).table
+    for index, width in enumerate([1.15, 1.30, 0.92, 1.21]):
+        table.columns[index].width = Inches(width)
+    table.rows[0].height = Inches(0.43)
+    table.rows[1].height = Inches(0.36)
+    for row_index in range(2, len(table.rows)):
+        table.rows[row_index].height = Inches(0.39)
+
+    title_cell = table.cell(0, 0)
+    title_cell.merge(table.cell(0, 3))
+    _report_cell(
+        title_cell, 'VIOLATION DR2 / REGIONS', C_REPORT_ORANGE,
+        RGBColor(0x00, 0x00, 0x00), True, 19,
+    )
+    for column, header in enumerate(
+        ['REGION', 'NBRE DE SITES', 'TARGET DR2', 'DR2 COUNT']
+    ):
+        _report_cell(
+            table.cell(1, column), header,
+            RGBColor(0xBD, 0xD7, 0xEE) if column in (0, 1) else C_WHITE,
+            C_DTEXT, True, 12,
+        )
+
+    total_sites = 0
+    total_dr2 = 0
+    for row_index, region in enumerate(region_order, 2):
+        sites = DR2_REGION_TARGETS[region]
+        target = int(sites * 0.08 + 0.5)
+        dr2_count = region_counts.get(region, 0)
+        total_sites += sites
+        total_dr2 += dr2_count
+        count_color = (
+            C_REPORT_RED if dr2_count > target
+            else C_REPORT_ORANGE if dr2_count >= 3
+            else RGBColor(0x92, 0xD0, 0x50) if dr2_count == 0
+            else C_DETAIL_GREEN
+        )
+        _report_cell(
+            table.cell(row_index, 0), region,
+            RGBColor(0xBD, 0xD7, 0xEE), C_DTEXT, True, 12, PP_ALIGN.LEFT,
+        )
+        _report_cell(table.cell(row_index, 1), sites, C_WHITE, C_DTEXT, True, 12)
+        _report_cell(
+            table.cell(row_index, 2), target, C_WHITE,
+            RGBColor(0xFF, 0x00, 0x00), True, 12,
+        )
+        _report_cell(table.cell(row_index, 3), dr2_count, count_color, C_WHITE, True, 12)
+
+    total_row = len(region_order) + 2
+    total_target = int(total_sites * 0.08 + 0.5)
+    for column, value in enumerate(['TOTAL', total_sites, total_target, total_dr2]):
+        _report_cell(
+            table.cell(total_row, column), value,
+            C_REPORT_ORANGE if column == 3 else C_WHITE,
+            C_DTEXT, True, 12,
+            PP_ALIGN.LEFT if column == 0 else PP_ALIGN.CENTER,
+        )
+
+    base_rows = _base_technical_rows(qs)
+    if not base_rows:
+        _txt(
+            sl, 'Aucune base technique renseignée dans Site Info.',
+            Inches(5.45), Inches(3.25), Inches(7.3), Inches(0.5),
+            size=14, bold=True, color=C_RED_T, align=PP_ALIGN.CENTER,
+        )
+        return sl
+
+    chart_frame = sl.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Inches(5.55), Inches(1.34),
+        Inches(7.35), Inches(5.72),
+    )
+    chart_frame.fill.background()
+    chart_frame.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    chart_frame.line.width = Pt(0.75)
+    _rect(sl, Inches(7.65), Inches(1.43), Inches(3.45), Inches(0.36), C_REPORT_ORANGE)
+    _txt(
+        sl, 'DR2 COUNT BY BASE TECHNIQUE',
+        Inches(7.65), Inches(1.455), Inches(3.45), Inches(0.29),
+        size=13, bold=True, color=RGBColor(0x00, 0x00, 0x00),
+        align=PP_ALIGN.CENTER, wrap=False,
+    )
+
+    chart_rows = list(reversed(base_rows))
+    chart_data = CategoryChartData()
+    chart_data.categories = [row['base'] for row in chart_rows]
+    chart_data.add_series('TARGET DR2', [row['target'] for row in chart_rows])
+    chart_data.add_series('DR2 COUNT', [row['dr2'] for row in chart_rows])
+    chart = sl.shapes.add_chart(
+        XL_CHART_TYPE.BAR_CLUSTERED,
+        Inches(5.75), Inches(1.86), Inches(6.93), Inches(4.96), chart_data,
+    ).chart
+    chart.has_legend = False
+    chart.has_title = False
+    chart.category_axis.tick_labels.font.name = 'Arial Narrow'
+    chart.category_axis.tick_labels.font.size = Pt(7)
+    chart.category_axis.tick_labels.font.bold = True
+    chart.category_axis.tick_labels.font.color.rgb = C_DTEXT
+    chart.category_axis.format.line.fill.background()
+    chart.value_axis.minimum_scale = 0
+    chart.value_axis.major_unit = 1
+    maximum = max(
+        [row['dr2'] for row in base_rows] +
+        [row['target'] for row in base_rows] + [1]
+    )
+    chart.value_axis.maximum_scale = maximum + 1
+    chart.value_axis.tick_labels.number_format = '0'
+    chart.value_axis.tick_labels.font.name = 'Arial'
+    chart.value_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.tick_labels.font.color.rgb = C_DTEXT
+    chart.value_axis.has_major_gridlines = True
+    chart.value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    chart.value_axis.format.line.color.rgb = RGBColor(0xB7, 0xB7, 0xB7)
+
+    target_series, actual_series = chart.series
+    target_series.format.fill.solid()
+    target_series.format.fill.fore_color.rgb = C_REPORT_NAVY
+    target_series.format.line.fill.background()
+    actual_series.format.fill.solid()
+    actual_series.format.fill.fore_color.rgb = C_REPORT_ORANGE
+    actual_series.format.line.fill.background()
+    for point, row in zip(actual_series.points, chart_rows):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = (
+            RGBColor(0xFF, 0x00, 0x00)
+            if row['dr2'] > row['target'] else C_REPORT_ORANGE
+        )
+        point.format.line.fill.background()
+    for series in chart.series:
+        labels = series.data_labels
+        labels.show_value = True
+        labels.show_legend_key = False
+        labels.show_category_name = False
+        labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
+        labels.number_format = '0'
+        labels.font.name = 'Arial'
+        labels.font.size = Pt(8)
+        labels.font.bold = True
+        labels.font.color.rgb = C_DTEXT
+    chart.plots[0].gap_width = 45
+    return sl
 
 
 def _region_color(row):
@@ -1654,47 +1927,13 @@ def generate_gdi_daily(debut, fin, generated_on):
 
     # 13. Top sites — mois jusqu'au dimanche de référence
     sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'CLASSEMENT DES SITES RÉCURRENTS DR2')
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'TOP SITE OCCURRENCE DR2')
     top_sites = _top_sites(qs_month, 10)
     if top_sites:
-        ranked_sites = [
-            (f'{rank:02d}   {site}', count)
-            for rank, (site, count) in enumerate(top_sites, 1)
-        ]
-        available_height = CONTENT_H - Inches(0.35)
-        chart_height = min(
-            available_height,
-            Inches(max(2.2, 0.52 * len(ranked_sites) + 0.45)),
-        )
-        chart_top = CONTENT_TOP + Inches(0.15) + int(
-            (available_height - chart_height) / 2
-        )
-        _bar_chart(
-            sl,
-            [site for site, _ in reversed(ranked_sites)],
-            [count for _, count in reversed(ranked_sites)],
-            Inches(0.8), chart_top,
-            SW - Inches(1.35), chart_height,
-            title='', ranked=True,
-        )
+        _top_site_occurrence_chart(sl, top_sites)
 
-    # 14. Répartition région / bases — mois
-    sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'Répartition DR2 Région / Bases')
-    regs = [(r['region'], r['dr2']) for r in month_data['region_rows'] if r['dr2']]
-    if regs:
-        _share_bar_chart(
-            sl, [r for r, _ in regs], [c for _, c in regs],
-            MARGIN, CONTENT_TOP, Inches(4.6), CONTENT_H - Inches(0.1),
-            'DR2 PAR RÉGION', C_REPORT_CYAN,
-        )
-    bases = _base_breakdown(qs_month)[:15]
-    if bases:
-        _share_bar_chart(
-            sl, [base for base, _ in bases], [count for _, count in bases],
-            Inches(5.4), CONTENT_TOP, SW - Inches(5.4) - MARGIN,
-            CONTENT_H - Inches(0.1), 'DR2 PAR BASE', C_REPORT_BLUE,
-        )
+    # 14. Répartition région / bases — parc Site Info et violations du mois
+    _region_base_summary_slide(prs, month_data, qs_month)
 
     # 15. Efficacité — formule actuelle conservée jusqu'à validation métier
     sl = _blank(prs)

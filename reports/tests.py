@@ -13,7 +13,7 @@ from .dr2_meeting_pptx import (
 	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
 	_monthly_comparison, generate_gdi_daily, generate_reunion_hebdo,
 )
-from .models import Dr2ProcessedDate, Dr2ViolationRecord
+from .models import Dr2ProcessedDate, Dr2ViolationRecord, Site
 
 
 class Dr2AvailabilityTests(SimpleTestCase):
@@ -122,11 +122,26 @@ class Dr2AnalyticsTests(TestCase):
 		):
 			Dr2ProcessedDate.objects.create(date=day, sites_count=count)
 			for index in range(count):
+				site_name = (
+					'RECURRING-SITE' if index == 0
+					else f'SITE-{day.day}-{index}'
+				)
 				Dr2ViolationRecord.objects.create(
-					date=day, site_name=f'SITE-{day.day}-{index}',
+					date=day,
+					site_name=site_name,
 					region='LOME', categorie='ENERGIE', cause='PANNE',
 					hours_down=4, is_resolved=True,
 				)
+				Site.objects.get_or_create(
+					site_name=site_name,
+					defaults={
+						'region': 'LOME',
+						'base': 'ELAVAGNON' if index == 0 else 'MANGO',
+					},
+				)
+		Site.objects.create(
+			site_name='SITE-WITHOUT-DR2', region='PLATEAUX', base='KPALIME',
+		)
 
 		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
 			presentation = Presentation(generate_gdi_daily(
@@ -165,6 +180,62 @@ class Dr2AnalyticsTests(TestCase):
 			self.assertEqual(str(table.cell(1, 0).fill.fore_color.rgb), '70AD47')
 			self.assertEqual(str(table.cell(1, 2).fill.fore_color.rgb), 'FFC72C')
 			self.assertEqual(str(table.cell(1, 13).fill.fore_color.rgb), 'FF0000')
+
+		top_sites_slide = presentation.slides[12]
+		top_sites_text = ' '.join(
+			shape.text for shape in top_sites_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('TOP SITE OCCURRENCE DR2', top_sites_text)
+		self.assertNotIn('CLASSEMENT DES SITES RÉCURRENTS DR2', top_sites_text)
+		top_chart = next(shape.chart for shape in top_sites_slide.shapes if shape.has_chart)
+		categories = [category.label for category in top_chart.plots[0].categories]
+		self.assertIn('RECURRING-SITE', categories)
+		self.assertFalse(any(category[:2].isdigit() for category in categories))
+		point_colors = {
+			str(point.format.fill.fore_color.rgb)
+			for point in top_chart.series[0].points
+		}
+		self.assertEqual(point_colors, {'FF0000', 'FFC72C'})
+
+		region_base_slide = presentation.slides[13]
+		region_base_text = ' '.join(
+			shape.text for shape in region_base_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('DR2 COUNT BY BASE TECHNIQUE', region_base_text)
+		region_table = next(
+			shape.table for shape in region_base_slide.shapes if shape.has_table
+		)
+		self.assertEqual(
+			region_table.cell(0, 0).text, 'VIOLATION DR2 / REGIONS',
+		)
+		self.assertEqual(
+			[region_table.cell(2, column).text for column in range(4)],
+			['LOME', '372', '30', '15'],
+		)
+		self.assertEqual(region_table.cell(8, 2).text, '90')
+		base_chart = next(
+			shape.chart for shape in region_base_slide.shapes if shape.has_chart
+		)
+		base_categories = [
+			category.label for category in base_chart.plots[0].categories
+		]
+		series_by_name = {series.name: series for series in base_chart.series}
+		actual_by_base = dict(zip(
+			base_categories, series_by_name['DR2 COUNT'].values,
+		))
+		target_by_base = dict(zip(
+			base_categories, series_by_name['TARGET DR2'].values,
+		))
+		self.assertEqual(
+			actual_by_base,
+			{'KPALIME': 0.0, 'MANGO': 12.0, 'ELAVAGNON': 3.0},
+		)
+		self.assertEqual(
+			target_by_base,
+			{'KPALIME': 1.0, 'MANGO': 1.0, 'ELAVAGNON': 1.0},
+		)
 
 	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
 		for day, count in (
