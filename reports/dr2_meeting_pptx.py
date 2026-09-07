@@ -17,7 +17,8 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import (
@@ -48,6 +49,9 @@ C_REPORT_PALE_GREEN = RGBColor(0xE2, 0xF0, 0xD9)
 C_REPORT_YELLOW = RGBColor(0xFF, 0xE6, 0x80)
 C_REPORT_ORANGE = RGBColor(0xF4, 0xB1, 0x83)
 C_REPORT_RED = RGBColor(0xF8, 0x69, 0x6B)
+C_TREND_GREEN = RGBColor(0x00, 0xB0, 0x50)
+C_DEFINITION_ROW = RGBColor(0xFF, 0xD1, 0xD1)
+C_DEFINITION_ALT = RGBColor(0xFF, 0xE6, 0xE6)
 
 _JOURS_FR = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE']
 _MOIS_FR = ['', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
@@ -275,11 +279,20 @@ def _section(prs, title, month_day, number):
 def _slide_definitions(prs):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'Définition DR1/DR2')
-    _table(
+    table = _table(
         sl, ['Code', 'Indicateur', 'Définition', 'Seuil (2G,3G,4G)'],
         _DEF_ROWS, col_widths=[1, 3, 5, 1.5], top=CONTENT_TOP + Inches(1.0),
-        height=Inches(3.2), font_size=10,
+        height=Inches(3.2), font_size=10, hdr_bg=C_REPORT_RED, alt=False,
     )
+    for row_index in range(1, len(table.rows)):
+        row = table.rows[row_index]
+        row_color = C_DEFINITION_ROW if row_index == 1 else C_DEFINITION_ALT
+        for cell in row.cells:
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = row_color
+            for paragraph in cell.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.color.rgb = C_REPORT_BLUE
     return sl
 
 
@@ -780,18 +793,83 @@ def _line_chart(slide, categories, values, l, t, w, h, title=''):
     data = CategoryChartData()
     data.categories = [c.strftime('%d/%m') if hasattr(c, 'strftime') else str(c) for c in categories]
     data.add_series('DR2', values)
-    gframe = slide.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, l, t, w, h, data)
+    gframe = slide.shapes.add_chart(XL_CHART_TYPE.LINE, l, t, w, h, data)
     chart = gframe.chart
     chart.has_legend = False
+    chart.has_title = bool(title)
     _style_count_axes(chart, values)
     if title:
-        chart.has_title = True
         chart.chart_title.text_frame.text = title
     plot = chart.plots[0]
     plot.series[0].format.line.color.rgb = RGBColor(0xFF, 0x00, 0x00)
     plot.series[0].format.line.width = Pt(2.5)
     _show_count_labels(plot, XL_DATA_LABEL_POSITION.ABOVE)
     return chart
+
+
+def _trend_axis_settings(values, threshold=3):
+    numeric_values = [value for value in values if value is not None]
+    maximum = max(numeric_values + [threshold])
+    if maximum <= 10:
+        major_unit = 1
+    elif maximum <= 30:
+        major_unit = 5
+    elif maximum <= 60:
+        major_unit = 10
+    else:
+        major_unit = 20
+    axis_maximum = max(
+        threshold + major_unit,
+        (int(maximum // major_unit) + 1) * major_unit,
+    )
+    return major_unit, axis_maximum
+
+
+def _trend_guides(slide, days, selected_start, selected_end,
+                  chart_left, chart_top, chart_width, chart_height,
+                  axis_maximum, threshold=3):
+    if not days:
+        return
+
+    plot_left = chart_left + Inches(1.28)
+    plot_right = chart_left + chart_width - Inches(1.17)
+    plot_top = chart_top + Inches(0.15)
+    plot_bottom = chart_top + chart_height - Inches(0.30)
+    threshold_y = plot_bottom - int(
+        (plot_bottom - plot_top) * threshold / axis_maximum
+    )
+    threshold_line = slide.shapes.add_connector(
+        MSO_CONNECTOR.STRAIGHT, plot_left, threshold_y, plot_right, threshold_y,
+    )
+    threshold_line.line.color.rgb = C_TREND_GREEN
+    threshold_line.line.width = Pt(1.5)
+    threshold_line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+
+    selected_indexes = [
+        index for index, (day, _) in enumerate(days)
+        if selected_start <= day <= selected_end
+    ]
+    if not selected_indexes:
+        return
+    spacing = (plot_right - plot_left) / max(len(days) - 1, 1)
+    frame_left = max(
+        plot_left,
+        int(plot_left + selected_indexes[0] * spacing - Inches(0.08)),
+    )
+    frame_right = min(
+        chart_left + chart_width - Inches(0.35),
+        int(plot_left + selected_indexes[-1] * spacing + Inches(0.08)),
+    )
+    if frame_right <= frame_left:
+        frame_right = min(plot_right, frame_left + Inches(0.25))
+    frame = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, frame_left, plot_top,
+        frame_right - frame_left, plot_bottom - plot_top,
+    )
+    frame.fill.background()
+    frame.line.color.rgb = C_REPORT_BLUE
+    frame.line.width = Pt(2)
+    frame.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 
 
 def _bar_chart(slide, categories, values, l, t, w, h, horizontal=True,
@@ -879,7 +957,8 @@ def _pie_chart(slide, categories, values, l, t, w, h):
 # DIAPOSITIVES PARTAGÉES (utilisées par les 2 supports)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _slide_dr2_trend(prs, d, kpi_label, period_label, trend_data=None):
+def _slide_dr2_trend(prs, d, kpi_label, period_label, trend_data=None,
+                     show_month_context=True):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'DR2 TREND')
     trend_data = trend_data or d
@@ -887,28 +966,36 @@ def _slide_dr2_trend(prs, d, kpi_label, period_label, trend_data=None):
         _dr2_qs(trend_data['debut'], trend_data['fin']),
         trend_data['debut'], trend_data['fin'],
     )
-    processed_dates = trend_data.get('processed_dates', set())
-    values = [
-        count if day in processed_dates or count else None
-        for day, count in days
-    ]
-    _line_chart(sl, [x[0] for x in days], values,
-             MARGIN, CONTENT_TOP + Inches(0.45), SW - 2 * MARGIN,
-             CONTENT_H - Inches(0.55))
+    values = [count for _, count in days]
+    chart_left = MARGIN
+    chart_top = CONTENT_TOP + Inches(0.45)
+    chart_width = SW - 2 * MARGIN
+    chart_height = CONTENT_H - Inches(0.55)
+    chart = _line_chart(
+        sl, [day.day for day, _ in days], values,
+        chart_left, chart_top, chart_width, chart_height,
+    )
+    major_unit, axis_maximum = _trend_axis_settings(values)
+    chart.value_axis.major_unit = major_unit
+    chart.value_axis.maximum_scale = axis_maximum
+    _trend_guides(
+        sl, days, d['debut'], d['fin'], chart_left, chart_top,
+        chart_width, chart_height, axis_maximum,
+    )
     trend_label = f"TREND DR2 {_MOIS_FR[trend_data['fin'].month]} {trend_data['fin'].year}"
-    _rect(sl, Inches(4.7), CONTENT_TOP, Inches(3.2), Inches(0.42), C_YELL)
-    _txt(sl, trend_label, Inches(4.7), CONTENT_TOP + Inches(0.03),
-        Inches(3.2), Inches(0.34), size=17, bold=True, color=C_DTEXT,
+    _rect(sl, Inches(4.35), CONTENT_TOP, Inches(4.2), Inches(0.42), C_YELL)
+    _txt(sl, trend_label, Inches(4.35), CONTENT_TOP + Inches(0.03),
+        Inches(4.2), Inches(0.34), size=16, bold=True, color=C_DTEXT,
         align=PP_ALIGN.CENTER)
     _rect(sl, Inches(10.2), CONTENT_TOP + Inches(0.65), Inches(2.2), Inches(1.0), C_BLUE)
-    if processed_dates:
+    if d.get('processed_dates'):
         kpi_text = f"{kpi_label} = {d['total_dr2']}\nMOY = {str(d['moyenne']).replace('.', ',')}"
     else:
         kpi_text = f'{kpi_label} = N/D\nMOY = N/D'
     _txt(sl, kpi_text, Inches(10.2), CONTENT_TOP + Inches(0.78),
         Inches(2.2), Inches(0.75), size=16, color=C_WHITE,
         align=PP_ALIGN.CENTER)
-    if trend_data is not d:
+    if trend_data is not d and show_month_context:
         month_average = str(trend_data['moyenne']).replace('.', ',')
         _rect(sl, Inches(0.65), CONTENT_TOP + Inches(0.65),
               Inches(2.35), Inches(1.0), RGBColor(0xF2, 0xF4, 0xF7))
@@ -1509,11 +1596,11 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 2. Page de titre datée
     _meeting_title(prs, meeting_day)
 
-    # 3. Synthèse de décision — mois en cours et dernier week-end traité
-    _slide_executive_summary(prs, month_data, detail_data, qs_month)
-
-    # 4. Définitions réglementaires
+    # 3. Définitions réglementaires
     _slide_definitions(prs)
+
+    # 4. Synthèse de décision — mois en cours et dernier week-end traité
+    _slide_executive_summary(prs, month_data, detail_data, qs_month)
 
     # 5-6. DR1
     _section(prs, 'TENDANCE DR1', data_end, 1)
@@ -1521,7 +1608,10 @@ def generate_gdi_daily(debut, fin, generated_on):
 
     # 7-8. DR2 du dernier vendredi au dimanche achevé
     _section(prs, 'TENDANCE DR2', data_end, 2)
-    _slide_dr2_trend(prs, detail_data, 'TDR2', detail_label)
+    _slide_dr2_trend(
+        prs, detail_data, 'TDR2', detail_label, trend_data=month_data,
+        show_month_context=False,
+    )
 
     # 9-11. Une diapositive lisible par journée, y compris à zéro DR2
     day = detail_start

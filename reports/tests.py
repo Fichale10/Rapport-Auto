@@ -11,7 +11,7 @@ from .dr2_availability import (
 )
 from .dr2_meeting_pptx import (
 	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
-	_monthly_comparison, generate_reunion_hebdo,
+	_monthly_comparison, generate_gdi_daily, generate_reunion_hebdo,
 )
 from .models import Dr2ProcessedDate, Dr2ViolationRecord
 
@@ -86,6 +86,70 @@ class Dr2AvailabilityTests(SimpleTestCase):
 
 
 class Dr2AnalyticsTests(TestCase):
+	def test_gdi_deck_places_red_definitions_before_summary(self):
+		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+			presentation = Presentation(generate_gdi_daily(
+				date(2026, 9, 1), date(2026, 9, 6), '07/09/2026',
+			))
+
+		definition_slide = presentation.slides[2]
+		summary_slide = presentation.slides[3]
+		definition_text = ' '.join(
+			shape.text for shape in definition_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		summary_text = ' '.join(
+			shape.text for shape in summary_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('Définition DR1/DR2', definition_text)
+		self.assertIn('SYNTHÈSE EXÉCUTIVE DR2', summary_text)
+
+		table = next(shape.table for shape in definition_slide.shapes if shape.has_table)
+		self.assertEqual(str(table.cell(0, 0).fill.fore_color.rgb), 'F8696B')
+		self.assertEqual(str(table.cell(1, 0).fill.fore_color.rgb), 'FFD1D1')
+		self.assertEqual(str(table.cell(2, 0).fill.fore_color.rgb), 'FFE6E6')
+		self.assertEqual(
+			str(table.cell(1, 1).text_frame.paragraphs[0].runs[0].font.color.rgb),
+			'003087',
+		)
+
+	def test_gdi_trend_shows_month_to_date_and_frames_selected_period(self):
+		for day, count in (
+			(date(2026, 9, 4), 2),
+			(date(2026, 9, 5), 7),
+			(date(2026, 9, 6), 6),
+		):
+			Dr2ProcessedDate.objects.create(date=day, sites_count=count)
+			for index in range(count):
+				Dr2ViolationRecord.objects.create(
+					date=day, site_name=f'SITE-{day.day}-{index}',
+					region='LOME', categorie='ENERGIE', cause='PANNE',
+					hours_down=4, is_resolved=True,
+				)
+
+		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+			presentation = Presentation(generate_gdi_daily(
+				date(2026, 9, 4), date(2026, 9, 6), '07/09/2026',
+			))
+
+		trend_slide = presentation.slides[7]
+		chart = next(shape.chart for shape in trend_slide.shapes if shape.has_chart)
+		self.assertEqual(
+			[category.label for category in chart.plots[0].categories],
+			['1', '2', '3', '4', '5', '6'],
+		)
+		self.assertEqual(chart.series[0].values, (0.0, 0.0, 0.0, 2.0, 7.0, 6.0))
+		trend_text = ' '.join(
+			shape.text for shape in trend_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('TREND DR2 SEPTEMBRE 2026', trend_text)
+		self.assertIn('TDR2 = 15', trend_text)
+		self.assertIn('MOY = 5,0', trend_text)
+		self.assertGreaterEqual(trend_slide.element.xml.count('val="dash"'), 2)
+		self.assertIn('00B050', trend_slide.element.xml)
+
 	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
 		for day, count in (
 			(date(2026, 8, 21), 4),
