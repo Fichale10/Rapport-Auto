@@ -1,0 +1,198 @@
+====================================================================================================
+FILE: presentation a automatiser GDI.pptx
+Slide size: 12192000 6858000 EMU -> 13.333333333333334 x 7.5 in
+--- Slide 1 --- layout=Pause
+--- Slide 2 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DR2 TREND' [(254000, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=9 name='Objet 8' type=LINKED_OLE_OBJECT (10) pos=(247619,959507) size=(10869612,5057775)
+  shape id=20 name='Objet 19' type=LINKED_OLE_OBJECT (10) pos=(8840788,731838) size=(1714500,815975)
+  shape id=2 name='Rectangle 1' type=AUTO_SHAPE (1) pos=(8061649,1602621) size=(2767217,4414661)
+  shape id=3 name='Rectangle 2' type=AUTO_SHAPE (1) pos=(8656819,1830290) size=(1259633,774441)
+    TEXT: 'TDR2 = 7' [(203200, None, None)]
+    TEXT: 'MOY= 2,33' [(203200, None, None)]
+--- Slide 3 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DR2 ' [(254000, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=3 name='Tableau 2' type=TABLE (19) pos=(149289,1239426) size=(11896530,1186533)
+    TABLE 4x14
+      row 0 ['CAS DE VIOLATION DR2 09-08-2026  ', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 1 ['1 DR2', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 2 ['N°', 'Numero ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'ROOT CAUSE', 'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
+      row 3 ['1', 'TT-DT260808-0050-RES', '\xa0', 'LOME-NORTH', 'LOM-312', '08-08-2026 19:10:00', '737:51:00', 'TRANS IP', 'ROUTEUR HS', 'ROUTEUR HS', '\xa0', '08-09-2026 13:01:00', 'N/A', 'OUI']
+  shape id=5 name='Tableau 4' type=TABLE (19) pos=(322791,4758612) size=(4029269,1640752)
+    TABLE 5x3
+      row 0 ['TOTAL DR2 =7', 'NBRE INC', '%GENERAL']
+      row 1 ['ENERGIE', '3', '43%']
+      row 2 ['TRANS FH-FIELD O', '2', '29%']
+      row 3 ['RAN-FIELD O', '1', '14%']
+      row 4 ['TRANS IP', '1', '14%']
+  shape id=7 name='Tableau 6' type=TABLE (19) pos=(4944967,5045930) size=(6718300,1422344)
+    TABLE 6x3
+      row 0 ['TOP RECCURENT CAUSES', 'Nombre de CAUSE', '%CAUSE2']
+      row 1 ['AVARIE GE', '3', '43%']
+      row 2 ['RADIO ODU HS', '2', '29%']
+      row 3 ['ROUTEUR HS', '1', '14%']
+      row 4 ["PANNE DE L'AMOD", '1', '14%']
+      row 5 ['', '', '']
+--- Slide 4 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS TOP SITE OCCURRENCE DR2 ' [(254000, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=2 name='Objet 1' type=LINKED_OLE_OBJECT (10) pos=(765110,939800) size=(9703837,5722257)
+--- Slide 5 --- layout=Pic1
+  shape id=6 name='Titre 5' type=PLACEHOLDER (14) pos=(150362,179248) size=(9272312,461689)
+    TEXT: 'REUNION GESTION DES INCIDENTSRépartition DR2 Région / Bases' [(355600, None, None), (355600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=3 name='Objet 2' type=LINKED_OLE_OBJECT (10) pos=(398463,2425700) size=(2773362,1706563)
+  shape id=4 name='Objet 3' type=LINKED_OLE_OBJECT (10) pos=(4183128,1138336) size=(7153566,5486400)
+--- Slide 6 --- layout=Pic1
+  shape id=6 name='Titre 5' type=PLACEHOLDER (14) pos=(150362,179248) size=(9272312,461689)
+    TEXT: 'REUNION GESTION DES INCIDENTSEFFICACITE DR2' [(355600, None, None), (355600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=5 name='Objet 4' type=LINKED_OLE_OBJECT (10) pos=(5576454,1120775) size=(6275388,5589588)
+  shape id=2 name='Objet 1' type=LINKED_OLE_OBJECT (10) pos=(508496,2573915) size=(4278022,1874837)
+--- Slide 7 --- layout=Pic1
+  shape id=12 name='Titre 11' type=PLACEHOLDER (14) pos=(80653,115503) size=(7518400,500514)
+    TEXT: 'RAPPORT GESTION DES INCIDENTS POINTS BLOQUANTS' [(228600, None, None), (228600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=2 name='Objet 1' type=LINKED_OLE_OBJECT (10) pos=(251927,933904) size=(11215395,4022725)
+  shape id=5 name='Objet 4' type=LINKED_OLE_OBJECT (10) pos=(7599053,4956629) size=(3771900,1774825)
+  shape id=7 name='ZoneTexte 6' type=TEXT_BOX (17) pos=(8363368,1950782) size=(1862983,307777)
+    TEXT: 'DR2- PB=58' [(177800, None, None)]
+--- Slide 8 --- layout=Pic1
+  shape id=12 name='Titre 11' type=PLACEHOLDER (14) pos=(242726,97111) size=(8457928,552369)
+    TEXT: 'RAPPORT GESTION DES INCIDENTS Aperçu global et comparatif des tendances DR2 ' [(228600, None, None), (228600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=2 name='AutoShape 277' type=AUTO_SHAPE (1) pos=(5943600,3276600) size=(304800,304800)
+  shape id=4 name='Objet 3' type=LINKED_OLE_OBJECT (10) pos=(137319,1264574) size=(11917362,5113337)
+--- Slide 9 --- layout=Pic1
+  shape id=12 name='Titre 11' type=PLACEHOLDER (14) pos=(80653,115503) size=(7518400,500514)
+    TEXT: 'RAPPORT GESTION DES INCIDENTS DR2 COMPARATIVE MENSUEL' [(228600, None, None), (228600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=4 name='Objet 3' type=LINKED_OLE_OBJECT (10) pos=(549275,4329566) size=(5058423,2377623)
+  shape id=5 name='Objet 4' type=LINKED_OLE_OBJECT (10) pos=(5702300,4329113) size=(4935538,2379662)
+  shape id=3 name='Objet 2' type=LINKED_OLE_OBJECT (10) pos=(549275,588963) size=(10209213,3711575)
+  shape id=8 name='Connecteur droit 7' type=LINE (9) pos=(3543455,835482) size=(23636,3458126)
+  shape id=10 name='Connecteur droit avec flèche 9' type=LINE (9) pos=(3543455,1289750) size=(1329582,167938)
+  shape id=13 name='Tableau 12' type=TABLE (19) pos=(4873037,859201) size=(1688234,861099)
+    TABLE 4x2
+      row 0 ['MOYENNE-J', '']
+      row 1 ['JUIN', '6,67']
+      row 2 ['JUILLET', '6,22']
+      row 3 ['AOÛT', '4,56']
+  shape id=7 name='Objet 6' type=LINKED_OLE_OBJECT (10) pos=(10758488,1139825) size=(1323975,1325563)
+--- Slide 10 --- layout=End1
+  shape id=9 name='Text Placeholder 8' type=PLACEHOLDER (14) pos=(706439,5554823) size=(5389562,649046)
+    TEXT: 'YAS Togo / DT / DOC / iSOC / GDI' [(None, None, None), (None, None, None), (None, None, None)]
+  shape id=4 name='Text Placeholder 3' type=PLACEHOLDER (14) pos=(1272739,1758481) size=(3999056,1000125)
+    TEXT: 'MERCI' [(None, None, None)]
+====================================================================================================
+FILE: PRESENTATION REUNION[1] vendredi NEW (9).pptx
+Slide size: 12192000 6858000 EMU -> 13.333333333333334 x 7.5 in
+--- Slide 1 --- layout=Pause
+--- Slide 2 --- layout=Pic1
+  shape id=3 name='Tableau 2' type=TABLE (19) pos=(541701,2100925) size=(11108597,2956560)
+    TABLE 3x4
+      row 0 ['Code', 'Indicateur', 'Définition', 'Seuil \n(2G, 3G, 4G)']
+      row 1 ['DR1', 'Nombre d’indisponibilité d’une station de base', 'Nombre de fois qu’une même station de base est restée indisponible pour une durée d’au moins une heure pendant les 30 derniers jours.', '≤ 2']
+      row 2 ['DR2', 'Délai d’indisponibilité d’une station de base', 'Délai d’indisponibilité par jour d’une même station de base quel que soit le lieu de son implantation sur le territoire national.', '≤ 3H']
+  shape id=4 name='ZoneTexte 3' type=TEXT_BOX (17) pos=(990600,15262) size=(8574145,830997)
+    TEXT: 'REUNION GESTION DES INCIDENTS ' [(304800, None, None)]
+    TEXT: 'Définition DR1/DR2' [(304800, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+--- Slide 3 --- layout=Pic1
+  shape id=4 name='ZoneTexte 3' type=TEXT_BOX (17) pos=(95250,66675) size=(8574145,707886)
+    TEXT: 'REUNION GESTION DES INCIDENTS' [(254000, None, None)]
+    TEXT: 'Cas de violation DR1' [(254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=13 name='Rectangle à coins arrondis 12' type=AUTO_SHAPE (1) pos=(234847,1509138) size=(4999626,4948101)
+  shape id=10 name='ZoneTexte 9' type=TEXT_BOX (17) pos=(1235391,1584515) size=(3586363,276999)
+    TEXT: 'AOUT' [(152400, None, None)]
+  shape id=20 name='Diagramme 19' type=None pos=(282472,1913331) size=(5166606,1714500)
+  shape id=28 name='ZoneTexte 27' type=TEXT_BOX (17) pos=(914349,3679648) size=(3741627,307777)
+    TEXT: 'TDR1= 1 DR1' [(177800, None, None), (177800, None, None), (177800, <MSO_COLOR_TYPE.RGB: 1>, (192, 0, 0)), (177800, <MSO_COLOR_TYPE.RGB: 1>, (192, 0, 0))]
+  shape id=7 name='Objet 6' type=LINKED_OLE_OBJECT (10) pos=(282472,4367213) size=(4886687,1492250)
+  shape id=3 name='Tableau 2' type=TABLE (19) pos=(5894445,1861514) size=(5549900,1316727)
+    TABLE 3x4
+      row 0 ['CAS DE VIOLATION DR1 /AOUT 2026', '', '', '']
+      row 1 ['SITE NAME', 'COUNT', 'REGION', 'CAUSES']
+      row 2 ['DJIYEGA', '3', 'SAVANES', 'PANNE DU SYSTÈME MODULE / ZONE ROUGE']
+--- Slide 4 --- layout=Pic1
+  shape id=9 name='Objet 8' type=LINKED_OLE_OBJECT (10) pos=(490687,1245795) size=(10869643,5057193)
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DR2 TREND' [(254000, None, None), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (139700, None, None)]
+  shape id=20 name='Objet 19' type=LINKED_OLE_OBJECT (10) pos=(8598090,551519) size=(1714500,815975)
+  shape id=2 name='Rectangle 1' type=AUTO_SHAPE (1) pos=(5131837,1830290) size=(6060419,4232182)
+  shape id=3 name='ZoneTexte 2' type=TEXT_BOX (17) pos=(8172093,1653782) size=(1671703,523220)
+    TEXT: 'Nbr DR2 = 18' [(177800, <MSO_COLOR_TYPE.SCHEME: 2>, None), (177800, <MSO_COLOR_TYPE.SCHEME: 2>, None), (177800, <MSO_COLOR_TYPE.SCHEME: 2>, None)]
+    TEXT: 'Moyenne =4,5' [(177800, <MSO_COLOR_TYPE.SCHEME: 2>, None), (177800, <MSO_COLOR_TYPE.SCHEME: 2>, None)]
+--- Slide 5 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DETAIL DR2' [(254000, None, None), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=8 name='Tableau 7' type=TABLE (19) pos=(322792,881748) size=(11639055,3076072)
+    TABLE 7x14
+      row 0 ['CAS DE VIOLATION DR2 03-08-2026  ', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 1 ['4DR2', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 2 ['N°', 'Numero ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'ROOT CAUSE', 'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
+      row 3 ['1', 'TT-DT260803-0004-RES', 'FARENDE', 'FARENDE', 'KAR-028', '03-08-2026 02:24:00', '06:20:00', 'ENERGIE', 'AVARIE GE', 'BATTERIES ATELIER SOLAIRE DECHARGEES/AVARIE GE/GE ALARME', 'RESPECT NORME SURETE', '03-08-2026 08:44:00', '\xa0', 'OUI']
+      row 4 ['2', 'TT-DT260803-0004-RES', 'FARENDE', 'KIDJAN-LANDA', 'KAR-170', '03-08-2026 02:24:00', '06:20:00', 'ENERGIE', 'AVARIE GE', 'BATTERIES ATELIER SOLAIRE DECHARGEES/AVARIE GE/GE ALARME', 'RESPECT NORME SURETE', '03-08-2026 08:44:00', '\xa0', 'OUI']
+      row 5 ['3', 'TT-DT260803-0036-RES', 'NYILE', 'NYILE', 'PLA-127', '03-08-2026 18:32:00', '04:50:00', 'TRANS FH-FIELD O', 'CARTE MPR HS', 'CARTE MPR HS/DYSFONVTIONNEMENT DU MPR', 'N/A', '03-08-2026 23:22:00', '\xa0', 'OUI']
+      row 6 ['4', 'TT-DT260803-0044-RES', '\xa0', 'AMOU-OBLO', 'PLA-116', '03-08-2026 18:36:00', '03:52:00', 'TRANS FH-FIELD O', 'INSTABILITÉ TRANSMISSION', 'PANNE INTERCO MPR-SBTS', 'N/A', '03-08-2026 22:28:00', '\xa0', 'OUI']
+--- Slide 6 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DETAIL DR2' [(254000, None, None), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=5 name='Tableau 4' type=TABLE (19) pos=(322791,959507) size=(11639055,2809036)
+    TABLE 5x14
+      row 0 ['CAS DE VIOLATION DR2 04-08-2026  ', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 1 ['4DR2', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 2 ['N°', 'Numero ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'ROOT CAUSE', 'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
+      row 3 ['1', 'TT-DT260804-0052-RES', '\xa0', 'FIOVI', 'LOM-214', '04-08-2026 09:42:00', '10:25:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '04-08-2026 20:07:00', 'WO-DT-20260804_01 : BASCULEMENT DES EQUIPEMENTS FIELD ET ENERGIE SUR LE NOUVEAU PYLONE', 'OUI']
+      row 4 ['2', 'TT-DT260804-0053-RES', '\xa0', 'AGBELIKO', 'LOM-323', '04-08-2026 18:47:00', 'EN COURS', 'ENVIRONNEMENT', "SURCHAUFFE DE L'OLT", "SURCHAUFFE DE L'OLT", 'N/A', '\xa0', "TRANS FTTM PORTE PAR L'OLT ZANGUERA2", 'OUI']
+--- Slide 7 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DETAIL DR2' [(254000, None, None), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0))]
+  shape id=8 name='Tableau 7' type=TABLE (19) pos=(133068,1049699) size=(11639055,5514090)
+    TABLE 10x14
+      row 0 ['CAS DE VIOLATION DR2 05-08-2026  ', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 1 ['7 DR2', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 2 ['N°', 'Numero ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', '', 'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
+      row 3 ['1', 'TT-DT260804-0053-RES', '\xa0', 'AGBELIKO', 'LOM-323', '04-08-2026 18:47:00', '18:39:00', 'ENVIRONNEMENT', 'SURCHAUFFE DE l’OLT', 'SURCHAUFFE DE l’OLT', 'N/A', '05-08-2026 13:26:00', '\xa0', 'OUI']
+      row 4 ['2', 'TT-DT260805-0002-RES', '\xa0', 'KPETSOU', 'MAR-085', '05-08-2026 02:32:00', '03:43:00', 'ENERGIE', 'AVARIE GE', 'BATTERIES ATELIER SOLAIRE DECHARGEES/AVARIE GE', 'N/A', '05-08-2026 06:15:00', '\xa0', 'OUI']
+      row 5 ['3', 'TT-DT260805-0012-RES', 'PAGOUDA', 'PAGOUDA', 'KAR-033', '05-08-2026 09:30:00', '08:08:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '05-08-2026 17:38:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 6 ['4', 'TT-DT260805-0012-RES', 'PAGOUDA', 'BOUFALE', 'KAR-101', '05-08-2026 09:30:00', '08:08:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '05-08-2026 17:38:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 7 ['5', 'TT-DT260805-0012-RES', 'PAGOUDA', 'PAGOUDA-KAGNISSI', 'KAR-108', '05-08-2026 09:30:00', '08:28:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '05-08-2026 17:58:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 8 ['6', 'TT-DT260805-0012-RES', 'PAGOUDA', 'SOLA', 'KAR-045', '05-08-2026 09:30:00', '08:08:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '05-08-2026 17:38:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 9 ['7', 'TT-DT260805-0080-RES', '\xa0', 'GBANKONE', 'SAV-101', '05-08-2026 18:17:00', 'EN COURS', 'TRANS FH-FIELD O', 'CARTE MSS E HS', 'CARTE MSS E HS', 'RESPECT NORME SURETE', 'N/A', '\xa0', 'OUI']
+--- Slide 8 --- layout=Pic1
+  shape id=4 name='Titre 2' type=PLACEHOLDER (14) pos=(322791,88724) size=(10506075,870783)
+    TEXT: 'REUNION GESTION DES INCIDENTS DETAIL DR2 JEUDI' [(254000, None, None), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (457200, None, None), (254000, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (139700, None, None)]
+  shape id=14 name='Tableau 13' type=TABLE (19) pos=(416097,5102572) size=(2560368,1198245)
+    TABLE 7x3
+      row 0 ['S =18 DR2', 'DR2', '%']
+      row 1 ['PROJET', '9', '50%']
+      row 2 ['TRANS FH-FIELD O', '4', '22%']
+      row 3 ['ENERGIE', '3', '17%']
+      row 4 ['ENVIRONNEMENT', '2', '11%']
+      row 5 ['', '', '']
+      row 6 ['', '', '']
+  shape id=15 name='Tableau 14' type=TABLE (19) pos=(6796430,5102572) size=(4469363,1336822)
+    TABLE 6x3
+      row 0 ['TOP RECCURENT CAUSE ( 18)', '', '']
+      row 1 ['WORK ORDER', '9', '50%']
+      row 2 ['AVARIE GE', '3', '17%']
+      row 3 ["SURCHAUFFE DE L'OLT", '2', '11%']
+      row 4 ['CARTE MPR HS', '2', '11%']
+      row 5 ['', '', '']
+  shape id=6 name='Tableau 5' type=TABLE (19) pos=(207712,959507) size=(11639055,3931654)
+    TABLE 8x14
+      row 0 ['CAS DE VIOLATION DR2 06-06-2026  ', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 1 ['5 DR2', '', '', '', '', '', '', '', '', '', '', '', '', '']
+      row 2 ['N°', 'Numero ticket', 'Site parent', 'Site Name', 'Site ID', 'Alarm Time', 'DUREE', 'Catégorie', 'CAUSE', 'ROOT CAUSE', 'POINT BLOQUANTS', 'Cancel Time', 'OBSERVATION', 'DR2']
+      row 3 ['1', 'TT-DT260805-0071-RES', 'PAGOUDA', 'BOUFALE', 'KAR-101', '05-08-2026 19:22:00', '13:41:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '06-08-2026 09:03:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 4 ['2', 'TT-DT260805-0072-RES', 'PAGOUDA', 'PAGOUDA', 'KAR-033', '05-08-2026 19:22:00', '13:41:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '06-08-2026 09:03:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 5 ['3', 'TT-DT260805-0073-RES', 'PAGOUDA', 'PAGOUDA-KAGNISSI', 'KAR-108', '05-08-2026 19:22:00', '13:41:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '06-08-2026 09:03:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 6 ['4', 'TT-DT260805-0074-RES', 'PAGOUDA', 'SOLA', 'KAR-045', '05-08-2026 19:22:00', '13:41:00', 'PROJET', 'WORK ORDER', 'WORK ORDER', 'N/A', '06-08-2026 09:03:00', 'WO-DT-20260210_04:SWAP DES LIAISONS FH DANS LE CADRE DU PROJET', 'OUI']
+      row 7 ['5', 'TT-DT260805-0080-RES', '\xa0', 'GBANKONE', 'SAV-101', '05-08-2026 18:17:00', '13:24:00', 'TRANS FH-FIELD O', 'CARTE MPR HS', 'PANNE MPR/CARTE MSS E HS', 'RESPECT NORME SURETE', '06-08-2026 07:41:00', 'N/A', 'OUI']
+--- Slide 9 --- layout=Pic1
+  shape id=12 name='Titre 11' type=PLACEHOLDER (14) pos=(242726,97111) size=(8457928,552369)
+    TEXT: 'RAPPORT GESTION DES INCIDENTS Aperçu global et comparatif des tendances DR2 ' [(228600, None, None), (228600, <MSO_COLOR_TYPE.RGB: 1>, (255, 0, 0)), (228600, <MSO_COLOR_TYPE.RGB: 1>, (0, 32, 96)), (228600, <MSO_COLOR_TYPE.PRESET: 102>, None), (457200, <MSO_COLOR_TYPE.PRESET: 102>, None)]
+  shape id=2 name='AutoShape 277' type=AUTO_SHAPE (1) pos=(5943600,3276600) size=(304800,304800)
+  shape id=4 name='Objet 3' type=LINKED_OLE_OBJECT (10) pos=(137319,1264574) size=(11917362,5113337)
+--- Slide 10 --- layout=End1
+  shape id=9 name='Text Placeholder 8' type=PLACEHOLDER (14) pos=(706439,5554823) size=(5389562,649046)
+    TEXT: 'YAS Togo / DT / DOC / iSOC / GDI' [(None, None, None), (None, None, None), (None, None, None)]
+  shape id=4 name='Text Placeholder 3' type=PLACEHOLDER (14) pos=(1272739,1758481) size=(3999056,1000125)
+    TEXT: 'MERCI' [(None, None, None)]
