@@ -10,7 +10,7 @@ from .dr2_availability import (
 	compute_dr2_sites, filter_availability_day, normalize_dr2_datetimes,
 )
 from .dr2_meeting_pptx import (
-	_causes_breakdown, _dr2_dataset, _gdi_reporting_periods,
+	_causes_breakdown, _dr2_dataset, _efficiency_summary_rows, _gdi_reporting_periods,
 	_monthly_comparison, generate_gdi_daily, generate_reunion_hebdo,
 )
 from .models import Dr2ProcessedDate, Dr2ViolationRecord, Site
@@ -86,8 +86,47 @@ class Dr2AvailabilityTests(SimpleTestCase):
 
 
 class Dr2AnalyticsTests(TestCase):
+	def test_efficiency_summary_uses_incident_duration_and_dr2_counts(self):
+		mobile_df = pd.DataFrame([
+			{'date': '2026-09-02', 'region': 'Lomé', 'base': 'NOTSE', 'duration_sec': 1800},
+			{'date': '2026-09-03', 'region': 'LOME', 'base': 'NOTSE', 'duration_sec': 3600},
+			{'date': '2026-09-04', 'region': 'KARA', 'base': 'MANGO', 'duration_sec': 7200},
+			{'date': '2026-08-31', 'region': 'LOME', 'base': 'NOTSE', 'duration_sec': 99999},
+		])
+		region_rows = [
+			{'region': 'LOME', 'dr2': 1},
+			{'region': 'KARA', 'dr2': 0},
+		]
+		base_rows = [
+			{'base': 'NOTSE', 'dr2': 1},
+			{'base': 'MANGO', 'dr2': 0},
+		]
+
+		regions, bases = _efficiency_summary_rows(
+			mobile_df, region_rows, base_rows,
+			date(2026, 9, 1), date(2026, 9, 6),
+		)
+
+		region_by_name = {row['label']: row for row in regions}
+		base_by_name = {row['label']: row for row in bases}
+		self.assertEqual(
+			region_by_name['LOME'],
+			{'label': 'LOME', 'incidents': 2, 'mttr': '0:45:00', 'dr2': 1, 'efficiency': 50},
+		)
+		self.assertEqual(
+			base_by_name['NOTSE'],
+			{'label': 'NOTSE', 'incidents': 2, 'mttr': '0:45:00', 'dr2': 1, 'efficiency': 50},
+		)
+		self.assertEqual(base_by_name['MANGO']['mttr'], '2:00:00')
+		self.assertEqual(base_by_name['MANGO']['efficiency'], 100)
+
 	def test_gdi_deck_places_red_definitions_before_summary(self):
-		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+		with patch(
+			'reports.dr2_meeting_pptx._mobile_incident_dataframe',
+			return_value=pd.DataFrame(columns=[
+				'date', 'region', 'base', 'site', 'duration_sec', 'cause',
+			]),
+		):
 			presentation = Presentation(generate_gdi_daily(
 				date(2026, 9, 1), date(2026, 9, 6), '07/09/2026',
 			))
@@ -143,7 +182,17 @@ class Dr2AnalyticsTests(TestCase):
 			site_name='SITE-WITHOUT-DR2', region='PLATEAUX', base='KPALIME',
 		)
 
-		with patch('reports.dr2_meeting_pptx._dr1_violations', return_value=[]):
+		mobile_df = pd.DataFrame([
+			{
+				'date': '2026-09-05', 'region': 'LOME', 'base': 'MANGO',
+				'site': f'MOBILE-{index}', 'duration_sec': 3600, 'cause': 'PANNE',
+			}
+			for index in range(20)
+		])
+		with patch(
+			'reports.dr2_meeting_pptx._mobile_incident_dataframe',
+			return_value=mobile_df,
+		):
 			presentation = Presentation(generate_gdi_daily(
 				date(2026, 9, 4), date(2026, 9, 6), '07/09/2026',
 			))
@@ -236,6 +285,35 @@ class Dr2AnalyticsTests(TestCase):
 			target_by_base,
 			{'KPALIME': 1.0, 'MANGO': 1.0, 'ELAVAGNON': 1.0},
 		)
+
+		efficiency_slide = presentation.slides[14]
+		efficiency_text = ' '.join(
+			shape.text for shape in efficiency_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('EFFICACITE DR2', efficiency_text)
+		efficiency_tables = [
+			shape.table for shape in efficiency_slide.shapes if shape.has_table
+		]
+		self.assertEqual(len(efficiency_tables), 2)
+		self.assertEqual(
+			[efficiency_tables[0].cell(0, column).text for column in range(5)],
+			['REGION', 'Nbr I', 'MTTR', 'DR2', 'EFFICACITE DR2'],
+		)
+		self.assertEqual(
+			[efficiency_tables[1].cell(0, column).text for column in range(5)],
+			['BASE TECH', "NBRE D'INCIDENT", 'MTTR INC', 'NBRE DE DR2', 'Efficacité DR2'],
+		)
+		region_values = {
+			row.cells[0].text: [cell.text for cell in row.cells]
+			for row in list(efficiency_tables[0].rows)[1:]
+		}
+		base_values = {
+			row.cells[0].text: [cell.text for cell in row.cells]
+			for row in list(efficiency_tables[1].rows)[1:]
+		}
+		self.assertEqual(region_values['LOME'], ['LOME', '20', '1:00:00', '15', '25%'])
+		self.assertEqual(base_values['MANGO'], ['MANGO', '20', '1:00:00', '12', '40%'])
 
 	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
 		for day, count in (

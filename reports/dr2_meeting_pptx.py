@@ -13,6 +13,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from collections import Counter
 from pathlib import Path
+import unicodedata
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -398,10 +399,9 @@ def _slide_executive_summary(prs, month_data, detail_data, qs_month):
     return sl
 
 
-def _slide_dr1_violations(prs, fin):
+def _slide_dr1_violations(prs, fin, dr1):
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'Cas de violation DR1')
-    dr1 = _dr1_violations(fin)
     period_start = fin - timedelta(days=29)
     _txt(
         sl, f'Du {period_start.strftime("%d/%m/%Y")} au {fin.strftime("%d/%m/%Y")}',
@@ -683,6 +683,96 @@ def _base_technical_rows(qs):
     return rows
 
 
+def _summary_key(value):
+    text = unicodedata.normalize('NFKD', str(value or '').strip().upper())
+    normalized = ''.join(char for char in text if not unicodedata.combining(char))
+    if not normalized or normalized == '—':
+        return 'INCONNU'
+    compact = ''.join(char for char in normalized if char.isalnum())
+    canonical_labels = [*DR2_REGION_TARGETS, *_BASE_TECHNIQUE_ORDER]
+    for label in canonical_labels:
+        if ''.join(char for char in label if char.isalnum()) == compact:
+            return label
+    return normalized
+
+
+def _format_mttr(seconds):
+    total = max(0, int(round(seconds or 0)))
+    return f'{total // 3600}:{(total % 3600) // 60:02d}:{total % 60:02d}'
+
+
+def _efficiency_summary_rows(mobile_df, region_rows, base_rows, debut, fin):
+    """Calcule incidents, MTTR, DR2 et efficacité par région et par base."""
+    if mobile_df is None:
+        return None, None
+
+    required = {'date', 'region', 'base', 'duration_sec'}
+    if not required.issubset(mobile_df.columns):
+        return None, None
+
+    start_key = debut.isoformat()
+    end_key = fin.isoformat()
+    period_df = mobile_df[
+        mobile_df['date'].fillna('').astype(str).between(start_key, end_key)
+    ]
+
+    incident_stats = {'region': {}, 'base': {}}
+    for row in period_df[['region', 'base', 'duration_sec']].to_dict('records'):
+        try:
+            duration = max(0.0, float(row.get('duration_sec') or 0))
+        except (TypeError, ValueError):
+            duration = 0.0
+        for dimension in ('region', 'base'):
+            key = _summary_key(row.get(dimension))
+            aggregate = incident_stats[dimension].setdefault(
+                key, {'incidents': 0, 'duration_sec': 0.0},
+            )
+            aggregate['incidents'] += 1
+            aggregate['duration_sec'] += duration
+
+    dr2_by_region = {
+        _summary_key(row.get('region')): int(row.get('dr2') or 0)
+        for row in region_rows
+    }
+    dr2_by_base = {
+        _summary_key(row.get('base')): int(row.get('dr2') or 0)
+        for row in base_rows
+    }
+
+    def build_rows(dimension, dr2_counts, preferred_order, include_all=False):
+        stats = incident_stats[dimension]
+        known = set(stats) | set(dr2_counts)
+        preferred = [_summary_key(label) for label in preferred_order]
+        ordered = (
+            preferred if include_all
+            else [label for label in preferred if label in known]
+        )
+        ordered.extend(sorted(known - set(ordered)))
+        result = []
+        for label in ordered:
+            aggregate = stats.get(label, {})
+            incidents = int(aggregate.get('incidents', 0))
+            duration_sec = float(aggregate.get('duration_sec', 0))
+            dr2 = int(dr2_counts.get(label, 0))
+            efficiency = (
+                max(0, round((incidents - dr2) / incidents * 100))
+                if incidents else 0
+            )
+            result.append({
+                'label': label,
+                'incidents': incidents,
+                'mttr': _format_mttr(duration_sec / incidents if incidents else 0),
+                'dr2': dr2,
+                'efficiency': efficiency,
+            })
+        return result
+
+    return (
+        build_rows('region', dr2_by_region, DR2_REGION_TARGETS, include_all=True),
+        build_rows('base', dr2_by_base, reversed(_BASE_TECHNIQUE_ORDER)),
+    )
+
+
 def _daily_counts(qs, debut, fin):
     cnt = Counter(rec.date for rec in qs)
     days = []
@@ -767,16 +857,27 @@ def _monthly_comparison(fin, count=3):
     return months
 
 
-def _dr1_violations(fin):
-    """Sites en violation DR1 (indisponible >= 1h, plus de 2 fois sur les 30
-    derniers jours) — via l'API ticketing live (dégrade proprement si injoignable)."""
+def _mobile_incident_dataframe(debut, fin):
+    """Charge les incidents mobiles normalisés pour la période demandée."""
     from .analytics import fetch_api_dataframe, normalize_dataframe
-    debut30 = fin - timedelta(days=29)
     try:
-        raw = fetch_api_dataframe(debut30.isoformat(), fin.isoformat(), network='mobile')
-        df = normalize_dataframe(raw)
+        raw = fetch_api_dataframe(debut.isoformat(), fin.isoformat(), network='mobile')
+        return normalize_dataframe(raw)
     except Exception:
         return None  # API indisponible
+
+
+def _dr1_rows(mobile_df, fin):
+    if mobile_df is None:
+        return None
+    if mobile_df.empty:
+        return []
+    debut30 = fin - timedelta(days=29)
+    df = mobile_df[
+        mobile_df['date'].fillna('').astype(str).between(
+            debut30.isoformat(), fin.isoformat(),
+        )
+    ]
     df = df[df['duration_sec'].fillna(0) >= 3600]
     if df.empty:
         return []
@@ -786,6 +887,12 @@ def _dr1_violations(fin):
     ).reset_index()
     grp = grp[grp['cnt'] > 2].sort_values('cnt', ascending=False)
     return grp.to_dict('records')
+
+
+def _dr1_violations(fin):
+    """Sites en violation DR1 (indisponible >= 1h, plus de 2 fois sur 30 jours)."""
+    debut30 = fin - timedelta(days=29)
+    return _dr1_rows(_mobile_incident_dataframe(debut30, fin), fin)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1650,86 +1757,82 @@ def _percent_bar_chart(slide, categories, values, left, top, width, height, titl
     return chart
 
 
-def _efficiency_dashboard(slide, region_rows):
-    def dashboard_text(*args, **kwargs):
-        text_box = _txt(*args, **kwargs)
-        text_box.text_frame.margin_top = 0
-        text_box.text_frame.margin_bottom = 0
-        for paragraph in text_box.text_frame.paragraphs:
-            for run in paragraph.runs:
-                run.font.name = 'Arial'
-        return text_box
+def _efficiency_fill(value):
+    if value >= 99:
+        return C_REPORT_GREEN
+    if value >= 93:
+        return C_REPORT_YELLOW
+    if value >= 88:
+        return C_REPORT_ORANGE
+    return C_REPORT_RED
 
-    rows = list(region_rows)
-    left = Inches(0.55)
-    top = Inches(1.42)
-    width = Inches(12.20)
-    row_height = Inches(0.72)
-    gauge_left = Inches(4.05)
-    gauge_width = Inches(7.25)
-    gauge_height = Inches(0.16)
 
-    dashboard_text(slide, 'RÉGION', left + Inches(0.18), top,
-                   Inches(1.45), Inches(0.28), size=8, bold=True,
-                   color=C_REPORT_BLUE)
-    dashboard_text(slide, 'VOLUME / CIBLE', left + Inches(1.72), top,
-                   Inches(1.70), Inches(0.28), size=8, bold=True,
-                   color=C_REPORT_BLUE)
-    dashboard_text(slide, 'CONSOMMATION DE LA CIBLE', gauge_left, top,
-                   gauge_width, Inches(0.28), size=8, bold=True,
-                   color=C_REPORT_BLUE)
-    dashboard_text(slide, 'TAUX', Inches(11.58), top,
-                   Inches(0.92), Inches(0.28), size=8, bold=True,
-                   color=C_REPORT_BLUE, align=PP_ALIGN.RIGHT)
+def _efficiency_table(slide, rows, headers, left, top, width, height,
+                      col_widths, font_size):
+    ordered_rows = sorted(rows, key=lambda row: row['efficiency'], reverse=True)
+    table = slide.shapes.add_table(
+        len(ordered_rows) + 1, len(headers), left, top, width, height,
+    ).table
+    for index, column_width in enumerate(col_widths):
+        table.columns[index].width = Inches(column_width)
 
-    rows_top = top + Inches(0.34)
-    for index, row in enumerate(rows):
-        row_top = rows_top + index * row_height
-        background = C_WHITE if index % 2 == 0 else RGBColor(0xF5, 0xF7, 0xFA)
-        _rect(slide, left, row_top, width, row_height - Inches(0.04), background)
-        dashboard_text(
-            slide, row['region'], left + Inches(0.18), row_top + Inches(0.19),
-            Inches(1.40), Inches(0.26), size=11, bold=True,
-            color=C_REPORT_BLUE, wrap=False,
-        )
-        dashboard_text(
-            slide, f"{row['dr2']} DR2  /  {row['tget']}",
-            left + Inches(1.72), row_top + Inches(0.19),
-            Inches(1.70), Inches(0.26), size=10, color=C_DTEXT, wrap=False,
+    header_height = Inches(0.32)
+    body_height = int((height - header_height) / max(len(ordered_rows), 1))
+    table.rows[0].height = header_height
+    for column, header in enumerate(headers):
+        _report_cell(
+            table.cell(0, column), header, C_YELL, C_REPORT_BLUE,
+            True, max(7, font_size - 1),
+            PP_ALIGN.LEFT if column == 0 else PP_ALIGN.CENTER,
         )
 
-        gauge_top = row_top + Inches(0.25)
-        _rect(slide, gauge_left, gauge_top, gauge_width, gauge_height,
-              RGBColor(0xE4, 0xE9, 0xF1))
-        status_color = {
-            'red': C_REPORT_RED,
-            'yellow': C_REPORT_YELLOW,
-            'green': C_DETAIL_GREEN,
-        }[row['color']]
-        filled_width = max(
-            Inches(0.06),
-            int(gauge_width * min(max(row['pct_tget'], 0), 100) / 100),
-        )
-        _rect(slide, gauge_left, gauge_top, filled_width, gauge_height, status_color)
-        dashboard_text(
-            slide, f"{row['pct_tget']}%", Inches(11.58), row_top + Inches(0.17),
-            Inches(0.92), Inches(0.30), size=12, bold=True, color=status_color,
-            align=PP_ALIGN.RIGHT, wrap=False,
-        )
+    for row_index, row in enumerate(ordered_rows, 1):
+        table.rows[row_index].height = body_height
+        values = [
+            row['label'], row['incidents'], row['mttr'], row['dr2'],
+            f"{row['efficiency']}%",
+        ]
+        for column, value in enumerate(values):
+            background = (
+                C_SUMMARY_GRAY if column == 0
+                else _efficiency_fill(row['efficiency']) if column == 4
+                else C_WHITE
+            )
+            foreground = (
+                C_DETAIL_RED if column in (1, 3)
+                else RGBColor(0x00, 0x00, 0x00)
+            )
+            _report_cell(
+                table.cell(row_index, column), value, background, foreground,
+                column in (0, 1, 3), font_size,
+                PP_ALIGN.LEFT if column == 0 else PP_ALIGN.CENTER,
+            )
+    return table
 
-    legend_top = rows_top + len(rows) * row_height + Inches(0.10)
-    legend = [
-        (C_DETAIL_GREEN, '< 70%  Maîtrisé'),
-        (C_REPORT_YELLOW, '70–99%  Vigilance'),
-        (C_REPORT_RED, '≥ 100%  Cible dépassée'),
-    ]
-    for index, (color, label) in enumerate(legend):
-        item_left = Inches(3.15 + index * 2.75)
-        _rect(slide, item_left, legend_top + Inches(0.04), Inches(0.12), Inches(0.12), color)
-        dashboard_text(
-            slide, label, item_left + Inches(0.20), legend_top,
-            Inches(2.35), Inches(0.24), size=8, color=C_DTEXT, wrap=False,
+
+def _efficiency_dashboard(slide, region_rows, base_rows):
+    if region_rows is None or base_rows is None:
+        _txt(
+            slide,
+            'Données ticketing indisponibles pour le calcul du MTTR et de l’efficacité.',
+            MARGIN, CONTENT_TOP + Inches(2.0), SW - 2 * MARGIN,
+            Inches(0.6), size=16, bold=True, color=C_RED_T,
+            align=PP_ALIGN.CENTER,
         )
+        return
+
+    _efficiency_table(
+        slide, region_rows,
+        ['REGION', 'Nbr I', 'MTTR', 'DR2', 'EFFICACITE DR2'],
+        Inches(0.18), Inches(3.05), Inches(4.55), Inches(2.45),
+        [1.25, 0.72, 0.90, 0.55, 1.13], 10,
+    )
+    _efficiency_table(
+        slide, base_rows,
+        ['BASE TECH', "NBRE D'INCIDENT", 'MTTR INC', 'NBRE DE DR2', 'Efficacité DR2'],
+        Inches(5.45), Inches(0.72), Inches(6.82), Inches(6.35),
+        [1.75, 1.35, 1.25, 1.12, 1.35], 8,
+    )
 
 
 def _slide_monthly_comparison(prs, d):
@@ -1860,6 +1963,8 @@ def generate_gdi_daily(debut, fin, generated_on):
     qs_month = _dr2_qs(month_start, data_end)
     qs_detail = _dr2_qs(detail_start, detail_end)
     detail_label = f"{detail_start.strftime('%d/%m/%Y')} au {detail_end.strftime('%d/%m/%Y')}"
+    dr1_rows = _dr1_violations(data_end)
+    mobile_df = _mobile_incident_dataframe(month_start, data_end)
 
     # 1. Cover
     _cover(prs)
@@ -1875,7 +1980,7 @@ def generate_gdi_daily(debut, fin, generated_on):
 
     # 5-6. DR1
     _section(prs, 'TENDANCE DR1', data_end, 1)
-    _slide_dr1_violations(prs, data_end)
+    _slide_dr1_violations(prs, data_end, dr1_rows)
 
     # 7-8. DR2 du dernier vendredi au dimanche achevé
     _section(prs, 'TENDANCE DR2', data_end, 2)
@@ -1935,10 +2040,14 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 14. Répartition région / bases — parc Site Info et violations du mois
     _region_base_summary_slide(prs, month_data, qs_month)
 
-    # 15. Efficacité — formule actuelle conservée jusqu'à validation métier
+    # 15. Efficacité par région et base technique, calculée sur les incidents
     sl = _blank(prs)
-    _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2 — ATTEINTE DES CIBLES')
-    _efficiency_dashboard(sl, month_data['region_rows'])
+    _header(sl, 'REUNION GESTION DES INCIDENTS', 'EFFICACITE DR2')
+    region_efficiency, base_efficiency = _efficiency_summary_rows(
+        mobile_df, month_data['region_rows'], _base_technical_rows(qs_month),
+        month_start, data_end,
+    )
+    _efficiency_dashboard(sl, region_efficiency, base_efficiency)
 
     # 16. Points bloquants — mois
     sl = _blank(prs)
