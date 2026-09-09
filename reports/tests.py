@@ -248,6 +248,9 @@ class Dr2AnalyticsTests(TestCase):
 		self.assertIn('TOP SITE OCCURRENCE DR2', top_sites_text)
 		self.assertNotIn('CLASSEMENT DES SITES RÉCURRENTS DR2', top_sites_text)
 		top_chart = next(shape.chart for shape in top_sites_slide.shapes if shape.has_chart)
+		self.assertEqual(top_chart.value_axis.major_unit, 1.0)
+		self.assertEqual(top_chart.value_axis.maximum_scale, 4.0)
+		self.assertEqual(top_chart.value_axis.tick_labels.number_format, '0')
 		categories = [category.label for category in top_chart.plots[0].categories]
 		self.assertIn('RECURRING-SITE', categories)
 		self.assertFalse(any(category[:2].isdigit() for category in categories))

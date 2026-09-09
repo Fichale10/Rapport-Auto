@@ -1227,14 +1227,9 @@ def _top_site_occurrence_chart(slide, top_sites):
     chart.value_axis.tick_labels.font.color.rgb = C_DTEXT
     chart.value_axis.minimum_scale = 0
     maximum = max(values, default=0)
-    if maximum <= 2:
-        chart.value_axis.major_unit = 0.5
-        chart.value_axis.maximum_scale = 2.5
-        chart.value_axis.tick_labels.number_format = '0.0'
-    else:
-        chart.value_axis.major_unit = 1
-        chart.value_axis.maximum_scale = maximum + 1
-        chart.value_axis.tick_labels.number_format = '0'
+    chart.value_axis.major_unit = 1
+    chart.value_axis.maximum_scale = max(maximum + 1, 1)
+    chart.value_axis.tick_labels.number_format = '0'
     chart.value_axis.has_major_gridlines = True
     chart.value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
     chart.value_axis.format.line.color.rgb = RGBColor(0xB7, 0xB7, 0xB7)
