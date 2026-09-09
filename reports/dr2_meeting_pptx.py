@@ -55,6 +55,25 @@ C_REPORT_RED = RGBColor(0xF8, 0x69, 0x6B)
 C_TREND_GREEN = RGBColor(0x00, 0xB0, 0x50)
 C_DEFINITION_ROW = RGBColor(0xFF, 0xD1, 0xD1)
 C_DEFINITION_ALT = RGBColor(0xFF, 0xE6, 0xE6)
+C_CROSS_HEADER = RGBColor(0xB4, 0xC6, 0xE7)
+C_CROSS_GRAY = RGBColor(0xD9, 0xD9, 0xD9)
+C_CROSS_GREEN = RGBColor(0x63, 0xBE, 0x7B)
+C_CROSS_GREEN_DARK = RGBColor(0x70, 0xAD, 0x47)
+
+_CROSS_MATRIX_CATEGORIES = [
+    'ENERGIE', 'RAN-FIELD O', 'TRANS FH-FIELD O', 'TRANS IP',
+    'TRANS FO', 'TRANS FTTM', 'PROJET', 'BSS', 'ENVIRONNEMENT',
+    'INFRA', 'ENERGIE / TRANS / RAN',
+]
+
+_BLOCKING_POINT_STYLES = [
+    ('MANQUE DE PDR', RGBColor(0x5B, 0x9B, 0xD5)),
+    ("PROBLEME D'ACCES", RGBColor(0xED, 0x7D, 0x31)),
+    ('RESPECT NORME HSE', RGBColor(0xA5, 0xA5, 0xA5)),
+    ('VANDALISME', RGBColor(0xFF, 0xC0, 0x00)),
+    ('RESPECT NORME SURETE', RGBColor(0x70, 0xAD, 0x47)),
+    ('RESPECT NORME SURETE (ZONE ROUGE)', RGBColor(0xFF, 0x00, 0x00)),
+]
 
 _JOURS_FR = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE']
 _MOIS_FR = ['', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
@@ -621,10 +640,86 @@ def _causes_breakdown(qs, n=10, total=None):
     return [(c, k, round(k / denominator * 100)) for c, k in cnt.most_common(n)]
 
 
+def _blocking_point_category(value):
+    raw = ' '.join(str(value or '').strip().upper().split())
+    normalized = ''.join(
+        char for char in unicodedata.normalize('NFKD', raw)
+        if not unicodedata.combining(char)
+    )
+    words = ' '.join(''.join(
+        char if char.isalnum() else ' ' for char in normalized
+    ).split())
+    if words in {
+        '', 'N A', 'NA', 'NON', 'RAS', 'AUCUN', 'NEANT',
+        'SANS POINT BLOQUANT', 'PAS DE POINT BLOQUANT',
+        'AUCUN POINT BLOQUANT',
+    }:
+        return ''
+    if 'PDR' in words:
+        return 'MANQUE DE PDR'
+    if 'ACCES' in words:
+        return "PROBLEME D'ACCES"
+    if 'SURETE' in words and 'ZONE ROUGE' in words:
+        return 'RESPECT NORME SURETE (ZONE ROUGE)'
+    if 'HSE' in words:
+        return 'RESPECT NORME HSE'
+    if 'VANDAL' in words:
+        return 'VANDALISME'
+    if 'SURETE' in words:
+        return 'RESPECT NORME SURETE'
+    return words
+
+
 def _points_bloquants(qs):
-    cnt = Counter((rec.point_bloquant or '').strip() for rec in qs
-                  if (rec.point_bloquant or '').strip() and (rec.point_bloquant or '').strip().upper() != 'N/A')
-    return cnt.most_common(15)
+    counts = Counter(
+        category for record in qs
+        for category in [_blocking_point_category(record.point_bloquant)]
+        if category
+    )
+    return counts.most_common(15)
+
+
+def _blocking_point_data(qs, month_start, data_end):
+    known_names = [name for name, _color in _BLOCKING_POINT_STYLES]
+    daily_counts = {name: Counter() for name in known_names}
+    totals = Counter()
+    unknown_daily = Counter()
+    unknown_total = 0
+    for record in qs:
+        category = _blocking_point_category(record.point_bloquant)
+        if not category:
+            continue
+        if category in daily_counts:
+            daily_counts[category][record.date] += 1
+            totals[category] += 1
+        else:
+            unknown_daily[record.date] += 1
+            unknown_total += 1
+
+    styles = list(_BLOCKING_POINT_STYLES)
+    if unknown_total:
+        styles.append(('AUTRES', C_REPORT_NAVY))
+        daily_counts['AUTRES'] = unknown_daily
+        totals['AUTRES'] = unknown_total
+
+    calendar_days = monthrange(month_start.year, month_start.month)[1]
+    days = [date(month_start.year, month_start.month, day)
+            for day in range(1, calendar_days + 1)]
+    series = [
+        {
+            'name': name,
+            'color': color,
+            'values': [daily_counts[name].get(day, 0) for day in days],
+            'total': totals[name],
+        }
+        for name, color in styles
+    ]
+    return {
+        'days': days,
+        'series': series,
+        'blocking_total': sum(item['total'] for item in series),
+        'data_end': data_end,
+    }
 
 
 def _top_sites(qs, n=15):
@@ -1624,59 +1719,272 @@ def _slide_region_performance(prs, d):
 
 def _slide_business_matrix(prs, d):
     sl = _blank(prs)
-    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'MATRICE RÉGION × MÉTIER')
-    _use_office_font(_txt(
-        sl, f"Période : {d['debut'].strftime('%d/%m/%Y')} au {d['fin'].strftime('%d/%m/%Y')}",
-        MARGIN, Inches(1.08), Inches(6.8), Inches(0.28), size=10, color=C_DTEXT,
-    ))
-    active_stats = [stat for stat in _daily_report_stats(d) if stat['total']]
-    active_stats = sorted(active_stats, key=lambda stat: stat['total'], reverse=True)[:8]
-    business_names = [stat['escalade'] for stat in active_stats]
-    region_rows = [row for row in d['region_rows'] if row['dr2']]
-    matrix_rows = []
-    for region in region_rows:
-        counts = [
+    uses_reference_layout = sl.slide_layout.name == 'Pic1'
+    if not uses_reference_layout:
+        _rect(sl, 0, 0, SW, SH, C_WHITE)
+        _logo(sl)
+    _txt(sl, 'RAPPORT GESTION DES INCIDENTS', Inches(0.12), Inches(0.12),
+         Inches(10.2), Inches(0.34), size=18, bold=True, color=C_BLUE)
+    _txt(sl, 'TABLEAU DE CROISEMENT REGION / METIERS', Inches(0.12), Inches(0.50),
+         Inches(10.2), Inches(0.34), size=18, bold=True, color=C_DETAIL_RED)
+
+    stats_by_name = {stat['escalade']: stat for stat in _daily_report_stats(d)}
+    extra_categories = [
+        name for name, stat in stats_by_name.items()
+        if name not in _CROSS_MATRIX_CATEGORIES and stat['total']
+    ]
+    business_names = _CROSS_MATRIX_CATEGORIES + extra_categories
+    region_by_name = {row['region']: row for row in d['region_rows']}
+    region_names = list(DR2_REGION_TARGETS)
+    region_names.extend(sorted(name for name in region_by_name if name not in region_names))
+
+    category_counts = {}
+    for region_name in region_names:
+        category_counts[region_name] = [
             sum(
                 1 for row in d['detail_rows']
-                if row['region'] == region['region'] and _category_matches(row, name)
+                if row['region'] == region_name and _category_matches(row, category)
             )
-            for name in business_names
+            for category in business_names
         ]
-        matrix_rows.append([region['region'], region['dr2'], *counts])
-    matrix_rows.append([
-        'TOTAL', d['total_dr2'], *[stat['total'] for stat in active_stats],
-    ])
 
-    matrix_max = max(
-        [value for row in matrix_rows[:-1] for value in row[2:]] or [0]
-    )
-    cell_fmts = {}
-    for row_index, row in enumerate(matrix_rows):
-        is_total = row_index == len(matrix_rows) - 1
-        for col_index in range(len(row)):
-            if is_total:
-                cell_fmts[(row_index, col_index)] = (C_REPORT_NAVY, C_WHITE)
-            elif col_index == 0:
-                cell_fmts[(row_index, col_index)] = (C_WHITE, C_DTEXT)
-            elif col_index == 1:
-                cell_fmts[(row_index, col_index)] = (C_REPORT_CYAN, C_WHITE)
+    row_count = len(region_names) + 3
+    column_count = len(business_names) + 3
+    table_left = Inches(0.57)
+    table_top = Inches(1.28)
+    table = sl.shapes.add_table(
+        row_count, column_count,
+        table_left, table_top, Inches(12.0), Inches(5.0),
+    ).table
+
+    fixed_widths = [0.86, 0.97, 0.69]
+    reference_widths = [0.92, 1.04, 1.52, 0.75, 0.79, 1.02,
+                        0.59, 0.61, 0.68, 0.53, 1.03]
+    if len(business_names) == len(reference_widths):
+        category_widths = reference_widths
+    else:
+        category_widths = [9.48 / len(business_names)] * len(business_names)
+    for column_index, column_width in enumerate(fixed_widths + category_widths):
+        table.columns[column_index].width = Inches(column_width)
+
+    table.rows[0].height = Inches(0.65)
+    table.rows[1].height = Inches(1.20)
+    table.rows[row_count - 1].height = Inches(0.51)
+    body_height = 2.64 / max(len(region_names), 1)
+    for row_index in range(2, row_count - 1):
+        table.rows[row_index].height = Inches(body_height)
+
+    title_cell = table.cell(0, 0)
+    title_cell.merge(table.cell(0, column_count - 1))
+    _report_cell(title_cell, 'TABLEAU DE CROISEMENT', C_YELL,
+                 RGBColor(0x00, 0x00, 0x00), True, 20)
+
+    _report_cell(table.cell(1, 0), 'ZONE', C_CROSS_HEADER, C_DTEXT, True, 10,
+                 PP_ALIGN.LEFT)
+    _report_cell(table.cell(1, 1), 'COUNT', C_CROSS_HEADER, C_DTEXT, True, 10)
+    escalation_cell = table.cell(1, 2)
+    escalation_cell.merge(table.cell(row_count - 1, 2))
+    _report_cell(escalation_cell, '', C_CROSS_GRAY)
+    for category_index, category in enumerate(business_names, 3):
+        _report_cell(table.cell(1, category_index), category,
+                     C_CROSS_HEADER, C_DTEXT, True, 8)
+
+    for region_index, region_name in enumerate(region_names, 2):
+        counts = category_counts[region_name]
+        total = region_by_name.get(region_name, {}).get('dr2', sum(counts))
+        _report_cell(table.cell(region_index, 0), region_name,
+                     C_WHITE, C_DTEXT, True, 10, PP_ALIGN.LEFT)
+        count_background = C_REPORT_PALE_GREEN
+        count_foreground = C_DTEXT
+        if total >= 3:
+            count_background = C_REPORT_ORANGE
+        elif total == 2 and max(counts or [0]) >= 2:
+            count_background = C_CROSS_GREEN_DARK
+            count_foreground = C_WHITE
+        _report_cell(table.cell(region_index, 1), total,
+                     count_background, count_foreground, True, 12)
+        for category_index, value in enumerate(counts, 3):
+            if value == 0:
+                background = C_CROSS_GREEN
+            elif value == 1:
+                background = C_REPORT_YELLOW
+            elif value == 2:
+                background = C_REPORT_ORANGE
             else:
-                value = row[col_index]
-                background = _heat_color(value, matrix_max)
-                foreground = C_WHITE if value / max(matrix_max, 1) >= 0.33 else C_DTEXT
-                cell_fmts[(row_index, col_index)] = (background, foreground)
+                background = C_REPORT_RED
+            _report_cell(table.cell(region_index, category_index), value,
+                         background, RGBColor(0x00, 0x00, 0x00), False, 10)
 
-    table_width = min(12.45, 2.45 + 1.65 * max(len(business_names), 1))
-    table_height = min(4.95, max(2.40, 0.65 * (len(matrix_rows) + 1)))
-    business_width = (table_width - 2.45) / max(len(business_names), 1)
-    _table(
-        sl, ['RÉGION', 'TOTAL', *business_names], matrix_rows,
-        left=int((SW - Inches(table_width)) / 2),
-        top=Inches(1.55) + int((Inches(4.95) - Inches(table_height)) / 2),
-        width=Inches(table_width), height=Inches(table_height),
-        col_widths=[1.55, 0.9] + [business_width] * len(business_names),
-        font_size=8, hdr_size=7, alt=False, cell_fmts=cell_fmts,
+    total_row = row_count - 1
+    total_cell = table.cell(total_row, 0)
+    total_cell.merge(table.cell(total_row, 1))
+    _report_cell(total_cell, d['total_dr2'], C_REPORT_ORANGE,
+                 RGBColor(0x00, 0x00, 0x00), True, 12)
+    for category_index, category in enumerate(business_names, 3):
+        total = stats_by_name.get(category, {}).get('total', 0)
+        _report_cell(table.cell(total_row, category_index), total,
+                     C_CROSS_GRAY, RGBColor(0x00, 0x00, 0x00), True, 11)
+
+    x_positions = [table_left]
+    for column in table.columns:
+        x_positions.append(x_positions[-1] + column.width)
+    y_positions = [table_top]
+    for row in table.rows:
+        y_positions.append(y_positions[-1] + row.height)
+
+    def grid_line(x1, y1, x2, y2):
+        line = sl.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
+        line.line.color.rgb = RGBColor(0x00, 0x00, 0x00)
+        line.line.width = Pt(1)
+
+    grid_line(x_positions[0], y_positions[0], x_positions[-1], y_positions[0])
+    grid_line(x_positions[0], y_positions[1], x_positions[-1], y_positions[1])
+    grid_line(x_positions[0], y_positions[-1], x_positions[-1], y_positions[-1])
+    for boundary_index, x_position in enumerate(x_positions):
+        if boundary_index in (0, column_count):
+            grid_line(x_position, y_positions[0], x_position, y_positions[-1])
+        elif boundary_index == 1:
+            grid_line(x_position, y_positions[1], x_position, y_positions[-2])
+        else:
+            grid_line(x_position, y_positions[1], x_position, y_positions[-1])
+    for y_position in y_positions[2:-1]:
+        grid_line(x_positions[0], y_position, x_positions[2], y_position)
+        grid_line(x_positions[3], y_position, x_positions[-1], y_position)
+
+    escalation_label = _txt(
+        sl, 'BY ESCALADE', Inches(1.55), Inches(3.93), Inches(2.40), Inches(0.35),
+        size=11, bold=True, color=C_DTEXT, align=PP_ALIGN.CENTER, wrap=False,
     )
+    escalation_label.rotation = 270
+    return sl
+
+
+def _slide_blocking_points(prs, qs, dataset, month_start, data_end):
+    sl = _blank(prs)
+    _header(sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS')
+    blocking = _blocking_point_data(qs, month_start, data_end)
+    without_blocking_point = max(
+        dataset['total_dr2'] - blocking['blocking_total'], 0,
+    )
+
+    chart_data = CategoryChartData()
+    chart_data.categories = [day.day for day in blocking['days']]
+    for item in blocking['series']:
+        chart_data.add_series(item['name'], item['values'])
+
+    frame = sl.shapes.add_chart(
+        XL_CHART_TYPE.LINE, Inches(0.63), Inches(1.61),
+        Inches(11.65), Inches(3.83), chart_data,
+    )
+    chart = frame.chart
+    chart.has_title = False
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.TOP
+    chart.legend.include_in_layout = False
+    chart.legend.font.name = 'Arial'
+    chart.legend.font.size = Pt(7)
+    chart.legend.font.color.rgb = C_DTEXT
+
+    all_values = [value for item in blocking['series'] for value in item['values']]
+    maximum = max(all_values or [0])
+    major_unit = 1 if maximum <= 6 else (2 if maximum <= 12 else 5)
+    chart.value_axis.minimum_scale = 0
+    chart.value_axis.maximum_scale = max(
+        major_unit, ((maximum // major_unit) + 1) * major_unit,
+    )
+    chart.value_axis.major_unit = major_unit
+    chart.value_axis.tick_labels.number_format = '0'
+    chart.value_axis.tick_labels.font.name = 'Arial'
+    chart.value_axis.tick_labels.font.size = Pt(8)
+    chart.value_axis.has_major_gridlines = True
+    chart.value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+    chart.value_axis.format.line.color.rgb = RGBColor(0xB7, 0xB7, 0xB7)
+    chart.category_axis.tick_labels.font.name = 'Arial'
+    chart.category_axis.tick_labels.font.size = Pt(7)
+    chart.category_axis.format.line.color.rgb = RGBColor(0xB7, 0xB7, 0xB7)
+
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    for series, item in zip(chart.series, blocking['series']):
+        series.format.line.color.rgb = item['color']
+        series.format.line.width = Pt(2.25)
+        labels = series.data_labels
+        labels.show_value = True
+        labels.show_legend_key = False
+        labels.show_category_name = False
+        labels.position = XL_DATA_LABEL_POSITION.ABOVE
+        labels.number_format = '0;-0;;'
+        labels.font.name = 'Arial'
+        labels.font.size = Pt(7)
+        labels.font.bold = True
+        labels.font.color.rgb = item['color']
+
+    _rect(sl, Inches(5.08), Inches(1.18), Inches(2.75), Inches(0.42), C_YELL)
+    _txt(
+        sl, 'TREND BLOCK POINT', Inches(5.08), Inches(1.205),
+        Inches(2.75), Inches(0.32), size=16, color=RGBColor(0x00, 0x00, 0x00),
+        align=PP_ALIGN.CENTER, wrap=False,
+    )
+    _rect(sl, Inches(9.20), Inches(2.10), Inches(2.05), Inches(0.35), C_YELL)
+    _txt(
+        sl, f'DR2- PB= {without_blocking_point}', Inches(9.28), Inches(2.135),
+        Inches(1.90), Inches(0.27), size=12, bold=True,
+        color=RGBColor(0x00, 0x00, 0x00), wrap=False,
+    )
+
+    table_rows = len(blocking['series']) + 3
+    table = sl.shapes.add_table(
+        table_rows, 2, Inches(8.55), Inches(5.53), Inches(4.18), Inches(1.82),
+    ).table
+    table.columns[0].width = Inches(3.30)
+    table.columns[1].width = Inches(0.88)
+    table.rows[0].height = Inches(0.23)
+    table.rows[1].height = Inches(0.21)
+    table.rows[table_rows - 1].height = Inches(0.22)
+    body_height = 1.16 / max(len(blocking['series']), 1)
+    for row_index in range(2, table_rows - 1):
+        table.rows[row_index].height = Inches(body_height)
+
+    title_cell = table.cell(0, 0)
+    title_cell.merge(table.cell(0, 1))
+    _report_cell(title_cell, 'POINTS BLOQUANTS', C_YELL,
+                 RGBColor(0x00, 0x00, 0x00), True, 9)
+    _report_cell(table.cell(1, 0), 'CAUSES', C_REPORT_NAVY, C_YELL, True, 9)
+    _report_cell(table.cell(1, 1), 'COUNT', C_REPORT_NAVY, C_YELL, True, 9)
+    for row_index, item in enumerate(blocking['series'], 2):
+        _report_cell(table.cell(row_index, 0), item['name'], C_CROSS_GRAY,
+                     C_DTEXT, False, 7, PP_ALIGN.LEFT)
+        if item['total'] == 0:
+            count_color = C_CROSS_GREEN
+        elif item['total'] == 1:
+            count_color = C_REPORT_YELLOW
+        elif item['total'] == 2:
+            count_color = C_REPORT_ORANGE
+        else:
+            count_color = C_REPORT_RED
+        _report_cell(table.cell(row_index, 1), item['total'], count_color,
+                     C_WHITE if item['total'] != 1 else C_DTEXT, True, 9)
+    total_row = table_rows - 1
+    _report_cell(table.cell(total_row, 0), 'TOTAL', C_REPORT_NAVY, C_WHITE,
+                 True, 8, PP_ALIGN.LEFT)
+    _report_cell(table.cell(total_row, 1), blocking['blocking_total'], C_WHITE,
+                 C_DTEXT, True, 9)
+
+    x_positions = [Inches(8.55), Inches(11.85), Inches(12.73)]
+    y_positions = [Inches(5.53)]
+    for row in table.rows:
+        y_positions.append(y_positions[-1] + row.height)
+
+    def grid_line(x1, y1, x2, y2):
+        line = sl.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
+        line.line.color.rgb = RGBColor(0x00, 0x00, 0x00)
+        line.line.width = Pt(0.75)
+
+    for y_position in y_positions:
+        grid_line(x_positions[0], y_position, x_positions[-1], y_position)
+    grid_line(x_positions[0], y_positions[0], x_positions[0], y_positions[-1])
+    grid_line(x_positions[1], y_positions[1], x_positions[1], y_positions[-1])
+    grid_line(x_positions[-1], y_positions[0], x_positions[-1], y_positions[-1])
     return sl
 
 
@@ -2049,53 +2357,8 @@ def generate_gdi_daily(debut, fin, generated_on):
     )
     _efficiency_dashboard(sl, region_efficiency, base_efficiency)
 
-    # 16. Points bloquants — mois
-    sl = _blank(prs)
-    pb = _points_bloquants(qs_month)
-    with_blocking_point = sum(k for _, k in pb)
-    without_blocking_point = max(month_data['total_dr2'] - with_blocking_point, 0)
-    _header(
-        sl, 'RAPPORT GESTION DES INCIDENTS', 'POINTS BLOQUANTS',
-    )
-    _summary_card(
-        sl, 'AVEC POINT BLOQUANT', str(with_blocking_point),
-        'DR2 concernés', Inches(3.65), C_RED_T,
-    )
-    _summary_card(
-        sl, 'SANS POINT BLOQUANT', str(without_blocking_point),
-        'DR2-PB', Inches(6.80), C_DETAIL_GREEN,
-    )
-    if pb:
-        ranked_points = [[f'{rank:02d}', label, count]
-                         for rank, (label, count) in enumerate(pb, 1)]
-        available_height = Inches(3.45)
-        table_height = min(
-            available_height,
-            Inches(max(1.70, 0.32 * (len(ranked_points) + 1))),
-        )
-        blocking_table = _table(
-            sl, ['RANG', 'POINT BLOQUANT', 'NB'], ranked_points,
-            left=Inches(0.75),
-            top=Inches(3.25),
-            width=Inches(11.85), height=table_height,
-            col_widths=[0.8, 9.9, 1.15],
-            font_size=max(6, min(10, 55 // (len(ranked_points) + 1))),
-            hdr_size=9,
-        )
-        for row_index in range(1, len(blocking_table.rows)):
-            point_cell = blocking_table.rows[row_index].cells[1]
-            point_cell.margin_left = Inches(0.08)
-            for paragraph in point_cell.text_frame.paragraphs:
-                paragraph.alignment = PP_ALIGN.LEFT
-    else:
-        _rect(sl, Inches(0.75), Inches(3.45), Inches(11.85), Inches(1.75),
-              RGBColor(0xF5, 0xF7, 0xFA))
-        _txt(sl, 'AUCUN POINT BLOQUANT RENSEIGNÉ',
-             Inches(1.0), Inches(3.85), Inches(11.35), Inches(0.45),
-             size=20, bold=True, color=C_DETAIL_GREEN, align=PP_ALIGN.CENTER)
-        _txt(sl, f"{without_blocking_point} DR2 sans point bloquant déclaré",
-             Inches(1.0), Inches(4.37), Inches(11.35), Inches(0.35),
-             size=12, color=C_DTEXT, align=PP_ALIGN.CENTER)
+    # 16. Points bloquants — tendance mensuelle issue de la même source que DR2 J-1
+    _slide_blocking_points(prs, qs_month, month_data, month_start, data_end)
 
     # 17-18. Lecture régionale puis matrice Région / Métiers — mois
     _slide_region_performance(prs, month_data)

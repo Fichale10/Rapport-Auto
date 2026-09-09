@@ -165,10 +165,20 @@ class Dr2AnalyticsTests(TestCase):
 					'RECURRING-SITE' if index == 0
 					else f'SITE-{day.day}-{index}'
 				)
+				point_bloquant = ''
+				if day == date(2026, 9, 4) and index == 0:
+					point_bloquant = 'MANQUE DE PDR'
+				elif day == date(2026, 9, 4) and index == 1:
+					point_bloquant = "PROBLEME D ' ACCES"
+				elif day == date(2026, 9, 5) and index < 5:
+					point_bloquant = 'Manque de PDR'
+				elif day == date(2026, 9, 6) and index < 4:
+					point_bloquant = 'MANQUE DE PDR'
 				Dr2ViolationRecord.objects.create(
 					date=day,
 					site_name=site_name,
 					region='LOME', categorie='ENERGIE', cause='PANNE',
+					point_bloquant=point_bloquant,
 					hours_down=4, is_resolved=True,
 				)
 				Site.objects.get_or_create(
@@ -314,6 +324,77 @@ class Dr2AnalyticsTests(TestCase):
 		}
 		self.assertEqual(region_values['LOME'], ['LOME', '20', '1:00:00', '15', '25%'])
 		self.assertEqual(base_values['MANGO'], ['MANGO', '20', '1:00:00', '12', '40%'])
+
+		blocking_slide = presentation.slides[15]
+		blocking_text = ' '.join(
+			shape.text for shape in blocking_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('TREND BLOCK POINT', blocking_text)
+		self.assertIn('DR2- PB= 4', blocking_text)
+		blocking_chart = next(
+			shape.chart for shape in blocking_slide.shapes if shape.has_chart
+		)
+		self.assertEqual(
+			[series.name for series in blocking_chart.series],
+			[
+				'MANQUE DE PDR', "PROBLEME D'ACCES", 'RESPECT NORME HSE',
+				'VANDALISME', 'RESPECT NORME SURETE',
+				'RESPECT NORME SURETE (ZONE ROUGE)',
+			],
+		)
+		self.assertEqual(len(blocking_chart.series[0].values), 30)
+		self.assertEqual(
+			blocking_chart.series[0].values[3:6], (1.0, 5.0, 4.0),
+		)
+		blocking_table = next(
+			shape.table for shape in blocking_slide.shapes if shape.has_table
+		)
+		self.assertEqual(blocking_table.cell(0, 0).text, 'POINTS BLOQUANTS')
+		self.assertEqual(
+			[blocking_table.cell(row, 1).text for row in range(2, 8)],
+			['10', '1', '0', '0', '0', '0'],
+		)
+		self.assertEqual(str(blocking_table.cell(2, 1).fill.fore_color.rgb), 'F8696B')
+		self.assertEqual(str(blocking_table.cell(3, 1).fill.fore_color.rgb), 'FFE680')
+		self.assertEqual(str(blocking_table.cell(4, 1).fill.fore_color.rgb), '63BE7B')
+		self.assertEqual(blocking_table.cell(8, 1).text, '11')
+
+		matrix_slide = presentation.slides[17]
+		matrix_text = ' '.join(
+			shape.text for shape in matrix_slide.shapes
+			if hasattr(shape, 'text')
+		)
+		self.assertIn('TABLEAU DE CROISEMENT REGION / METIERS', matrix_text)
+		matrix = next(shape.table for shape in matrix_slide.shapes if shape.has_table)
+		self.assertEqual(len(matrix.rows), 9)
+		self.assertEqual(len(matrix.columns), 14)
+		self.assertEqual(matrix.cell(0, 0).text, 'TABLEAU DE CROISEMENT')
+		self.assertTrue(matrix.cell(0, 0).is_merge_origin)
+		self.assertEqual(str(matrix.cell(0, 0).fill.fore_color.rgb), 'FFC72C')
+		self.assertEqual(matrix.cell(1, 2).text, '')
+		self.assertTrue(matrix.cell(1, 2).is_merge_origin)
+		escalation_label = next(
+			shape for shape in matrix_slide.shapes
+			if getattr(shape, 'text', '') == 'BY ESCALADE'
+		)
+		self.assertEqual(escalation_label.rotation, 270.0)
+		self.assertEqual(
+			[matrix.cell(row, 0).text for row in range(2, 8)],
+			['LOME', 'MARITIME', 'PLATEAUX', 'CENTRALE', 'KARA', 'SAVANES'],
+		)
+		self.assertEqual(
+			[matrix.cell(1, column).text for column in range(3, 14)],
+			[
+				'ENERGIE', 'RAN-FIELD O', 'TRANS FH-FIELD O', 'TRANS IP',
+				'TRANS FO', 'TRANS FTTM', 'PROJET', 'BSS', 'ENVIRONNEMENT',
+				'INFRA', 'ENERGIE / TRANS / RAN',
+			],
+		)
+		self.assertEqual(str(matrix.cell(2, 3).fill.fore_color.rgb), 'F8696B')
+		self.assertEqual(str(matrix.cell(3, 3).fill.fore_color.rgb), '63BE7B')
+		self.assertEqual(str(matrix.cell(8, 0).fill.fore_color.rgb), 'F4B183')
+		self.assertEqual(str(matrix.cell(8, 3).fill.fore_color.rgb), 'D9D9D9')
 
 	def test_weekly_deck_keeps_dense_tail_and_summary_separate(self):
 		for day, count in (
