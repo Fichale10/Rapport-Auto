@@ -76,13 +76,16 @@ class Dr2AvailabilityTests(SimpleTestCase):
 			(alarm, None),
 		)
 
-	def test_gdi_reporting_periods_use_last_completed_weekend(self):
-		periods = _gdi_reporting_periods(date(2026, 8, 26))
+	def test_gdi_reporting_periods_preserve_selected_range(self):
+		periods = _gdi_reporting_periods(
+			date(2026, 8, 12), date(2026, 8, 14),
+		)
 
 		self.assertEqual(periods['month_start'], date(2026, 8, 1))
-		self.assertEqual(periods['detail_start'], date(2026, 8, 21))
-		self.assertEqual(periods['detail_end'], date(2026, 8, 23))
-		self.assertEqual(periods['meeting_day'], date(2026, 8, 24))
+		self.assertEqual(periods['data_end'], date(2026, 8, 14))
+		self.assertEqual(periods['detail_start'], date(2026, 8, 12))
+		self.assertEqual(periods['detail_end'], date(2026, 8, 14))
+		self.assertEqual(periods['meeting_day'], date(2026, 8, 15))
 
 
 class Dr2AnalyticsTests(TestCase):

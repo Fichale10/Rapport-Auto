@@ -904,20 +904,14 @@ def _shift_month(day, offset):
     return date(year, month_zero + 1, 1)
 
 
-def _gdi_reporting_periods(fin):
-    """Retourne les périmètres du support GDI de la réunion du lundi.
-
-    La date de fin choisie peut être postérieure au week-end présenté. Le
-    support s'arrête alors au dernier dimanche achevé : tendances depuis le
-    premier du mois, détails du vendredi au dimanche, réunion le lundi.
-    """
-    last_sunday = fin - timedelta(days=(fin.weekday() - 6) % 7)
+def _gdi_reporting_periods(debut, fin):
+    """Retourne les périmètres du support GDI pour la plage sélectionnée."""
     return {
-        'month_start': last_sunday.replace(day=1),
-        'data_end': last_sunday,
-        'detail_start': last_sunday - timedelta(days=2),
-        'detail_end': last_sunday,
-        'meeting_day': last_sunday + timedelta(days=1),
+        'month_start': fin.replace(day=1),
+        'data_end': fin,
+        'detail_start': debut,
+        'detail_end': fin,
+        'meeting_day': fin + timedelta(days=1),
     }
 
 
@@ -2254,7 +2248,7 @@ def _slide_merci(prs):
 def generate_gdi_daily(debut, fin, generated_on):
     prs = _reference_deck(_GDI_REFERENCE)
 
-    periods = _gdi_reporting_periods(fin)
+    periods = _gdi_reporting_periods(debut, fin)
     month_start = periods['month_start']
     data_end = periods['data_end']
     detail_start = periods['detail_start']
@@ -2278,14 +2272,14 @@ def generate_gdi_daily(debut, fin, generated_on):
     # 3. Définitions réglementaires
     _slide_definitions(prs)
 
-    # 4. Synthèse de décision — mois en cours et dernier week-end traité
+    # 4. Synthèse de décision — mois en cours et période sélectionnée
     _slide_executive_summary(prs, month_data, detail_data, qs_month)
 
     # 5-6. DR1
     _section(prs, 'TENDANCE DR1', data_end, 1)
     _slide_dr1_violations(prs, data_end, dr1_rows)
 
-    # 7-8. DR2 du dernier vendredi au dimanche achevé
+    # 7-8. DR2 de la période sélectionnée
     _section(prs, 'TENDANCE DR2', data_end, 2)
     _slide_dr2_trend(
         prs, detail_data, 'TDR2', detail_label, trend_data=month_data,
@@ -2314,7 +2308,7 @@ def generate_gdi_daily(debut, fin, generated_on):
             )
         day += timedelta(days=1)
 
-    # 12. Synthèse du week-end
+    # 12. Synthèse de la période sélectionnée
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'SYNTHESE DR2')
     _txt(sl, detail_label, MARGIN, CONTENT_TOP, SW - 2 * MARGIN,
@@ -2327,13 +2321,13 @@ def generate_gdi_daily(debut, fin, generated_on):
         )
     else:
         _txt(
-            sl, 'Synthèse indisponible : aucune journée traitée sur ce week-end.',
+            sl, 'Synthèse indisponible : aucune journée traitée sur cette période.',
             MARGIN, CONTENT_TOP + Inches(2.0), SW - 2 * MARGIN,
             Inches(0.6), size=18, bold=True, color=C_RED_T,
             align=PP_ALIGN.CENTER,
         )
 
-    # 13. Top sites — mois jusqu'au dimanche de référence
+    # 13. Top sites — mois jusqu'à la fin de la période sélectionnée
     sl = _blank(prs)
     _header(sl, 'REUNION GESTION DES INCIDENTS', 'TOP SITE OCCURRENCE DR2')
     top_sites = _top_sites(qs_month, 10)
